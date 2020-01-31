@@ -21,9 +21,8 @@ import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.internal.artifacts.DependencySubstitutionInternal;
-import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.VersionSelectionReasons;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionReasons;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -35,14 +34,11 @@ public class ModuleForcingResolveRule implements Action<DependencySubstitutionIn
 
     private final Map<ModuleIdentifier, String> forcedModules;
 
-    private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
-
-    public ModuleForcingResolveRule(Collection<? extends ModuleVersionSelector> forcedModules, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
-        this.moduleIdentifierFactory = moduleIdentifierFactory;
+    public ModuleForcingResolveRule(Collection<? extends ModuleVersionSelector> forcedModules) {
         if (!forcedModules.isEmpty()) {
             this.forcedModules = new HashMap<ModuleIdentifier, String>();
             for (ModuleVersionSelector module : forcedModules) {
-                this.forcedModules.put(moduleIdentifierFactory.module(module.getGroup(), module.getName()), module.getVersion());
+                this.forcedModules.put(module.getModule(), module.getVersion());
             }
         } else {
             this.forcedModules = null;
@@ -56,10 +52,10 @@ public class ModuleForcingResolveRule implements Action<DependencySubstitutionIn
         }
         if (details.getRequested() instanceof ModuleComponentSelector) {
             ModuleComponentSelector selector = (ModuleComponentSelector) details.getRequested();
-            ModuleIdentifier key = moduleIdentifierFactory.module(selector.getGroup(), selector.getModule());
+            ModuleIdentifier key = selector.getModuleIdentifier();
             if (forcedModules.containsKey(key)) {
                 DefaultImmutableVersionConstraint versionConstraint = new DefaultImmutableVersionConstraint(forcedModules.get(key));
-                details.useTarget(newSelector(key.getGroup(), key.getName(), versionConstraint), VersionSelectionReasons.FORCED);
+                details.useTarget(newSelector(key, versionConstraint, selector.getAttributes(), selector.getRequestedCapabilities()), ComponentSelectionReasons.FORCED);
 
             }
         }

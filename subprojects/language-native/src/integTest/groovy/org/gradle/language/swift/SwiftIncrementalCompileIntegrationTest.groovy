@@ -17,6 +17,7 @@
 package org.gradle.language.swift
 
 import org.gradle.integtests.fixtures.CompilationOutputsFixture
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.AvailableToolChains
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
@@ -37,6 +38,7 @@ class SwiftIncrementalCompileIntegrationTest extends AbstractInstalledToolChainI
         """
     }
 
+    @ToBeFixedForInstantExecution
     def 'recompiles only the Swift source files that have changed'() {
         given:
         def outputs = new CompilationOutputsFixture(file("build/obj/main/debug"), [ ".o" ])
@@ -67,6 +69,7 @@ class SwiftIncrementalCompileIntegrationTest extends AbstractInstalledToolChainI
         outputs.recompiledFile(main)
     }
 
+    @ToBeFixedForInstantExecution
     def 'adding a new file only compiles new file'() {
         given:
         def outputs = new CompilationOutputsFixture(file("build/obj/main/debug"), [ ".o" ])
@@ -91,6 +94,7 @@ class SwiftIncrementalCompileIntegrationTest extends AbstractInstalledToolChainI
         outputs.recompiledFile(newFile)
     }
 
+    @ToBeFixedForInstantExecution
     def 'adding a new file that overlaps with an existing type fails'() {
         given:
         def app = new SwiftApp()
@@ -106,9 +110,11 @@ class SwiftIncrementalCompileIntegrationTest extends AbstractInstalledToolChainI
 
         expect:
         fails("compileDebugSwift")
-        result.error.contains("error: invalid redeclaration of 'sum(a:b:)'")
+        failure.assertHasErrorOutput("error: invalid redeclaration of 'sum(a:b:)'")
     }
 
+    @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC_4_OR_OLDER)
+    @ToBeFixedForInstantExecution
     def 'removing a file rebuilds everything'() {
         given:
         def outputs = new CompilationOutputsFixture(file("build/obj/main/debug"), [ ".o" ])
@@ -128,6 +134,28 @@ class SwiftIncrementalCompileIntegrationTest extends AbstractInstalledToolChainI
         outputs.deletedClasses("multiply")
     }
 
+    @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC_5)
+    @ToBeFixedForInstantExecution
+    def 'removing an isolated file does not rebuild anything'() {
+        given:
+        def outputs = new CompilationOutputsFixture(file("build/obj/main/debug"), [ ".o" ])
+        def app = new SwiftApp()
+        settingsFile << "rootProject.name = 'app'"
+        app.writeToProject(testDirectory)
+        buildFile << """
+            apply plugin: 'swift-application'
+         """
+
+        outputs.snapshot { succeeds("compileDebugSwift") }
+        file("src/main/swift/multiply.swift").delete()
+
+        expect:
+        succeeds("compileDebugSwift")
+        outputs.recompiledClasses()
+        outputs.deletedClasses("multiply")
+    }
+
+    @ToBeFixedForInstantExecution
     def 'changing compiler arguments rebuilds everything'() {
         given:
         def outputs = new CompilationOutputsFixture(file("build/obj/main/debug"), [ ".o" ])
@@ -151,6 +179,31 @@ class SwiftIncrementalCompileIntegrationTest extends AbstractInstalledToolChainI
         outputs.recompiledClasses('main', 'sum', 'greeter', 'multiply')
     }
 
+    @ToBeFixedForInstantExecution
+    def 'changing macros rebuilds everything'() {
+        given:
+        def outputs = new CompilationOutputsFixture(file("build/obj/main/debug"), [ ".o" ])
+        def app = new SwiftApp()
+        settingsFile << "rootProject.name = 'app'"
+        app.writeToProject(testDirectory)
+        buildFile << """
+            apply plugin: 'swift-application'
+         """
+
+        outputs.snapshot { succeeds("compileDebugSwift") }
+
+        buildFile << """
+            tasks.withType(SwiftCompile) {
+                macros.add('NEWMACRO')
+            }
+        """
+
+        expect:
+        succeeds("compileDebugSwift")
+        outputs.recompiledClasses('main', 'sum', 'greeter', 'multiply')
+    }
+
+    @ToBeFixedForInstantExecution
     def 'changes to an unused dependency rebuilds everything'() {
         given:
         def outputs = new CompilationOutputsFixture(file("build/obj/main/debug"), [ ".o" ])
@@ -199,6 +252,7 @@ class SwiftIncrementalCompileIntegrationTest extends AbstractInstalledToolChainI
     }
 
     @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC_4)
+    @ToBeFixedForInstantExecution
     def 'changing Swift language level rebuilds everything'() {
         given:
         def outputs = new CompilationOutputsFixture(file("build/obj/main/debug"), [ ".o" ])
@@ -231,6 +285,7 @@ class SwiftIncrementalCompileIntegrationTest extends AbstractInstalledToolChainI
 
     // This isn't quite right, we really want to assert something like "has both swiftc3 and swiftc4"
     @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC_4)
+    @ToBeFixedForInstantExecution
     def 'changing Swift tool chain rebuilds everything'() {
         given:
         def swiftc3 = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFTC_3)

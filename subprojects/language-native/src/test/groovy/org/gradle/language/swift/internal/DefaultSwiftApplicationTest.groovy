@@ -16,7 +16,11 @@
 
 package org.gradle.language.swift.internal
 
+import org.gradle.language.cpp.internal.NativeVariantIdentity
 import org.gradle.language.swift.SwiftPlatform
+import org.gradle.nativeplatform.MachineArchitecture
+import org.gradle.nativeplatform.OperatingSystemFamily
+import org.gradle.nativeplatform.TargetMachine
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
@@ -28,7 +32,13 @@ class DefaultSwiftApplicationTest extends Specification {
     @Rule
     TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     def project = TestUtil.createRootProject(tmpDir.testDirectory)
-    def app = new DefaultSwiftApplication("main", project.objects, project)
+    def app = project.objects.newInstance(DefaultSwiftApplication, "main")
+
+    def "has display name"() {
+        expect:
+        app.displayName.displayName == "Swift application 'main'"
+        app.toString() == "Swift application 'main'"
+    }
 
     def "has implementation dependencies"() {
         expect:
@@ -41,7 +51,7 @@ class DefaultSwiftApplicationTest extends Specification {
         def platformToolProvider = Stub(PlatformToolProvider)
 
         expect:
-        def binary = app.addExecutable("debug", true, false, true, targetPlatform, toolChain, platformToolProvider)
+        def binary = app.addExecutable(identity, true, targetPlatform, toolChain, platformToolProvider)
         binary.name == "mainDebug"
         binary.debuggable
         !binary.optimized
@@ -63,6 +73,22 @@ class DefaultSwiftApplicationTest extends Specification {
 
         then:
         def ex = thrown(IllegalStateException)
-        ex.message == "No value has been specified for this provider."
+        ex.message == "Cannot query the value of Swift application 'main' property 'developmentBinary' because it has no value available."
+    }
+
+    private NativeVariantIdentity getIdentity() {
+        return Stub(NativeVariantIdentity) {
+            getName() >> "debug"
+            isDebuggable() >> true
+            getTargetMachine() >> targetMachine(OperatingSystemFamily.MACOS, MachineArchitecture.X86_64)
+        }
+    }
+
+    private TargetMachine targetMachine(String os, String arch) {
+        def objectFactory = TestUtil.objectFactory()
+        return Stub(TargetMachine) {
+            getOperatingSystemFamily() >> objectFactory.named(OperatingSystemFamily.class, os)
+            getArchitecture() >> objectFactory.named(MachineArchitecture.class, arch)
+        }
     }
 }

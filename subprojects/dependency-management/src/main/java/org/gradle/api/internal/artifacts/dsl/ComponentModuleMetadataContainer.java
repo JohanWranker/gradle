@@ -62,16 +62,19 @@ public class ComponentModuleMetadataContainer implements ModuleReplacementsData 
                 targets.add(target);
             }
 
+            @Override
             public ModuleIdentifier getId() {
                 return source;
             }
 
+            @Override
             public ModuleIdentifier getReplacedBy() {
                 return unwrap(replacements.get(source));
             }
         };
     }
 
+    @Override
     public Replacement getReplacementFor(ModuleIdentifier sourceModule) {
         return replacements.get(sourceModule);
     }
@@ -113,7 +116,7 @@ public class ComponentModuleMetadataContainer implements ModuleReplacementsData 
     private static NotationParser<Object, ModuleIdentifier> parser(ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
         return NotationParserBuilder
                 .toType(ModuleIdentifier.class)
-                .converter(new ModuleIdentifierNotationConverter(moduleIdentifierFactory))
+                .fromCharSequence(new ModuleIdentifierNotationConverter(moduleIdentifierFactory))
                 .toComposite();
     }
 }

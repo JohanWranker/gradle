@@ -16,7 +16,7 @@
 package org.gradle.plugins.ide.internal.tooling.eclipse;
 
 import com.google.common.collect.Lists;
-import org.gradle.tooling.internal.gradle.DefaultGradleProject;
+import org.gradle.plugins.ide.internal.tooling.model.DefaultGradleProject;
 import org.gradle.tooling.internal.gradle.DefaultProjectIdentifier;
 import org.gradle.tooling.internal.gradle.GradleProjectIdentity;
 
@@ -46,6 +46,7 @@ public class DefaultEclipseProject implements Serializable, GradleProjectIdentit
     private DefaultEclipseJavaSourceSettings javaSourceSettings;
     private List<DefaultEclipseClasspathContainer> classpathContainers;
     private DefaultEclipseOutputLocation outputLocation;
+    private boolean hasAutoBuildTasks;
 
     public DefaultEclipseProject(String name, String path, String description, File projectDirectory, Iterable<? extends DefaultEclipseProject> children) {
         this.name = name;
@@ -135,7 +136,7 @@ public class DefaultEclipseProject implements Serializable, GradleProjectIdentit
         this.linkedResources = linkedResources;
     }
 
-    public DefaultGradleProject<?> getGradleProject() {
+    public DefaultGradleProject getGradleProject() {
         return gradleProject;
     }
 
@@ -196,5 +197,13 @@ public class DefaultEclipseProject implements Serializable, GradleProjectIdentit
     @Override
     public File getRootDir() {
         return getProjectIdentifier().getBuildIdentifier().getRootDir();
+    }
+
+    public boolean hasAutoBuildTasks() {
+        return hasAutoBuildTasks;
+    }
+
+    public void setAutoBuildTasks(boolean hasAutoBuildTasks) {
+        this.hasAutoBuildTasks = hasAutoBuildTasks;
     }
 }

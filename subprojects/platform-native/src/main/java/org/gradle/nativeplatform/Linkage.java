@@ -16,15 +16,14 @@
 
 package org.gradle.nativeplatform;
 
-import org.gradle.api.Incubating;
+import org.gradle.api.Named;
 
 /**
  * Specify how a native library should be linked into another binary.
  *
  * @since 4.5
  */
-@Incubating
-public enum Linkage {
+public enum Linkage implements Named {
     /**
      * Statically link binaries together.
      */
@@ -33,5 +32,10 @@ public enum Linkage {
     /**
      * Dynamically link binaries together.
      */
-    SHARED
+    SHARED;
+
+    @Override
+    public String getName() {
+        return name();
+    }
 }

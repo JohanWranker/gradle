@@ -16,7 +16,12 @@
 
 package org.gradle.integtests.composite
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.test.fixtures.file.TestFile
+
 class CompositeBuildArtifactTransformIntegrationTest extends AbstractCompositeBuildIntegrationTest {
+
+    @ToBeFixedForInstantExecution
     def "can apply a transform to the outputs of included builds"() {
         def buildB = singleProjectBuild("buildB") {
             buildFile << """
@@ -32,26 +37,54 @@ class CompositeBuildArtifactTransformIntegrationTest extends AbstractCompositeBu
         includedBuilds << buildC
 
         buildA.buildFile << """
-            class XForm extends ArtifactTransform {
-                List<File> transform(File file) {
-                    return [file]
+            import org.gradle.api.artifacts.transform.TransformParameters
+
+            abstract class XForm implements TransformAction<TransformParameters.None> {
+                @InputArtifact
+                abstract Provider<FileSystemLocation> getInputArtifact()
+
+                void transform(TransformOutputs outputs) {
+                    def input = inputArtifact.get().asFile
+                    File outputFile = outputs.file(input.name + ".xform")
+                    def outputDirectory = outputFile.parentFile
+                    println("Transforming \$input in output directory \$outputDirectory")
+                    java.nio.file.Files.copy(input.toPath(), outputFile.toPath())
                 }
             }
             
             dependencies {
-                compile 'org.test:buildB:1.2'
-                compile 'org.test:buildC:1.2'
+                implementation 'org.test:buildB:1.2'
+                implementation 'org.test:buildC:1.2'
                 
-                registerTransform {
+                registerTransform(XForm) {
                     from.attribute(Attribute.of("artifactType", String), "jar")
                     to.attribute(Attribute.of("artifactType", String), "xform")
-                    artifactTransform(XForm)
+                }
+            }
+            
+            task resolve {
+                def artifacts = configurations.compileClasspath.incoming.artifactView { 
+                    attributes.attribute(Attribute.of("artifactType", String), "xform")
+                }.artifacts
+                inputs.files artifacts.artifactFiles
+                doLast {
+                    artifacts.each {
+                        println "Transformed artifact: \$it, location: \${it.file.absolutePath}"
+                    }
                 }
             }
         """
         expect:
-        execute(buildA, "assemble")
+        execute(buildA, "resolve")
         assertTaskExecuted(":buildB", ":jar")
         assertTaskExecuted(":buildC", ":jar")
+
+        outputContains("Transformed artifact: buildB-1.0.jar.xform (project :buildB), location: ${expectedWorkspaceLocation(buildB)}")
+        outputContains("Transformed artifact: buildC-1.0.jar.xform (project :buildC), location: ${expectedWorkspaceLocation(buildC)}")
+        output.count("Transforming") == 2
+    }
+
+    private String expectedWorkspaceLocation(TestFile includedBuild) {
+        includedBuild.file("build/.transforms")
     }
 }

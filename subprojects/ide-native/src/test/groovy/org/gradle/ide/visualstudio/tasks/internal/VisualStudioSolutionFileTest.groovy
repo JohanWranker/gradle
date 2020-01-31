@@ -15,11 +15,12 @@
  */
 
 package org.gradle.ide.visualstudio.tasks.internal
+
 import org.gradle.api.Action
 import org.gradle.ide.visualstudio.TextProvider
 import org.gradle.ide.visualstudio.fixtures.SolutionFile
-import org.gradle.internal.component.local.model.LocalComponentArtifactMetadata
-import org.gradle.internal.component.model.IvyArtifactName
+import org.gradle.ide.visualstudio.internal.VisualStudioProjectConfigurationMetadata
+import org.gradle.ide.visualstudio.internal.VisualStudioProjectMetadata
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
@@ -57,10 +58,8 @@ EndGlobal
 
     def "create for single project configuration"() {
         when:
-        def project = createProject("project1")
-        def configuration1 = createProjectConfiguration(project.file, "projectConfig")
+        def project = createProject("project1", ["projectConfig"])
         solutionFile.projects = [project]
-        solutionFile.projectConfigurations = [configuration1]
 
         then:
         generatedSolution.content ==
@@ -71,7 +70,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "project1", "${project.file.
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		projectConfig|Win32=projectConfig|Win32
+		projectConfig|Win32 = projectConfig|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		${getUUID(project.file)}.projectConfig|Win32.ActiveCfg = projectConfig|Win32
@@ -86,14 +85,9 @@ EndGlobal
 
     def "create for multiple configurations"() {
         when:
-        def project1 = createProject("project1")
-        def project2 = createProject("project2")
+        def project1 = createProject("project1", ["config1", "config2"])
+        def project2 = createProject("project2", ["config1", "configA"])
         solutionFile.projects = [project1, project2]
-        solutionFile.projectConfigurations = [
-                createProjectConfiguration(project1.file, "config1"),
-                createProjectConfiguration(project1.file, "config2"),
-                createProjectConfiguration(project2.file, "configA")
-        ]
 
         then:
         generatedSolution.content ==
@@ -106,17 +100,85 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "project2", "${project2.file
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		config1|Win32=config1|Win32
-		config2|Win32=config2|Win32
-		configA|Win32=configA|Win32
+		config1|Win32 = config1|Win32
+		config2|Win32 = config2|Win32
+		configA|Win32 = configA|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		${getUUID(project1.file)}.config1|Win32.ActiveCfg = config1|Win32
 		${getUUID(project1.file)}.config1|Win32.Build.0 = config1|Win32
 		${getUUID(project1.file)}.config2|Win32.ActiveCfg = config2|Win32
 		${getUUID(project1.file)}.config2|Win32.Build.0 = config2|Win32
+		${getUUID(project1.file)}.configA|Win32.ActiveCfg = config2|Win32
+		${getUUID(project2.file)}.config1|Win32.ActiveCfg = config1|Win32
+		${getUUID(project2.file)}.config1|Win32.Build.0 = config1|Win32
+		${getUUID(project2.file)}.config2|Win32.ActiveCfg = configA|Win32
 		${getUUID(project2.file)}.configA|Win32.ActiveCfg = configA|Win32
 		${getUUID(project2.file)}.configA|Win32.Build.0 = configA|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
+"""
+    }
+
+    def "create for single unbuildable project configuration"() {
+        when:
+        def project = createProject("project1", ["unbuildable"], false)
+        solutionFile.projects = [project]
+
+        then:
+        generatedSolution.content ==
+                """Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C++ Express 2010
+
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "project1", "${project.file.absolutePath}", "${getUUID(project.file)}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		unbuildable|Win32 = unbuildable|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		${getUUID(project.file)}.unbuildable|Win32.ActiveCfg = unbuildable|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
+"""
+    }
+
+    def "create for multiple configurations with one unbuildable"() {
+        when:
+        def project1 = createProject("project1", ["config1", "config2"])
+        def project2 = createProject("project2", ["unbuildable"], false)
+        solutionFile.projects = [project1, project2]
+
+        then:
+        generatedSolution.content ==
+                """Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C++ Express 2010
+
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "project1", "${project1.file.absolutePath}", "${getUUID(project1.file)}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "project2", "${project2.file.absolutePath}", "${getUUID(project2.file)}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		config1|Win32 = config1|Win32
+		config2|Win32 = config2|Win32
+		unbuildable|Win32 = unbuildable|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		${getUUID(project1.file)}.config1|Win32.ActiveCfg = config1|Win32
+		${getUUID(project1.file)}.config1|Win32.Build.0 = config1|Win32
+		${getUUID(project1.file)}.config2|Win32.ActiveCfg = config2|Win32
+		${getUUID(project1.file)}.config2|Win32.Build.0 = config2|Win32
+		${getUUID(project1.file)}.unbuildable|Win32.ActiveCfg = config2|Win32
+		${getUUID(project2.file)}.config1|Win32.ActiveCfg = unbuildable|Win32
+		${getUUID(project2.file)}.config2|Win32.ActiveCfg = unbuildable|Win32
+		${getUUID(project2.file)}.unbuildable|Win32.ActiveCfg = unbuildable|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -151,22 +213,17 @@ EndGlobal
         generatedSolutionFile.text == "tset"
     }
 
-    private LocalComponentArtifactMetadata createProjectConfiguration(File projectFile, String configName) {
-        IvyArtifactName name = Stub(IvyArtifactName)
-        name.name >> "${configName}|Win32"
-        LocalComponentArtifactMetadata metadata = Stub(LocalComponentArtifactMetadata)
-        metadata.file >> projectFile
-        metadata.name >> name
-        return metadata
-    }
-
-    private LocalComponentArtifactMetadata createProject(String projectName) {
+    private VisualStudioProjectMetadata createProject(String projectName, List<String> configNames, boolean buildable = true) {
         final project1File = new File(projectName)
-        IvyArtifactName name = Stub(IvyArtifactName)
-        name.name >> projectName
-        LocalComponentArtifactMetadata metadata = Stub(LocalComponentArtifactMetadata)
+        def metadata = Stub(VisualStudioProjectMetadata)
         metadata.file >> project1File
-        metadata.name >> name
+        metadata.name >> projectName
+        metadata.configurations >> configNames.collect {
+            def configurationMetadata = Stub(VisualStudioProjectConfigurationMetadata)
+            configurationMetadata.name >> "$it|Win32"
+            configurationMetadata.buildable >> buildable
+            return configurationMetadata
+        }
         return metadata
     }
 

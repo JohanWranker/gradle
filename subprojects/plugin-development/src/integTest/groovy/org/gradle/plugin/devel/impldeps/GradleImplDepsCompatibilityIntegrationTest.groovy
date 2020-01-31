@@ -122,7 +122,7 @@ class GradleImplDepsCompatibilityIntegrationTest extends BaseGradleImplDepsInteg
             import spock.lang.Specification
 
             class BuildLogicFunctionalTest extends Specification {
-                @Rule final TemporaryFolder testProjectDir = new TemporaryFolder()
+                @Rule TemporaryFolder testProjectDir = new TemporaryFolder()
                 File buildFile
 
                 def setup() {
@@ -156,9 +156,9 @@ class GradleImplDepsCompatibilityIntegrationTest extends BaseGradleImplDepsInteg
         succeeds 'build'
 
         where:
-        dependencyPermutations << [new GradleDependency('Gradle API', 'compile', 'dependencies.gradleApi()'),
-                                   new GradleDependency('TestKit', 'testCompile', 'dependencies.gradleTestKit()'),
-                                   new GradleDependency('Tooling API', 'compile', "project.files('${normaliseFileSeparators(buildContext.fatToolingApiJar.absolutePath)}')")].permutations()
+        dependencyPermutations << [new GradleDependency('Gradle API', 'implementation', 'dependencies.gradleApi()'),
+                                   new GradleDependency('TestKit', 'testImplementation', 'dependencies.gradleTestKit()'),
+                                   new GradleDependency('Tooling API', 'implementation', "project.files('${normaliseFileSeparators(buildContext.fatToolingApiJar.absolutePath)}')")].permutations()
     }
 
     static void writeClassesInZipFileToTextFile(File zipFile, File txtFile) {

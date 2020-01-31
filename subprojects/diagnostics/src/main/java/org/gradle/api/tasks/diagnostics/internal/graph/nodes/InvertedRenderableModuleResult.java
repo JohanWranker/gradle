@@ -28,21 +28,39 @@ import java.util.Set;
 /**
  * Children of this renderable dependency node are its dependents.
  */
-public class InvertedRenderableModuleResult extends RenderableModuleResult {
+public class InvertedRenderableModuleResult extends AbstractRenderableModuleResult {
+
+    private final ResolvedDependencyResult dependencyResult;
 
     public InvertedRenderableModuleResult(ResolvedComponentResult module) {
         super(module);
+        this.dependencyResult = null;
+    }
+
+    public InvertedRenderableModuleResult(ResolvedDependencyResult dependencyResult) {
+        super(dependencyResult.getFrom());
+        this.dependencyResult = dependencyResult;
     }
 
     @Override
     public Set<RenderableDependency> getChildren() {
         Map<ComponentIdentifier, RenderableDependency> children = new LinkedHashMap<ComponentIdentifier, RenderableDependency>();
         for (ResolvedDependencyResult dependent : module.getDependents()) {
-            InvertedRenderableModuleResult child = new InvertedRenderableModuleResult(dependent.getFrom());
+            InvertedRenderableModuleResult child = new InvertedRenderableModuleResult(dependent);
             if (!children.containsKey(child.getId())) {
                 children.put(child.getId(), child);
             }
         }
         return new LinkedHashSet<RenderableDependency>(children.values());
+    }
+
+    @Override
+    public String getDescription() {
+        if (dependencyResult != null) {
+            if (!exactMatch(dependencyResult.getRequested(), dependencyResult.getSelected().getId())) {
+                return "(requested " + dependencyResult.getRequested() + ")";
+            }
+        }
+        return null;
     }
 }

@@ -16,14 +16,9 @@
 
 package org.gradle.tooling.internal.provider;
 
-import org.gradle.initialization.BuildLayoutParameters;
 import org.gradle.internal.concurrent.Stoppable;
-import org.gradle.internal.logging.events.OutputEventListener;
-import org.gradle.internal.service.ServiceRegistry;
-import org.gradle.launcher.daemon.client.DaemonClientFactory;
 import org.gradle.launcher.daemon.client.DaemonStartListener;
 import org.gradle.launcher.daemon.client.DaemonStopClient;
-import org.gradle.launcher.daemon.configuration.DaemonParameters;
 import org.gradle.launcher.daemon.context.DaemonConnectDetails;
 
 import java.util.Set;
@@ -31,21 +26,19 @@ import java.util.concurrent.CopyOnWriteArraySet;
 
 public class ShutdownCoordinator implements DaemonStartListener, Stoppable {
     private final Set<DaemonConnectDetails> daemons = new CopyOnWriteArraySet<DaemonConnectDetails>();
-    private final DaemonClientFactory clientFactory;
-    private final OutputEventListener outputEventListener;
+    private final DaemonStopClient client;
 
-    public ShutdownCoordinator(DaemonClientFactory clientFactory, OutputEventListener outputEventListener) {
-        this.clientFactory = clientFactory;
-        this.outputEventListener = outputEventListener;
+    public ShutdownCoordinator(DaemonStopClient client) {
+        this.client = client;
     }
 
+    @Override
     public void daemonStarted(DaemonConnectDetails daemon) {
         daemons.add(daemon);
     }
 
+    @Override
     public void stop() {
-        ServiceRegistry clientServices = clientFactory.createStopDaemonServices(outputEventListener, new DaemonParameters(new BuildLayoutParameters()));
-        DaemonStopClient client = clientServices.get(DaemonStopClient.class);
         client.gracefulStop(daemons);
     }
 }

@@ -22,7 +22,7 @@ import org.gradle.internal.logging.events.LogLevelChangeEvent
 import org.gradle.internal.logging.events.RenderableOutputEvent
 import org.gradle.internal.logging.events.StyledTextOutputEvent
 import org.gradle.internal.logging.text.StyledTextOutput
-import org.gradle.internal.logging.text.TestLineChoppingStyledTextOuput
+import org.gradle.internal.logging.text.TestLineChoppingStyledTextOutput
 import org.gradle.internal.logging.text.TestStyledTextOutput
 import spock.lang.Issue
 import spock.lang.Unroll
@@ -79,7 +79,7 @@ class StyledTextOutputBackedRendererTest extends OutputSpecification {
         renderer.onOutput(event)
 
         then:
-        output.value == '10:00:00.000 [INFO] [category] message\n'
+        output.value == "${tenAmFormatted} [INFO] [category] message\n"
     }
 
     def continuesLineWhenPreviousOutputEventDidNotEndWithEOL() {
@@ -94,7 +94,7 @@ class StyledTextOutputBackedRendererTest extends OutputSpecification {
         renderer.onOutput(event2)
 
         then:
-        output.value == '10:00:00.000 [INFO] [category] message\n'
+        output.value == "${tenAmFormatted} [INFO] [category] message\n"
     }
 
     def addsEOLWhenPreviousOutputEventDidNotEndWithEOLAndHadDifferentCategory() {
@@ -109,13 +109,13 @@ class StyledTextOutputBackedRendererTest extends OutputSpecification {
         renderer.onOutput(event2)
 
         then:
-        output.value == '10:00:00.000 [INFO] [category] message\n10:00:00.000 [INFO] [category2] message2'
+        output.value == "${tenAmFormatted} [INFO] [category] message\n${tenAmFormatted} [INFO] [category2] message2"
     }
 
     @Issue("https://github.com/gradle/gradle/issues/1566")
     @Unroll
     def renderMultiNonNativeNewLineTextCorrectly() {
-        StyledTextOutput output = new TestLineChoppingStyledTextOuput()
+        StyledTextOutput output = new TestLineChoppingStyledTextOutput()
         StyledTextOutputBackedRenderer renderer = new StyledTextOutputBackedRenderer(output)
         RenderableOutputEvent event = Mock()
         String headerLine = "###"

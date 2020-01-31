@@ -20,10 +20,19 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.jvm.TestJvmComponent
 import org.gradle.language.scala.fixtures.TestScalaComponent
 
+import static org.gradle.language.scala.internal.DefaultScalaPlatform.DEFAULT_SCALA_PLATFORM_VERSION
+
 class ScalaToolProviderNotAvailableIntegrationTest extends AbstractIntegrationSpec {
     TestJvmComponent app = new TestScalaComponent()
 
     def setup() {
+        executer.expectDocumentedDeprecationWarning("The jvm-component plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_6.html#upgrading_jvm_plugins")
+        executer.expectDocumentedDeprecationWarning("The scala-lang plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_6.html#upgrading_jvm_plugins")
+        executer.expectDocumentedDeprecationWarning("The jvm-resources plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_6.html#upgrading_jvm_plugins")
+
         buildFile << """
         plugins {
             id 'jvm-component'
@@ -44,7 +53,6 @@ class ScalaToolProviderNotAvailableIntegrationTest extends AbstractIntegrationSp
         when:
         fails("assemble")
         then:
-        errorOutput.contains("Cannot provide Scala Compiler: Cannot resolve external dependency org.scala-lang:scala-compiler:2.10.4 because no repositories are defined.")
-
+        failure.assertHasCause("Cannot resolve external dependency org.scala-lang:scala-compiler:${DEFAULT_SCALA_PLATFORM_VERSION} because no repositories are defined.")
     }
 }

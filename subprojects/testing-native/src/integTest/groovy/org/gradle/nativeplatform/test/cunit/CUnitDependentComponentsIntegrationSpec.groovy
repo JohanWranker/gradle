@@ -16,14 +16,18 @@
 
 package org.gradle.nativeplatform.test.cunit
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
+import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
+import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.CHelloWorldApp
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
 import org.gradle.util.TextUtil
 
 @Requires(TestPrecondition.CAN_INSTALL_EXECUTABLE)
+@RequiresInstalledToolChain(ToolChainRequirement.SUPPORTS_32)
 class CUnitDependentComponentsIntegrationSpec extends AbstractInstalledToolChainIntegrationSpec {
 
     def prebuiltDir = buildContext.getSamplesDir().file("native-binaries/cunit/libs")
@@ -87,6 +91,7 @@ class CUnitDependentComponentsIntegrationSpec extends AbstractInstalledToolChain
         return OperatingSystem.current().getStaticLibraryName("cunit")
     }
 
+    @ToBeFixedForInstantExecution
     def "buildDependentsHello assemble and check all hello binaries"() {
         given:
         useConventionalSourceLocations()
@@ -99,6 +104,7 @@ class CUnitDependentComponentsIntegrationSpec extends AbstractInstalledToolChain
         executed ':helloSharedLibrary', ':helloStaticLibrary', ':helloTestCUnitExe', ':runHelloTestCUnitExe'
     }
 
+    @ToBeFixedForInstantExecution
     def "buildDependentsHelloSharedLibrary assemble and check hello shared library"() {
         given:
         useConventionalSourceLocations()
@@ -112,6 +118,7 @@ class CUnitDependentComponentsIntegrationSpec extends AbstractInstalledToolChain
         notExecuted ':helloTestCUnitExe', ':runHelloTestCUnitExe'
     }
 
+    @ToBeFixedForInstantExecution
     def "buildDependentsHelloStaticLibrary assemble and check hello static library"() {
         given:
         useConventionalSourceLocations()
@@ -124,6 +131,7 @@ class CUnitDependentComponentsIntegrationSpec extends AbstractInstalledToolChain
         executed ':helloStaticLibrary', ':helloTestCUnitExe', ':runHelloTestCUnitExe'
     }
 
+    @ToBeFixedForInstantExecution
     def "buildDependentsHelloTestCUnitExe assemble and run test suite"() {
         given:
         useConventionalSourceLocations()

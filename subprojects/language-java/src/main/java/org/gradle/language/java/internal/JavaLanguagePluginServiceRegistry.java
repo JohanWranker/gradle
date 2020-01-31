@@ -16,26 +16,39 @@
 
 package org.gradle.language.java.internal;
 
+import org.gradle.api.internal.cache.StringInterner;
 import org.gradle.api.internal.component.ArtifactType;
 import org.gradle.api.internal.component.ComponentTypeRegistry;
-import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.internal.tasks.compile.incremental.IncrementalCompilerFactory;
 import org.gradle.api.internal.tasks.compile.incremental.cache.GeneralCompileCaches;
 import org.gradle.api.internal.tasks.compile.processing.AnnotationProcessorDetector;
-import org.gradle.api.internal.tasks.compile.processing.AnnotationProcessorPathFactory;
-import org.gradle.api.logging.Logging;
+import org.gradle.api.internal.tasks.compile.tooling.JavaCompileTaskSuccessResultPostProcessor;
 import org.gradle.api.logging.configuration.LoggingConfiguration;
 import org.gradle.api.logging.configuration.ShowStacktrace;
 import org.gradle.cache.internal.FileContentCacheFactory;
+import org.gradle.internal.build.event.BuildEventListenerFactory;
 import org.gradle.internal.hash.FileHasher;
 import org.gradle.internal.hash.StreamHasher;
+import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.service.ServiceRegistration;
 import org.gradle.internal.service.scopes.AbstractPluginServiceRegistry;
+import org.gradle.internal.vfs.VirtualFileSystem;
 import org.gradle.jvm.JvmLibrary;
 import org.gradle.language.java.artifact.JavadocArtifact;
+import org.gradle.tooling.events.OperationType;
+import org.slf4j.LoggerFactory;
+
+import java.util.Collections;
+
+import static java.util.Collections.emptyList;
 
 public class JavaLanguagePluginServiceRegistry extends AbstractPluginServiceRegistry {
+    @Override
+    public void registerGlobalServices(ServiceRegistration registration) {
+        registration.addProvider(new JavaGlobalScopeServices());
+    }
+
     @Override
     public void registerGradleServices(ServiceRegistration registration) {
         registration.addProvider(new JavaGradleScopeServices());
@@ -46,6 +59,18 @@ public class JavaLanguagePluginServiceRegistry extends AbstractPluginServiceRegi
         registration.addProvider(new JavaProjectScopeServices());
     }
 
+    private static class JavaGlobalScopeServices {
+        BuildEventListenerFactory createJavaSubscribableBuildActionRunnerRegistration(final JavaCompileTaskSuccessResultPostProcessor factory) {
+            return (clientSubscriptions, consumer) -> clientSubscriptions.isRequested(OperationType.TASK)
+                ? Collections.singletonList(factory)
+                : emptyList();
+        }
+
+        public JavaCompileTaskSuccessResultPostProcessor createJavaCompileTaskSuccessResultDecoratorFactory() {
+            return new JavaCompileTaskSuccessResultPostProcessor();
+        }
+    }
+
     private static class JavaGradleScopeServices {
         public void configure(ServiceRegistration registration, ComponentTypeRegistry componentTypeRegistry) {
             componentTypeRegistry.maybeRegisterComponentType(JvmLibrary.class)
@@ -53,17 +78,13 @@ public class JavaLanguagePluginServiceRegistry extends AbstractPluginServiceRegi
         }
 
         public AnnotationProcessorDetector createAnnotationProcessorDetector(FileContentCacheFactory cacheFactory, LoggingConfiguration loggingConfiguration) {
-            return new AnnotationProcessorDetector(cacheFactory, Logging.getLogger(AnnotationProcessorDetector.class), loggingConfiguration.getShowStacktrace() != ShowStacktrace.INTERNAL_EXCEPTIONS);
-        }
-
-        public AnnotationProcessorPathFactory createAnnotationProcessorPathFactory(FileCollectionFactory fileCollectionFactory, AnnotationProcessorDetector annotationProcessorDetector) {
-            return new AnnotationProcessorPathFactory(fileCollectionFactory, annotationProcessorDetector);
+            return new AnnotationProcessorDetector(cacheFactory, LoggerFactory.getLogger(AnnotationProcessorDetector.class), loggingConfiguration.getShowStacktrace() != ShowStacktrace.INTERNAL_EXCEPTIONS);
         }
     }
 
     private static class JavaProjectScopeServices {
-        public IncrementalCompilerFactory createIncrementalCompilerFactory(FileOperations fileOperations, StreamHasher streamHasher, FileHasher fileHasher, AnnotationProcessorDetector annotationProcessorDetector, GeneralCompileCaches compileCaches) {
-            return new IncrementalCompilerFactory(fileOperations, streamHasher, fileHasher, annotationProcessorDetector, compileCaches);
+        public IncrementalCompilerFactory createIncrementalCompilerFactory(FileOperations fileOperations, StreamHasher streamHasher, GeneralCompileCaches compileCaches, BuildOperationExecutor buildOperationExecutor, StringInterner interner, VirtualFileSystem virtualFileSystem, FileHasher fileHasher) {
+            return new IncrementalCompilerFactory(fileOperations, streamHasher, compileCaches, buildOperationExecutor, interner, virtualFileSystem, fileHasher);
         }
     }
 }

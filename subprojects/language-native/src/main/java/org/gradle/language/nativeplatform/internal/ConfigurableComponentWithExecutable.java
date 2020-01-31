@@ -16,6 +16,7 @@
 
 package org.gradle.language.nativeplatform.internal;
 
+import org.gradle.api.Task;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.Directory;
 import org.gradle.api.file.RegularFile;
@@ -24,6 +25,7 @@ import org.gradle.language.ComponentWithOutputs;
 import org.gradle.language.nativeplatform.ComponentWithExecutable;
 import org.gradle.language.nativeplatform.ComponentWithInstallation;
 import org.gradle.language.nativeplatform.ComponentWithObjectFiles;
+import org.gradle.nativeplatform.platform.NativePlatform;
 import org.gradle.nativeplatform.tasks.InstallExecutable;
 import org.gradle.nativeplatform.tasks.LinkExecutable;
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
@@ -34,6 +36,8 @@ import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 public interface ConfigurableComponentWithExecutable extends ComponentWithExecutable, ComponentWithInstallation, ComponentWithObjectFiles, ComponentWithOutputs, ComponentWithNames {
     PlatformToolProvider getPlatformToolProvider();
 
+    NativePlatform getNativePlatform();
+
     @Override
     Property<LinkExecutable> getLinkTask();
 
@@ -42,6 +46,9 @@ public interface ConfigurableComponentWithExecutable extends ComponentWithExecut
 
     @Override
     Property<RegularFile> getExecutableFile();
+
+    @Override
+    Property<Task> getExecutableFileProducer();
 
     Property<RegularFile> getDebuggerExecutableFile();
 

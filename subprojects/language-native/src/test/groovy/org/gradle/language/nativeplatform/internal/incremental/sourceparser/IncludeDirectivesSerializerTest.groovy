@@ -22,10 +22,10 @@ import org.gradle.language.nativeplatform.internal.IncludeType
 
 class IncludeDirectivesSerializerTest extends SerializerSpec {
     def "serializes empty directives"() {
-        def directives = new DefaultIncludeDirectives(ImmutableList.of(), ImmutableList.of(), ImmutableList.of())
+        def directives = DefaultIncludeDirectives.of(ImmutableList.of(), ImmutableList.of(), ImmutableList.of())
 
         expect:
-        serialize(directives, new IncludeDirectivesSerializer()) == directives
+        serialize(directives, IncludeDirectivesSerializer.INSTANCE) == directives
     }
 
     def "serializes include directives"() {
@@ -34,10 +34,10 @@ class IncludeDirectivesSerializerTest extends SerializerSpec {
         def include3 = new IncludeWithSimpleExpression("three.h", false, IncludeType.MACRO)
         def include4 = new IncludeWithMacroFunctionCallExpression("A", true, ImmutableList.of(new SimpleExpression("X", IncludeType.MACRO)))
         def include5 = new IncludeWithMacroFunctionCallExpression("A", true, ImmutableList.of(new SimpleExpression("X", IncludeType.MACRO), new SimpleExpression("Y", IncludeType.MACRO)))
-        def directives = new DefaultIncludeDirectives(ImmutableList.copyOf([include1, include2, include3, include4, include5]), ImmutableList.of(), ImmutableList.of())
+        def directives = DefaultIncludeDirectives.of(ImmutableList.copyOf([include1, include2, include3, include4, include5]), ImmutableList.of(), ImmutableList.of())
 
         expect:
-        serialize(directives, new IncludeDirectivesSerializer()) == directives
+        serialize(directives, IncludeDirectivesSerializer.INSTANCE) == directives
     }
 
     def "serializes nested expression"() {
@@ -45,10 +45,10 @@ class IncludeDirectivesSerializerTest extends SerializerSpec {
         def expression2 = new ComplexExpression(IncludeType.MACRO_FUNCTION, "X", [new SimpleExpression("Y", IncludeType.MACRO), new SimpleExpression("Z", IncludeType.MACRO)])
         def expression3 = new ComplexExpression(IncludeType.TOKEN_CONCATENATION, null, [new SimpleExpression("X", IncludeType.IDENTIFIER), new SimpleExpression("Y", IncludeType.IDENTIFIER)])
         def include = new IncludeWithMacroFunctionCallExpression("A", true, ImmutableList.of(expression1, expression2, expression3))
-        def directives = new DefaultIncludeDirectives(ImmutableList.copyOf([include]), ImmutableList.of(), ImmutableList.of())
+        def directives = DefaultIncludeDirectives.of(ImmutableList.copyOf([include]), ImmutableList.of(), ImmutableList.of())
 
         expect:
-        serialize(directives, new IncludeDirectivesSerializer()) == directives
+        serialize(directives, IncludeDirectivesSerializer.INSTANCE) == directives
     }
 
     def "replaces common expressions with constants"() {
@@ -58,10 +58,10 @@ class IncludeDirectivesSerializerTest extends SerializerSpec {
             new SimpleExpression(",", IncludeType.TOKEN),
             new SimpleExpression("(", IncludeType.TOKEN),
             new SimpleExpression(")", IncludeType.TOKEN)))
-        def directives = new DefaultIncludeDirectives(ImmutableList.copyOf([include]), ImmutableList.of(), ImmutableList.of())
+        def directives = DefaultIncludeDirectives.of(ImmutableList.copyOf([include]), ImmutableList.of(), ImmutableList.of())
 
         expect:
-        def expressions = serialize(directives, new IncludeDirectivesSerializer()).all.first().arguments
+        def expressions = serialize(directives, IncludeDirectivesSerializer.INSTANCE).all.first().arguments
         expressions[0].is(SimpleExpression.EMPTY_EXPRESSIONS)
         expressions[1].is(SimpleExpression.EMPTY_ARGS)
         expressions[2].is(SimpleExpression.COMMA)
@@ -76,12 +76,12 @@ class IncludeDirectivesSerializerTest extends SerializerSpec {
         def macro4 = new MacroWithComplexExpression("FOUR", IncludeType.MACRO_FUNCTION, "abc", [new SimpleExpression("abc.h", IncludeType.QUOTED)])
         def macro5 = new MacroWithComplexExpression("FIVE", IncludeType.MACRO_FUNCTION, "abc", [new ComplexExpression(IncludeType.MACRO_FUNCTION, "macro", [new SimpleExpression("abc.h", IncludeType.QUOTED)])])
         def macro6 = new MacroWithComplexExpression("SIX", IncludeType.TOKEN_CONCATENATION, null, [new SimpleExpression("X", IncludeType.IDENTIFIER), new SimpleExpression("Y", IncludeType.IDENTIFIER)])
-        def macro7 = new UnresolveableMacro("SEVEN")
-        def macro8 = new UnresolveableMacro("EIGHT")
-        def directives = new DefaultIncludeDirectives(ImmutableList.of(), ImmutableList.copyOf([macro1, macro2, macro3, macro4, macro5, macro6, macro7, macro8]), ImmutableList.of())
+        def macro7 = new UnresolvableMacro("SEVEN")
+        def macro8 = new UnresolvableMacro("EIGHT")
+        def directives = DefaultIncludeDirectives.of(ImmutableList.of(), ImmutableList.copyOf([macro1, macro2, macro3, macro4, macro5, macro6, macro7, macro8]), ImmutableList.of())
 
         expect:
-        serialize(directives, new IncludeDirectivesSerializer()) == directives
+        serialize(directives, IncludeDirectivesSerializer.INSTANCE) == directives
     }
 
     def "serializes macro function directives"() {
@@ -90,11 +90,11 @@ class IncludeDirectivesSerializerTest extends SerializerSpec {
         def macro3 = new ReturnParameterMacroFunction("THREE", 12, 4)
         def macro4 = new ArgsMappingMacroFunction("FOUR", 3, [0, 1, 2] as int[], IncludeType.MACRO_FUNCTION, "macro", [new SimpleExpression("abc.h", IncludeType.QUOTED)])
         def macro5 = new ArgsMappingMacroFunction("FOUR", 3, [2, 1] as int[], IncludeType.TOKEN_CONCATENATION, null, [new SimpleExpression("abc.h", IncludeType.QUOTED)])
-        def macro6 = new UnresolveableMacroFunction("SIX", 3)
-        def macro7 = new UnresolveableMacroFunction("SEVEN", 3)
-        def directives = new DefaultIncludeDirectives(ImmutableList.of(), ImmutableList.of(), ImmutableList.copyOf([macro1, macro2, macro3, macro4, macro5, macro6, macro7]))
+        def macro6 = new UnresolvableMacroFunction("SIX", 3)
+        def macro7 = new UnresolvableMacroFunction("SEVEN", 3)
+        def directives = DefaultIncludeDirectives.of(ImmutableList.of(), ImmutableList.of(), ImmutableList.copyOf([macro1, macro2, macro3, macro4, macro5, macro6, macro7]))
 
         expect:
-        serialize(directives, new IncludeDirectivesSerializer()) == directives
+        serialize(directives, IncludeDirectivesSerializer.INSTANCE) == directives
     }
 }

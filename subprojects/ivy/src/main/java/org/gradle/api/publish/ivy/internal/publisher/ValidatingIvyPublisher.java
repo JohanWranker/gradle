@@ -19,18 +19,19 @@ package org.gradle.api.publish.ivy.internal.publisher;
 import org.apache.commons.lang.ObjectUtils;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.artifacts.repositories.IvyArtifactRepository;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.DescriptorParseContext;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.DisconnectedDescriptorParseContext;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.DisconnectedIvyXmlModuleDescriptorParser;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.IvyModuleDescriptorConverter;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MetaDataParseException;
-import org.gradle.api.internal.artifacts.repositories.PublicationAwareRepository;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MetaDataParser;
 import org.gradle.api.internal.artifacts.repositories.metadata.IvyMutableModuleMetadataFactory;
 import org.gradle.api.publish.internal.PublicationFieldValidator;
 import org.gradle.api.publish.ivy.InvalidIvyPublicationException;
 import org.gradle.api.publish.ivy.IvyArtifact;
-import org.gradle.internal.component.external.model.MutableIvyModuleResolveMetadata;
+import org.gradle.internal.component.external.model.ivy.MutableIvyModuleResolveMetadata;
 import org.gradle.internal.resource.local.FileResourceRepository;
 
 import java.io.File;
@@ -47,7 +48,8 @@ public class ValidatingIvyPublisher implements IvyPublisher {
         moduleDescriptorParser = new DisconnectedIvyXmlModuleDescriptorParser(new IvyModuleDescriptorConverter(moduleIdentifierFactory), moduleIdentifierFactory, fileResourceRepository, metadataFactory);
     }
 
-    public void publish(IvyNormalizedPublication publication, PublicationAwareRepository repository) {
+    @Override
+    public void publish(IvyNormalizedPublication publication, IvyArtifactRepository repository) {
         validateMetadata(publication);
         validateArtifacts(publication);
         checkNoDuplicateArtifacts(publication);
@@ -68,7 +70,7 @@ public class ValidatingIvyPublisher implements IvyPublisher {
                 .validInFileName();
 
         MutableIvyModuleResolveMetadata metadata = parseIvyFile(publication);
-        ModuleVersionIdentifier moduleId = metadata.getId();
+        ModuleVersionIdentifier moduleId = metadata.getModuleVersionId();
         organisation.matches(moduleId.getGroup());
         moduleName.matches(moduleId.getName());
         revision.matches(moduleId.getVersion());
@@ -84,14 +86,15 @@ public class ValidatingIvyPublisher implements IvyPublisher {
 
     private MutableIvyModuleResolveMetadata parseIvyFile(IvyNormalizedPublication publication) {
         try {
-            return moduleDescriptorParser.parseMetaData(parserSettings, publication.getIvyDescriptorFile());
+            MetaDataParser.ParseResult<MutableIvyModuleResolveMetadata> parseResult = moduleDescriptorParser.parseMetaData(parserSettings, publication.getIvyDescriptorFile(), true);
+            return parseResult.getResult();
         } catch (MetaDataParseException pe) {
             throw new InvalidIvyPublicationException(publication.getName(), pe.getLocalizedMessage(), pe);
         }
     }
 
     private void validateArtifacts(IvyNormalizedPublication publication) {
-        for (final IvyArtifact artifact : publication.getArtifacts()) {
+        for (final IvyArtifact artifact : publication.getAllArtifacts()) {
             field(publication, "artifact name", artifact.getName())
                     .notEmpty().validInFileName();
             field(publication, "artifact type", artifact.getType())
@@ -108,7 +111,7 @@ public class ValidatingIvyPublisher implements IvyPublisher {
     private void checkNoDuplicateArtifacts(IvyNormalizedPublication publication) {
         Set<IvyArtifact> verified = new HashSet<IvyArtifact>();
 
-        for (final IvyArtifact artifact : publication.getArtifacts()) {
+        for (final IvyArtifact artifact : publication.getAllArtifacts()) {
             checkNotDuplicate(publication, verified, artifact.getName(), artifact.getExtension(), artifact.getType(), artifact.getClassifier());
             verified.add(artifact);
         }
@@ -138,9 +141,6 @@ public class ValidatingIvyPublisher implements IvyPublisher {
 
     private void checkCanPublish(String name, IvyArtifact artifact) {
         File artifactFile = artifact.getFile();
-        if (artifactFile == null || !artifactFile.exists()) {
-            throw new InvalidIvyPublicationException(name, String.format("artifact file does not exist: '%s'", artifactFile));
-        }
         if (artifactFile.isDirectory()) {
             throw new InvalidIvyPublicationException(name, String.format("artifact file is a directory: '%s'", artifactFile));
         }

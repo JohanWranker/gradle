@@ -19,48 +19,50 @@ package org.gradle.api.internal.file.copy;
 import org.gradle.api.file.DuplicateFileCopyingException;
 import org.gradle.api.file.DuplicatesStrategy;
 import org.gradle.api.file.RelativePath;
-import org.gradle.api.internal.file.CopyActionProcessingStreamAction;
-import org.gradle.api.logging.Logger;
-import org.gradle.api.logging.Logging;
 import org.gradle.api.tasks.WorkResult;
+import org.gradle.internal.deprecation.DeprecationLogger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashSet;
 import java.util.Set;
 
 public class DuplicateHandlingCopyActionDecorator implements CopyAction {
 
-    private final static Logger LOGGER = Logging.getLogger(DuplicateHandlingCopyActionDecorator.class);
+    private final static Logger LOGGER = LoggerFactory.getLogger(DuplicateHandlingCopyActionDecorator.class);
     private final CopyAction delegate;
 
     public DuplicateHandlingCopyActionDecorator(CopyAction delegate) {
         this.delegate = delegate;
     }
 
+    @Override
     public WorkResult execute(final CopyActionProcessingStream stream) {
-        final Set<RelativePath> visitedFiles = new HashSet<RelativePath>();
+        final Set<RelativePath> visitedFiles = new HashSet<>();
 
-        return delegate.execute(new CopyActionProcessingStream() {
-            public void process(final CopyActionProcessingStreamAction action) {
-                stream.process(new CopyActionProcessingStreamAction() {
-                    public void processFile(FileCopyDetailsInternal details) {
-                        if (!details.isDirectory()) {
-                            DuplicatesStrategy strategy = details.getDuplicatesStrategy();
+        return delegate.execute(action -> stream.process(details -> {
+            if (!details.isDirectory()) {
+                DuplicatesStrategy strategy = details.getDuplicatesStrategy();
 
-                            if (!visitedFiles.add(details.getRelativePath())) {
-                                if (strategy == DuplicatesStrategy.EXCLUDE) {
-                                    return;
-                                } else if (strategy == DuplicatesStrategy.FAIL) {
-                                    throw new DuplicateFileCopyingException(String.format("Encountered duplicate path \"%s\" during copy operation configured with DuplicatesStrategy.FAIL", details.getRelativePath()));
-                                } else if (strategy == DuplicatesStrategy.WARN) {
-                                    LOGGER.warn("Encountered duplicate path \"{}\" during copy operation configured with DuplicatesStrategy.WARN", details.getRelativePath());
-                                }
-                            }
-                        }
-
-                        action.processFile(details);
+                if (!visitedFiles.add(details.getRelativePath())) {
+                    if (details.isDefaultDuplicatesStrategy()) {
+                        DeprecationLogger.deprecateIndirectUsage("Copying or archiving duplicate paths with the default duplicates strategy")
+                            .withAdvice("Explicitly set the duplicates strategy to 'DuplicatesStrategy.INCLUDE' if you want to allow duplicate paths.")
+                            .withContext("Duplicate path: \"" + details.getRelativePath() + "\".")
+                            .withUpgradeGuideSection(5, "implicit_duplicate_strategy_for_copy_or_archive_tasks_has_been_deprecated")
+                            .nagUser();
                     }
-                });
+                    if (strategy == DuplicatesStrategy.EXCLUDE) {
+                        return;
+                    } else if (strategy == DuplicatesStrategy.FAIL) {
+                        throw new DuplicateFileCopyingException(String.format("Encountered duplicate path \"%s\" during copy operation configured with DuplicatesStrategy.FAIL", details.getRelativePath()));
+                    } else if (strategy == DuplicatesStrategy.WARN) {
+                        LOGGER.warn("Encountered duplicate path \"{}\" during copy operation configured with DuplicatesStrategy.WARN", details.getRelativePath());
+                    }
+                }
             }
-        });
+
+            action.processFile(details);
+        }));
     }
 }

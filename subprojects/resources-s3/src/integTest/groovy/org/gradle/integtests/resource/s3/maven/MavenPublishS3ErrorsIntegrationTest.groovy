@@ -17,12 +17,13 @@
 
 package org.gradle.integtests.resource.s3.maven
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.publish.maven.AbstractMavenPublishIntegTest
 import org.gradle.integtests.resource.s3.fixtures.MavenS3Repository
 import org.gradle.integtests.resource.s3.fixtures.S3Server
 import org.junit.Rule
 
-class MavenPublishS3ErrorsIntegrationTest extends AbstractIntegrationSpec {
+class MavenPublishS3ErrorsIntegrationTest extends AbstractMavenPublishIntegTest {
 
     String mavenVersion = "1.45"
     String projectName = "publishS3Test"
@@ -37,6 +38,7 @@ class MavenPublishS3ErrorsIntegrationTest extends AbstractIntegrationSpec {
         executer.withArgument("-Dorg.gradle.s3.endpoint=${server.uri}")
     }
 
+    @ToBeFixedForInstantExecution
     def "should fail with an authentication error"() {
         setup:
         settingsFile << "rootProject.name = '${projectName}'"
@@ -68,8 +70,7 @@ class MavenPublishS3ErrorsIntegrationTest extends AbstractIntegrationSpec {
 
         when:
         def module = mavenS3Repo.module("org.gradle", "publishS3Test", "1.45")
-        module.artifact.expectPutAuthencicationError()
-        module.pom.expectPutAuthencicationError()
+        module.artifact.expectPutAuthenticationError()
 
         then:
         fails 'publish'

@@ -20,11 +20,11 @@ import org.gradle.api.artifacts.ModuleVersionIdentifier
 import org.gradle.api.artifacts.component.ComponentIdentifier
 import org.gradle.api.artifacts.component.ComponentSelector
 import org.gradle.api.artifacts.result.ComponentSelectionReason
-import org.gradle.api.attributes.AttributeContainer
+import org.gradle.api.artifacts.result.ResolvedVariantResult
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint
-import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.ComponentResult
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyResult
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.ResolvedGraphComponent
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.ResolvedGraphDependency
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
 import org.gradle.internal.component.external.model.DefaultModuleComponentSelector
 import org.gradle.internal.resolve.ModuleVersionResolveException
@@ -123,8 +123,8 @@ class DefaultResolutionResultBuilderSpec extends Specification {
     def "includes selection reason"() {
         given:
         node("a")
-        node("b", VersionSelectionReasons.of([VersionSelectionReasons.FORCED]))
-        node("c", VersionSelectionReasons.of([VersionSelectionReasons.CONFLICT_RESOLUTION]))
+        node("b", ComponentSelectionReasons.of(ComponentSelectionReasons.FORCED))
+        node("c", ComponentSelectionReasons.of(ComponentSelectionReasons.CONFLICT_RESOLUTION))
         node("d")
         resolvedConf("a", [dep("b"), dep("c"), dep("d", new RuntimeException("Boo!"))])
         resolvedConf("b", [])
@@ -238,23 +238,23 @@ class DefaultResolutionResultBuilderSpec extends Specification {
 """
     }
 
-    private void node(String module, ComponentSelectionReason reason = VersionSelectionReasons.requested()) {
+    private void node(String module, ComponentSelectionReason reason = ComponentSelectionReasons.requested()) {
         DummyModuleVersionSelection moduleVersion = comp(module, reason)
         builder.visitComponent(moduleVersion)
     }
 
-    private DummyModuleVersionSelection comp(String module, ComponentSelectionReason reason = VersionSelectionReasons.requested()) {
-        def moduleVersion = new DummyModuleVersionSelection(resultId: id(module), moduleVersion: newId("x", module, "1"), selectionReason: reason, componentId: new DefaultModuleComponentIdentifier("x", module, "1"))
+    private DummyModuleVersionSelection comp(String module, ComponentSelectionReason reason = ComponentSelectionReasons.requested()) {
+        def moduleVersion = new DummyModuleVersionSelection(resultId: id(module), moduleVersion: newId(DefaultModuleIdentifier.newId("x", module), "1"), selectionReason: reason, componentId: new DefaultModuleComponentIdentifier(DefaultModuleIdentifier.newId("x", module), "1"))
         moduleVersion
     }
 
-    private void resolvedConf(String module, List<DependencyResult> deps) {
+    private void resolvedConf(String module, List<ResolvedGraphDependency> deps) {
         builder.visitOutgoingEdges(id(module), deps)
     }
 
-    private DependencyResult dep(String requested, Exception failure = null, String selected = requested) {
-        def selector = new DefaultModuleComponentSelector("x", requested, DefaultImmutableVersionConstraint.of("1"))
-        def moduleVersionSelector = newSelector("x", requested, new DefaultMutableVersionConstraint("1"))
+    private ResolvedGraphDependency dep(String requested, Exception failure = null, String selected = requested) {
+        def selector = DefaultModuleComponentSelector.newSelector(DefaultModuleIdentifier.newId("x", requested), DefaultImmutableVersionConstraint.of("1"))
+        def moduleVersionSelector = newSelector(DefaultModuleIdentifier.newId("x", requested), "1")
         failure = failure == null ? null : new ModuleVersionResolveException(moduleVersionSelector, failure)
         new DummyInternalDependencyResult(requested: selector, selected: id(selected), failure: failure)
     }
@@ -263,19 +263,22 @@ class DefaultResolutionResultBuilderSpec extends Specification {
         return module.hashCode()
     }
 
-    class DummyModuleVersionSelection implements ComponentResult {
+    class DummyModuleVersionSelection implements ResolvedGraphComponent {
         Long resultId
         ModuleVersionIdentifier moduleVersion
         ComponentSelectionReason selectionReason
         ComponentIdentifier componentId
-        String variantName
-        AttributeContainer variantAttributes
+        String repositoryName
+        List<ResolvedVariantResult> resolvedVariants = []
     }
 
-    class DummyInternalDependencyResult implements DependencyResult {
+    class DummyInternalDependencyResult implements ResolvedGraphDependency {
         ComponentSelector requested
         Long selected
+        ResolvedVariantResult fromVariant
+        ResolvedVariantResult selectedVariant
         ModuleVersionResolveException failure
         ComponentSelectionReason reason
+        boolean constraint
     }
 }

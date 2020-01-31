@@ -19,14 +19,15 @@ import org.gradle.api.Action
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.reflect.TypeOf
-import org.gradle.internal.reflect.DirectInstantiator
 import org.gradle.internal.reflect.Instantiator
+import org.gradle.util.TestUtil
 import spock.lang.Issue
 import spock.lang.Specification
 
 class AbstractNamedDomainObjectContainerTest extends Specification {
-    Instantiator instantiator = new ClassGeneratorBackedInstantiator(new AsmBackedClassGenerator(), DirectInstantiator.INSTANCE)
-    AbstractNamedDomainObjectContainer container = instantiator.newInstance(TestContainer.class, instantiator)
+    Instantiator instantiator = TestUtil.instantiatorFactory().decorateLenient()
+    CollectionCallbackActionDecorator collectionCallbackActionDecorator = CollectionCallbackActionDecorator.NOOP
+    AbstractNamedDomainObjectContainer<TestObject> container = instantiator.newInstance(TestContainer.class, instantiator)
 
     def "is dynamic object aware"() {
         expect:
@@ -99,6 +100,30 @@ class AbstractNamedDomainObjectContainerTest extends Specification {
 
         then:
         container.someObj.prop == 'value'
+    }
+
+    def "can register objects"() {
+        when:
+        def someObj = container.register("someObj")
+        def otherObj = container.register("otherObj") {
+            prop = 'value'
+        }
+        then:
+        someObj.present
+        otherObj.get().prop == 'value'
+    }
+
+    def "can find registered objects"() {
+        when:
+        container.register("someObj")
+        container.register("otherObj") {
+            prop = 'value'
+        }
+        def someObj = container.named("someObj")
+        def otherObj = container.named("otherObj")
+        then:
+        someObj.present
+        otherObj.get().prop == 'value'
     }
 
     def "propagates nested MissingMethodException"() {
@@ -245,6 +270,110 @@ class AbstractNamedDomainObjectContainerTest extends Specification {
 
         then:
         container.names.toList() == ["thing"]
+    }
+
+    def "can remove unrealized registered element using register provider"() {
+        when:
+        def provider = container.register('obj')
+
+        then:
+        provider.present
+
+        when:
+        container.remove(provider)
+
+        then:
+        container.names.toList() == []
+
+        and:
+        !provider.present
+        provider.orNull == null
+
+        when:
+        provider.get()
+
+        then:
+        def ex = thrown(IllegalStateException)
+        ex.message == "The domain object 'obj' (TestObject) for this provider is no longer present in its container."
+    }
+
+    def "can remove unrealized registered element using named provider"() {
+        when:
+        def provider = container.register('obj')
+
+        then:
+        provider.present
+
+        when:
+        container.remove(container.named('obj'))
+
+        then:
+        container.names.toList() == []
+
+        and:
+        !provider.present
+        provider.orNull == null
+
+        when:
+        provider.get()
+
+        then:
+        def ex = thrown(IllegalStateException)
+        ex.message == "The domain object 'obj' (TestObject) for this provider is no longer present in its container."
+    }
+
+    def "can remove realized registered element using register provider"() {
+        when:
+        def provider = container.register('obj')
+        def obj = provider.get()
+
+        then:
+        provider.present
+        obj == container.getByName('obj')
+
+        when:
+        container.remove(provider)
+
+        then:
+        container.names.toList() == []
+
+        and:
+        !provider.present
+        provider.orNull == null
+
+        when:
+        provider.get()
+
+        then:
+        def ex = thrown(IllegalStateException)
+        ex.message == "The domain object 'obj' (TestObject) for this provider is no longer present in its container."
+    }
+
+    def "can remove realized registered element using named provider"() {
+        when:
+        def provider = container.register('obj')
+        def obj = provider.get()
+
+        then:
+        provider.present
+        obj == container.getByName('obj')
+
+        when:
+        container.remove(container.named('obj'))
+
+        then:
+        container.names.toList() == []
+
+        and:
+        !provider.present
+        provider.orNull == null
+
+        when:
+        provider.get()
+
+        then:
+        def ex = thrown(IllegalStateException)
+        ex.message == "The domain object 'obj' (TestObject) for this provider is no longer present in its container."
     }
 }
 

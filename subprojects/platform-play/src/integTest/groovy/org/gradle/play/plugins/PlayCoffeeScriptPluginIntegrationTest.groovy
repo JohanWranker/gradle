@@ -25,6 +25,7 @@ class PlayCoffeeScriptPluginIntegrationTest extends AbstractIntegrationSpec {
     public final TestResources resources = new TestResources(temporaryFolder)
 
     def setup() {
+        executer.expectDeprecationWarnings(12)
         buildFile << """
             plugins {
                 id 'play'

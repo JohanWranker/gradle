@@ -16,15 +16,16 @@
 
 package org.gradle.language.swift.internal;
 
-import org.apache.commons.lang.StringUtils;
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
-import org.gradle.api.internal.file.FileOperations;
-import org.gradle.api.internal.provider.LockableSetProperty;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
+import org.gradle.api.provider.SetProperty;
+import org.gradle.internal.Describables;
+import org.gradle.internal.DisplayName;
 import org.gradle.language.LibraryDependencies;
+import org.gradle.language.cpp.internal.NativeVariantIdentity;
 import org.gradle.language.internal.DefaultLibraryDependencies;
 import org.gradle.language.swift.SwiftBinary;
 import org.gradle.language.swift.SwiftLibrary;
@@ -36,25 +37,31 @@ import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 
 import javax.inject.Inject;
+import java.util.Collections;
 
-public class DefaultSwiftLibrary extends DefaultSwiftComponent implements SwiftLibrary {
+public class DefaultSwiftLibrary extends DefaultSwiftComponent<SwiftBinary> implements SwiftLibrary {
     private final ObjectFactory objectFactory;
-    private final LockableSetProperty<Linkage> linkage;
+    private final SetProperty<Linkage> linkage;
     private final ConfigurationContainer configurations;
     private final Property<SwiftBinary> developmentBinary;
     private final DefaultLibraryDependencies dependencies;
 
     @Inject
-    public DefaultSwiftLibrary(String name, ObjectFactory objectFactory, FileOperations fileOperations, ConfigurationContainer configurations) {
-        super(name, fileOperations, objectFactory);
+    public DefaultSwiftLibrary(String name, ObjectFactory objectFactory, ConfigurationContainer configurations) {
+        super(name, objectFactory);
         this.objectFactory = objectFactory;
         this.configurations = configurations;
         this.developmentBinary = objectFactory.property(SwiftBinary.class);
 
-        linkage = new LockableSetProperty<Linkage>(objectFactory.setProperty(Linkage.class));
-        linkage.add(Linkage.SHARED);
+        linkage = objectFactory.setProperty(Linkage.class);
+        linkage.set(Collections.singleton(Linkage.SHARED));
 
         dependencies = objectFactory.newInstance(DefaultLibraryDependencies.class, getNames().withSuffix("implementation"), getNames().withSuffix("api"));
+    }
+
+    @Override
+    public DisplayName getDisplayName() {
+        return Describables.withTypeAndName("Swift library", getName());
     }
 
     @Override
@@ -71,14 +78,14 @@ public class DefaultSwiftLibrary extends DefaultSwiftComponent implements SwiftL
         action.execute(dependencies);
     }
 
-    public SwiftStaticLibrary addStaticLibrary(String nameSuffix, boolean debuggable, boolean optimized, boolean testable, SwiftPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
-        SwiftStaticLibrary result = objectFactory.newInstance(DefaultSwiftStaticLibrary.class, getName() + StringUtils.capitalize(nameSuffix), getModule(), debuggable, optimized, testable, getSwiftSource(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider);
+    public SwiftStaticLibrary addStaticLibrary(NativeVariantIdentity identity, boolean testable, SwiftPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
+        SwiftStaticLibrary result = objectFactory.newInstance(DefaultSwiftStaticLibrary.class, getNames().append(identity.getName()), getModule(), testable, getSwiftSource(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider, identity);
         getBinaries().add(result);
         return result;
     }
 
-    public SwiftSharedLibrary addSharedLibrary(String nameSuffix, boolean debuggable, boolean optimized, boolean testable, SwiftPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
-        SwiftSharedLibrary result = objectFactory.newInstance(DefaultSwiftSharedLibrary.class, getName() + StringUtils.capitalize(nameSuffix), getModule(), debuggable, optimized, testable, getSwiftSource(), configurations, getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider);
+    public SwiftSharedLibrary addSharedLibrary(NativeVariantIdentity identity, boolean testable, SwiftPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
+        SwiftSharedLibrary result = objectFactory.newInstance(DefaultSwiftSharedLibrary.class, getNames().append(identity.getName()), getModule(), testable, getSwiftSource(), configurations, getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider, identity);
         getBinaries().add(result);
         return result;
     }
@@ -94,7 +101,7 @@ public class DefaultSwiftLibrary extends DefaultSwiftComponent implements SwiftL
     }
 
     @Override
-    public LockableSetProperty<Linkage> getLinkage() {
+    public SetProperty<Linkage> getLinkage() {
         return linkage;
     }
 }

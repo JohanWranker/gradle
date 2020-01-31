@@ -16,21 +16,25 @@
 
 package org.gradle.swiftpm
 
+import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
+import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.SwiftAppWithLibraries
 import org.gradle.nativeplatform.fixtures.app.SwiftLib
 
 class SwiftPackageManagerSwiftBuildExportIntegrationTest extends AbstractSwiftPackageManagerExportIntegrationTest {
 
-    def "produces manifest for single project Swift library"() {
+    def "produces manifest for single project Swift library that defines only the production targets"() {
         given:
         buildFile << """
             plugins { 
                 id 'swiftpm-export' 
                 id 'swift-library'
+                id 'xctest'
             }
 """
         def lib = new SwiftLib()
         lib.writeToProject(testDirectory)
+        file("src/test/swift/test.swift") << "// test"
 
         when:
         run("generateSwiftPmManifest")
@@ -185,6 +189,8 @@ let package = Package(
         swiftPmBuildSucceeds()
     }
 
+    // See https://github.com/gradle/gradle-native/issues/1007
+    @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC_4_OR_OLDER)
     def "produces manifest for Swift component with declared Swift language version"() {
         given:
         buildFile << """

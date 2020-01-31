@@ -18,12 +18,12 @@ package org.gradle.cache.internal;
 import org.gradle.api.Action;
 import org.gradle.cache.CacheBuilder;
 import org.gradle.cache.CacheRepository;
-import org.gradle.cache.CacheValidator;
 import org.gradle.cache.CleanupAction;
 import org.gradle.cache.FileLockManager;
 import org.gradle.cache.LockOptions;
 import org.gradle.cache.PersistentCache;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Collections;
 import java.util.Map;
@@ -39,15 +39,18 @@ public class DefaultCacheRepository implements CacheRepository {
         this.factory = factory;
     }
 
+    @Override
     public CacheBuilder cache(String key) {
         return new PersistentCacheBuilder(null, key);
     }
 
+    @Override
     public CacheBuilder cache(File baseDir) {
         return new PersistentCacheBuilder(baseDir);
     }
 
-    public CacheBuilder cache(Object scope, String key) {
+    @Override
+    public CacheBuilder cache(@Nullable Object scope, String key) {
         return new PersistentCacheBuilder(scope, key);
     }
 
@@ -56,7 +59,6 @@ public class DefaultCacheRepository implements CacheRepository {
         final String key;
         final File baseDir;
         Map<String, ?> properties = Collections.emptyMap();
-        CacheValidator validator;
         Action<? super PersistentCache> initializer;
         CleanupAction cleanup;
         LockOptions lockOptions = mode(FileLockManager.LockMode.Shared);
@@ -64,7 +66,7 @@ public class DefaultCacheRepository implements CacheRepository {
         VersionStrategy versionStrategy = VersionStrategy.CachePerVersion;
         LockTarget lockTarget = LockTarget.DefaultTarget;
 
-        PersistentCacheBuilder(Object scope, String key) {
+        PersistentCacheBuilder(@Nullable Object scope, String key) {
             this.scope = scope;
             this.key = key;
             this.baseDir = null;
@@ -76,6 +78,7 @@ public class DefaultCacheRepository implements CacheRepository {
             this.baseDir = baseDir;
         }
 
+        @Override
         public CacheBuilder withProperties(Map<String, ?> properties) {
             this.properties = properties;
             return this;
@@ -88,21 +91,19 @@ public class DefaultCacheRepository implements CacheRepository {
             return this;
         }
 
-        public CacheBuilder withValidator(CacheValidator validator) {
-            this.validator = validator;
-            return this;
-        }
-
+        @Override
         public CacheBuilder withDisplayName(String displayName) {
             this.displayName = displayName;
             return this;
         }
 
+        @Override
         public CacheBuilder withLockOptions(LockOptions lockOptions) {
             this.lockOptions = lockOptions;
             return this;
         }
 
+        @Override
         public CacheBuilder withInitializer(Action<? super PersistentCache> initializer) {
             this.initializer = initializer;
             return this;
@@ -114,6 +115,7 @@ public class DefaultCacheRepository implements CacheRepository {
             return this;
         }
 
+        @Override
         public PersistentCache open() {
             File cacheBaseDir;
             if (baseDir != null) {
@@ -121,7 +123,7 @@ public class DefaultCacheRepository implements CacheRepository {
             } else {
                 cacheBaseDir = cacheScopeMapping.getBaseDirectory(scope, key, versionStrategy);
             }
-            return factory.open(cacheBaseDir, displayName, validator, properties, lockTarget, lockOptions, initializer, cleanup);
+            return factory.open(cacheBaseDir, displayName, properties, lockTarget, lockOptions, initializer, cleanup);
         }
     }
 }

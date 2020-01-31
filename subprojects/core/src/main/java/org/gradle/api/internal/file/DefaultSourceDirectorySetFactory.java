@@ -16,24 +16,32 @@
 
 package org.gradle.api.internal.file;
 
-import org.gradle.api.internal.file.collections.DirectoryFileTreeFactory;
+import org.gradle.api.model.ObjectFactory;
+import org.gradle.internal.deprecation.DeprecationLogger;
 
 public class DefaultSourceDirectorySetFactory implements SourceDirectorySetFactory {
-    private final FileResolver fileResolver;
-    private final DirectoryFileTreeFactory directoryFileTreeFactory;
+    private final ObjectFactory objectFactory;
 
-    public DefaultSourceDirectorySetFactory(FileResolver fileResolver, DirectoryFileTreeFactory directoryFileTreeFactory) {
-        this.fileResolver = fileResolver;
-        this.directoryFileTreeFactory = directoryFileTreeFactory;
+    public DefaultSourceDirectorySetFactory(ObjectFactory objectFactory) {
+        this.objectFactory = objectFactory;
     }
 
     @Override
     public DefaultSourceDirectorySet create(String name) {
-        return new DefaultSourceDirectorySet(name, fileResolver, directoryFileTreeFactory);
+        deprecate();
+        return (DefaultSourceDirectorySet) objectFactory.sourceDirectorySet(name, name);
     }
 
     @Override
     public DefaultSourceDirectorySet create(String name, String displayName) {
-        return new DefaultSourceDirectorySet(name, displayName, fileResolver, directoryFileTreeFactory);
+        deprecate();
+        return (DefaultSourceDirectorySet) objectFactory.sourceDirectorySet(name, displayName);
+    }
+
+    private static void deprecate() {
+        DeprecationLogger.deprecateInternalApi("SourceDirectorySetFactory")
+            .replaceWith("the ObjectFactory service to create instances of SourceDirectorySet")
+            .withUserManual("lazy_configuration", "property_files_api_reference")
+            .nagUser();
     }
 }

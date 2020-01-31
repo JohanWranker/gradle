@@ -28,7 +28,6 @@ import org.gradle.tooling.internal.protocol.InternalBuildActionVersion2;
 import org.gradle.tooling.internal.protocol.InternalBuildController;
 import org.gradle.tooling.internal.protocol.InternalBuildControllerVersion2;
 import org.gradle.tooling.internal.protocol.ModelIdentifier;
-import org.gradle.tooling.model.gradle.BuildInvocations;
 
 import java.io.File;
 
@@ -37,6 +36,7 @@ import java.io.File;
  * from an instance of {@link org.gradle.tooling.BuildAction}.
  * Used by consumer connections 1.8+.
  */
+@SuppressWarnings("deprecation")
 public class InternalBuildActionAdapter<T> implements InternalBuildAction<T>, InternalBuildActionVersion2<T> {
     private final BuildAction<T> action;
     private final File rootDir;
@@ -51,6 +51,7 @@ public class InternalBuildActionAdapter<T> implements InternalBuildAction<T>, In
     /**
      * This is used by providers 1.8-rc-1 to 4.3
      */
+    @Override
     public T execute(final InternalBuildController buildController) {
         ProtocolToModelAdapter protocolToModelAdapter = new ProtocolToModelAdapter(new ConsumerTargetTypeProvider());
         BuildController buildControllerAdapter = new BuildControllerAdapter(protocolToModelAdapter, new InternalBuildControllerAdapter() {
@@ -60,15 +61,13 @@ public class InternalBuildActionAdapter<T> implements InternalBuildAction<T>, In
             }
         }, new ModelMapping(), rootDir);
         buildControllerAdapter  = new BuildControllerWithoutParameterSupport(versionDetails, buildControllerAdapter);
-        if (!versionDetails.maySupportModel(BuildInvocations.class)) {
-            buildControllerAdapter= new BuildInvocationsAdapterController(protocolToModelAdapter, buildControllerAdapter);
-        }
         return action.execute(buildControllerAdapter);
     }
 
     /**
      * This is used by providers 4.4 and later
      */
+    @Override
     public T execute(final InternalBuildControllerVersion2 buildController) {
         ProtocolToModelAdapter protocolToModelAdapter = new ProtocolToModelAdapter(new ConsumerTargetTypeProvider());
         BuildController buildControllerAdapter = new BuildControllerAdapter(protocolToModelAdapter, new InternalBuildControllerAdapter() {

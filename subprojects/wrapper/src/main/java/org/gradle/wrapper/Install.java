@@ -49,7 +49,13 @@ public class Install {
             public File call() throws Exception {
                 final File markerFile = new File(localZipFile.getParentFile(), localZipFile.getName() + ".ok");
                 if (distDir.isDirectory() && markerFile.isFile()) {
-                    return getAndVerifyDistributionRoot(distDir, distDir.getAbsolutePath());
+                    InstallCheck installCheck = verifyDistributionRoot(distDir, distDir.getAbsolutePath());
+                    if (installCheck.isVerified()) {
+                        return installCheck.gradleHome;
+                    }
+                    // Distribution is invalid. Try to reinstall.
+                    System.err.println(installCheck.failureMessage);
+                    markerFile.delete();
                 }
 
                 boolean needsDownload = !localZipFile.isFile();
@@ -71,20 +77,28 @@ public class Install {
 
                 verifyDownloadChecksum(configuration.getDistribution().toString(), localZipFile, distributionSha256Sum);
 
-                logger.log("Unzipping " + localZipFile.getAbsolutePath() + " to " + distDir.getAbsolutePath());
-                unzip(localZipFile, distDir);
+                try {
+                    unzip(localZipFile, distDir);
+                } catch (IOException e) {
+                    logger.log("Could not unzip " + localZipFile.getAbsolutePath() + " to " + distDir.getAbsolutePath() + ".");
+                    logger.log("Reason: " + e.getMessage());
+                    throw e;
+                }
 
-                File root = getAndVerifyDistributionRoot(distDir, safeDistributionUrl.toString());
-                setExecutablePermissions(root);
-                markerFile.createNewFile();
-
-                return root;
+                InstallCheck installCheck = verifyDistributionRoot(distDir, safeDistributionUrl.toString());
+                if (installCheck.isVerified()) {
+                    setExecutablePermissions(installCheck.gradleHome);
+                    markerFile.createNewFile();
+                    return installCheck.gradleHome;
+                }
+                // Distribution couldn't be installed.
+                throw new RuntimeException(installCheck.failureMessage);
             }
         });
     }
 
     private String calculateSha256Sum(File file)
-            throws Exception {
+        throws Exception {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         InputStream fis = new FileInputStream(file);
         int n = 0;
@@ -98,8 +112,8 @@ public class Install {
         byte byteData[] = md.digest();
 
         StringBuffer hexString = new StringBuffer();
-        for (int i=0; i < byteData.length; i++) {
-            String hex=Integer.toHexString(0xff & byteData[i]);
+        for (int i = 0; i < byteData.length; i++) {
+            String hex = Integer.toHexString(0xff & byteData[i]);
             if (hex.length() == 1) {
                 hexString.append('0');
             }
@@ -109,16 +123,21 @@ public class Install {
         return hexString.toString();
     }
 
-    private File getAndVerifyDistributionRoot(File distDir, String distributionDescription)
-            throws Exception {
+    private InstallCheck verifyDistributionRoot(File distDir, String distributionDescription)
+        throws Exception {
         List<File> dirs = listDirs(distDir);
         if (dirs.isEmpty()) {
-            throw new RuntimeException(String.format("Gradle distribution '%s' does not contain any directories. Expected to find exactly 1 directory.", distributionDescription));
+            return InstallCheck.failure(String.format("Gradle distribution '%s' does not contain any directories. Expected to find exactly 1 directory.", distributionDescription));
         }
         if (dirs.size() != 1) {
-            throw new RuntimeException(String.format("Gradle distribution '%s' contains too many directories. Expected to find exactly 1 directory.", distributionDescription));
+            return InstallCheck.failure(String.format("Gradle distribution '%s' contains too many directories. Expected to find exactly 1 directory.", distributionDescription));
         }
-        return dirs.get(0);
+
+        File gradleHome = dirs.get(0);
+        if (BootstrapMainStarter.findLauncherJar(gradleHome) == null) {
+            return InstallCheck.failure(String.format("Gradle distribution '%s' does not appear to contain a Gradle distribution.", distributionDescription));
+        }
+        return InstallCheck.success(gradleHome);
     }
 
     private void verifyDownloadChecksum(String sourceUrl, File localZipFile, String expectedSum) throws Exception {
@@ -147,9 +166,12 @@ public class Install {
     private List<File> listDirs(File distDir) {
         List<File> dirs = new ArrayList<File>();
         if (distDir.exists()) {
-            for (File file : distDir.listFiles()) {
-                if (file.isDirectory()) {
-                    dirs.add(file);
+            File[] files = distDir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        dirs.add(file);
+                    }
                 }
             }
         }
@@ -165,9 +187,7 @@ public class Install {
         try {
             ProcessBuilder pb = new ProcessBuilder("chmod", "755", gradleCommand.getCanonicalPath());
             Process p = pb.start();
-            if (p.waitFor() == 0) {
-                logger.log("Set executable permissions for: " + gradleCommand.getAbsolutePath());
-            } else {
+            if (p.waitFor() != 0) {
                 BufferedReader is = new BufferedReader(new InputStreamReader(p.getInputStream()));
                 Formatter stdout = new Formatter();
                 String line;
@@ -179,11 +199,11 @@ public class Install {
         } catch (IOException e) {
             errorMessage = e.getMessage();
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             errorMessage = e.getMessage();
         }
         if (errorMessage != null) {
             logger.log("Could not set executable permissions for: " + gradleCommand.getAbsolutePath());
-            logger.log("Please do this manually if you want to use the Gradle UI.");
         }
     }
 
@@ -213,7 +233,6 @@ public class Install {
     private void unzip(File zip, File dest) throws IOException {
         Enumeration entries;
         ZipFile zipFile = new ZipFile(zip);
-
         try {
             entries = zipFile.entries();
 
@@ -249,5 +268,26 @@ public class Install {
         out.close();
     }
 
+    private static class InstallCheck {
+        private final File gradleHome;
+        private final String failureMessage;
+
+        private static InstallCheck failure(String message) {
+            return new InstallCheck(null, message);
+        }
+
+        private static InstallCheck success(File gradleHome) {
+            return new InstallCheck(gradleHome, null);
+        }
+
+        private InstallCheck(File gradleHome, String failureMessage) {
+            this.gradleHome = gradleHome;
+            this.failureMessage = failureMessage;
+        }
+
+        private boolean isVerified() {
+            return gradleHome != null;
+        }
+    }
 
 }

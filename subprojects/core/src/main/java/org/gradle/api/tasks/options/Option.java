@@ -15,9 +15,11 @@
  */
 package org.gradle.api.tasks.options;
 
-import org.gradle.api.Incubating;
-
-import java.lang.annotation.*;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
 /**
  * <p>Marks a property of a {@link org.gradle.api.Task} as being configurable from the command-line.</p>
@@ -29,10 +31,13 @@ import java.lang.annotation.*;
  * <ul>
  * <li>{@code boolean}</li>
  * <li>{@code Boolean}</li>
- * <li>{@code Enum}</li>
- * <li>{@code List&lt;Enum&gt;}</li>
- * <li>{@code List&lt;String&gt;}</li>
+ * <li>{@code Property<Boolean>}</li>
+ * <li>an {@code enum} type</li>
+ * <li>{@code Property<T>} of an enum type</li>
  * <li>{@code String}</li>
+ * <li>{@code Property<String>}</li>
+ * <li>{@code List<T>} of an {@code enum} type</li>
+ * <li>{@code List<String>}</li>
  * </ul>
  *
  * @since 4.6
@@ -40,7 +45,6 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.METHOD, ElementType.FIELD})
 @Inherited
-@Incubating
 public @interface Option {
 
     /**

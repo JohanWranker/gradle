@@ -97,7 +97,7 @@ public class TaskNameResolver {
         try {
             project.getTasks().discoverTasks();
         } catch (Throwable e) {
-            throw new ProjectConfigurationException(String.format("A problem occurred configuring %s.", project), e);
+            throw new ProjectConfigurationException(String.format("A problem occurred configuring %s.", project.getDisplayName()), e);
         }
     }
 
@@ -113,7 +113,7 @@ public class TaskNameResolver {
         try {
             return (TaskInternal) project.getTasks().getByName(taskName);
         } catch (Throwable e) {
-            throw new ProjectConfigurationException(String.format("A problem occurred configuring %s.", project), e);
+            throw new ProjectConfigurationException(String.format("A problem occurred configuring %s.", project.getDisplayName()), e);
         }
     }
 
@@ -132,6 +132,7 @@ public class TaskNameResolver {
             this.tasks = tasks;
         }
 
+        @Override
         public void collectTasks(Collection<? super Task> tasks) {
             tasks.addAll(this.tasks);
         }
@@ -146,6 +147,7 @@ public class TaskNameResolver {
             this.taskName = taskName;
         }
 
+        @Override
         public void collectTasks(Collection<? super Task> tasks) {
             tasks.add(taskContainer.getByName(taskName));
         }
@@ -162,6 +164,7 @@ public class TaskNameResolver {
             this.discovered = discovered;
         }
 
+        @Override
         public void collectTasks(Collection<? super Task> tasks) {
             collect(project, tasks);
         }

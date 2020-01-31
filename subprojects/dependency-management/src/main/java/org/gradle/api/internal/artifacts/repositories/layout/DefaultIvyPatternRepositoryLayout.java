@@ -15,6 +15,7 @@
  */
 package org.gradle.api.internal.artifacts.repositories.layout;
 
+import com.google.common.collect.ImmutableSet;
 import org.gradle.api.artifacts.repositories.IvyPatternRepositoryLayout;
 import org.gradle.api.internal.artifacts.repositories.resolver.PatternBasedResolver;
 
@@ -35,6 +36,7 @@ public class DefaultIvyPatternRepositoryLayout extends AbstractRepositoryLayout 
     /**
      * {@inheritDoc}
      */
+    @Override
     public void artifact(String pattern) {
         artifactPatterns.add(pattern);
     }
@@ -42,6 +44,7 @@ public class DefaultIvyPatternRepositoryLayout extends AbstractRepositoryLayout 
     /**
      * {@inheritDoc}
      */
+    @Override
     public void ivy(String pattern) {
         ivyPatterns.add(pattern);
     }
@@ -49,6 +52,7 @@ public class DefaultIvyPatternRepositoryLayout extends AbstractRepositoryLayout 
     /**
      * {@inheritDoc}
      */
+    @Override
     public boolean getM2Compatible() {
         return m2compatible;
     }
@@ -56,6 +60,7 @@ public class DefaultIvyPatternRepositoryLayout extends AbstractRepositoryLayout 
     /**
      * {@inheritDoc}
      */
+    @Override
     public void setM2compatible(boolean m2compatible) {
         this.m2compatible = m2compatible;
     }
@@ -76,5 +81,15 @@ public class DefaultIvyPatternRepositoryLayout extends AbstractRepositoryLayout 
         for (String ivyPattern : usedIvyPatterns) {
             resolver.addDescriptorLocation(baseUri, ivyPattern);
         }
+    }
+
+    @Override
+    public Set<String> getIvyPatterns() {
+        return ImmutableSet.copyOf(ivyPatterns);
+    }
+
+    @Override
+    public Set<String> getArtifactPatterns() {
+        return ImmutableSet.copyOf(artifactPatterns);
     }
 }

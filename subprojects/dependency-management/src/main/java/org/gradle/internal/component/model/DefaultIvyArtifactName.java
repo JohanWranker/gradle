@@ -16,7 +16,6 @@
 
 package org.gradle.internal.component.model;
 
-import com.google.common.base.Objects;
 import com.google.common.io.Files;
 import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.util.GUtil;
@@ -31,6 +30,7 @@ public class DefaultIvyArtifactName implements IvyArtifactName {
     private final String type;
     private final String extension;
     private final String classifier;
+    private final int hashCode;
 
     public static DefaultIvyArtifactName forPublishArtifact(PublishArtifact publishArtifact) {
         String name = publishArtifact.getName();
@@ -43,6 +43,10 @@ public class DefaultIvyArtifactName implements IvyArtifactName {
 
     public static DefaultIvyArtifactName forFile(File file, @Nullable String classifier) {
         String fileName = file.getName();
+        return forFileName(fileName, classifier);
+    }
+
+    public static DefaultIvyArtifactName forFileName(String fileName, @Nullable String classifier) {
         String name = Files.getNameWithoutExtension(fileName);
         String extension = Files.getFileExtension(fileName);
         return new DefaultIvyArtifactName(name, extension, extension, classifier);
@@ -57,6 +61,7 @@ public class DefaultIvyArtifactName implements IvyArtifactName {
         this.type = type;
         this.extension = extension;
         this.classifier = classifier;
+        this.hashCode = computeHashCode();
     }
 
     @Override
@@ -67,7 +72,7 @@ public class DefaultIvyArtifactName implements IvyArtifactName {
             result.append("-");
             result.append(classifier);
         }
-        if (GUtil.isTrue(extension)) {
+        if (GUtil.isTrue(extension) && !Files.getFileExtension(name).equals(extension)) {
             result.append(".");
             result.append(extension);
         }
@@ -76,7 +81,15 @@ public class DefaultIvyArtifactName implements IvyArtifactName {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(name, type, extension, classifier);
+        return hashCode;
+    }
+
+    private int computeHashCode() {
+        int result = name.hashCode();
+        result = 31 * result + type.hashCode();
+        result = 31 * result + (extension != null ? extension.hashCode() : 0);
+        result = 31 * result + (classifier != null ? classifier.hashCode() : 0);
+        return result;
     }
 
     @Override
@@ -94,18 +107,22 @@ public class DefaultIvyArtifactName implements IvyArtifactName {
             && equal(classifier, other.classifier);
     }
 
+    @Override
     public String getName() {
         return name;
     }
 
+    @Override
     public String getType() {
         return type;
     }
 
+    @Override
     public String getExtension() {
         return extension;
     }
 
+    @Override
     public String getClassifier() {
         return classifier;
     }

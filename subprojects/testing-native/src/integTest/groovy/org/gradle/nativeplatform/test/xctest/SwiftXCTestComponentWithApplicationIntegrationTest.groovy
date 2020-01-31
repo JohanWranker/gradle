@@ -16,6 +16,9 @@
 
 package org.gradle.nativeplatform.test.xctest
 
+import org.gradle.nativeplatform.fixtures.app.MainWithXCTestSourceElement
+import org.gradle.nativeplatform.fixtures.app.SwiftAppWithXCTest
+
 class SwiftXCTestComponentWithApplicationIntegrationTest extends AbstractSwiftXCTestComponentWithTestedComponentIntegrationTest {
     @Override
     protected void makeSingleProject() {
@@ -33,5 +36,10 @@ class SwiftXCTestComponentWithApplicationIntegrationTest extends AbstractSwiftXC
     @Override
     String getTestedComponentDsl() {
         return "application"
+    }
+
+    @Override
+    protected MainWithXCTestSourceElement getComponentUnderTest() {
+        return new SwiftAppWithXCTest()
     }
 }

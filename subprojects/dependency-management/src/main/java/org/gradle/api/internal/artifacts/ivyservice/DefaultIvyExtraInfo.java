@@ -16,15 +16,17 @@
 
 package org.gradle.api.internal.artifacts.ivyservice;
 
-import javax.xml.namespace.QName;
-
 import com.google.common.base.Joiner;
 import org.gradle.api.InvalidUserDataException;
-import org.gradle.api.Transformer;
 import org.gradle.api.artifacts.ivy.IvyExtraInfo;
 import org.gradle.util.CollectionUtils;
 
-import java.util.*;
+import javax.xml.namespace.QName;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 public class DefaultIvyExtraInfo implements IvyExtraInfo {
     protected Map<NamespaceId, String> extraInfo;
@@ -37,6 +39,7 @@ public class DefaultIvyExtraInfo implements IvyExtraInfo {
         this.extraInfo = extraInfo;
     }
 
+    @Override
     public String get(String name) {
         List<Map.Entry<NamespaceId, String>> foundEntries = new ArrayList<Map.Entry<NamespaceId, String>>();
         for (Map.Entry<NamespaceId, String> entry : extraInfo.entrySet()) {
@@ -45,20 +48,18 @@ public class DefaultIvyExtraInfo implements IvyExtraInfo {
             }
         }
         if (foundEntries.size() > 1) {
-            String allNamespaces = Joiner.on(", ").join(CollectionUtils.collect(foundEntries, new Transformer<String, Map.Entry<NamespaceId, String>>() {
-                public String transform(Map.Entry<NamespaceId, String> original) {
-                    return original.getKey().getNamespace();
-                }
-            }));
+            String allNamespaces = Joiner.on(", ").join(CollectionUtils.collect(foundEntries, original -> original.getKey().getNamespace()));
             throw new InvalidUserDataException(String.format("Cannot get extra info element named '%s' by name since elements with this name were found from multiple namespaces (%s).  Use get(String namespace, String name) instead.", name, allNamespaces));
         }
         return foundEntries.size() == 0 ? null : foundEntries.get(0).getValue();
     }
 
+    @Override
     public String get(String namespace, String name) {
         return extraInfo.get(new NamespaceId(namespace, name));
     }
 
+    @Override
     public Map<QName, String> asMap() {
         Map<QName, String> map = new LinkedHashMap<QName, String>();
         for (Map.Entry<NamespaceId, String> entry : extraInfo.entrySet()) {

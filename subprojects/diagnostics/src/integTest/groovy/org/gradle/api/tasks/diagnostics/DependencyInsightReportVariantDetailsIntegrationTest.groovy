@@ -16,8 +16,9 @@
 
 package org.gradle.api.tasks.diagnostics
 
+import org.gradle.api.JavaVersion
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.FeaturePreviewsFixture
+import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
 import spock.lang.Unroll
 
 class DependencyInsightReportVariantDetailsIntegrationTest extends AbstractIntegrationSpec {
@@ -26,6 +27,7 @@ class DependencyInsightReportVariantDetailsIntegrationTest extends AbstractInteg
 
         // detector confuses attributes with stack traces
         executer.withStackTraceChecksDisabled()
+        new ResolveTestFixture(buildFile).addDefaultVariantDerivationStrategy()
     }
 
     @Unroll
@@ -34,7 +36,7 @@ class DependencyInsightReportVariantDetailsIntegrationTest extends AbstractInteg
         settingsFile << "include 'a', 'b', 'c'"
         file('a/build.gradle') << '''
             apply plugin: 'java-library'
-            
+
             dependencies {
                 api project(':b')
                 implementation project(':c')
@@ -53,13 +55,18 @@ class DependencyInsightReportVariantDetailsIntegrationTest extends AbstractInteg
         outputContains """project :$expectedProject
    variant "$expectedVariant" [
       $expectedAttributes
+      org.gradle.dependency.bundling = external
+      org.gradle.category            = library
+      org.gradle.jvm.version         = ${JavaVersion.current().majorVersion}
    ]
+
+project :$expectedProject
 \\--- $configuration"""
 
         where:
         configuration      | expectedProject | expectedVariant   | expectedAttributes
-        'compileClasspath' | 'b'             | 'apiElements'     | 'org.gradle.usage = java-api'
-        'runtimeClasspath' | 'c'             | 'runtimeElements' | 'org.gradle.usage = java-runtime-jars (compatible with: java-runtime)'
+        'compileClasspath' | 'b'             | 'apiElements'     | 'org.gradle.usage               = java-api\n      org.gradle.libraryelements     = jar (compatible with: classes)'
+        'runtimeClasspath' | 'c'             | 'runtimeElements' | 'org.gradle.usage               = java-runtime\n      org.gradle.libraryelements     = jar'
     }
 
     def "shows published variant details"() {
@@ -67,26 +74,25 @@ class DependencyInsightReportVariantDetailsIntegrationTest extends AbstractInteg
         mavenRepo.with {
             def leaf = module('org.test', 'leaf', '1.0')
                 .withModuleMetadata()
-                .variant('api', ['org.gradle.usage': 'java-api', 'org.gradle.test': 'published attribute'])
+                .variant('api', ['org.gradle.usage': 'java-api', 'org.gradle.category': 'library', 'org.gradle.libraryelements': 'jar', 'org.gradle.test': 'published attribute'])
                 .publish()
             module('org.test', 'a', '1.0')
                 .dependsOn(leaf)
                 .publish()
 
         }
-        FeaturePreviewsFixture.enableGradleMetadata(file("gradle.properties"))
 
         file("build.gradle") << """
             apply plugin: 'java-library'
-            
+
             repositories {
                maven { url "${mavenRepo.uri}" }
             }
-            
+
             dependencies {
                 implementation 'org.test:a:1.0'
             }
-            
+
             configurations.compileClasspath.attributes.attribute(Attribute.of('org.gradle.blah', String), 'something')
         """
 
@@ -94,17 +100,24 @@ class DependencyInsightReportVariantDetailsIntegrationTest extends AbstractInteg
         run "dependencyInsight", "--dependency", "leaf"
 
         then:
-        output.contains """org.test:leaf:1.0
+        outputContains """org.test:leaf:1.0
    variant "api" [
-      org.gradle.usage  = java-api
-      org.gradle.test   = published attribute (not requested)
-      org.gradle.status = release (not requested)
+      org.gradle.usage               = java-api
+      org.gradle.category            = library
+      org.gradle.libraryelements     = jar (compatible with: classes)
+      org.gradle.test                = published attribute (not requested)
+      org.gradle.status              = release (not requested)
 
       Requested attributes not found in the selected variant:
-         org.gradle.blah   = something
+         org.gradle.dependency.bundling = external
+         org.gradle.blah                = something
+         org.gradle.jvm.version         = ${JavaVersion.current().majorVersion}
    ]
+
+org.test:leaf:1.0
 \\--- org.test:a:1.0
-     \\--- compileClasspath"""
+     \\--- compileClasspath
+"""
     }
 
     def "Asking for variant details of 'FAILED' modules doesn't break the report"() {
@@ -165,7 +178,14 @@ org:middle:1.0 FAILED
         then:
         output.contains """
 org:leaf:1.0
-   variant "runtime"
+   variant "runtime" [
+      org.gradle.status          = release (not requested)
+      org.gradle.usage           = java-runtime (not requested)
+      org.gradle.libraryelements = jar (not requested)
+      org.gradle.category        = library (not requested)
+   ]
+
+org:leaf:1.0
 \\--- org:top:1.0
      \\--- conf
 """
@@ -200,12 +220,93 @@ org:leaf:1.0
         then:
         output.contains """org:leaf:1.0
    variant "runtime" [
+      org.gradle.status          = release (not requested)
+      org.gradle.usage           = java-runtime (not requested)
+      org.gradle.libraryelements = jar (not requested)
+      org.gradle.category        = library (not requested)
       Requested attributes not found in the selected variant:
-         usage = dummy
+         usage                      = dummy
    ]
+
+org:leaf:1.0
 \\--- org:top:1.0
      \\--- conf
 """
     }
+
+    def "correctly reports attributes declared on dependencies"() {
+        given:
+        mavenRepo.module('org', 'testA', '1.0').publish()
+        mavenRepo.module('org', 'testB', '1.0').publish()
+
+        buildFile << """
+            def CUSTOM_ATTRIBUTE = Attribute.of('custom', CustomAttributeType)
+            dependencies.attributesSchema.attribute(CUSTOM_ATTRIBUTE)
+            def configValue = objects.named(CustomAttributeType.class, 'conf_value')
+            def dependencyValue = objects.named(CustomAttributeType.class, 'dep_value')
+
+            repositories {
+                maven { url "${mavenRepo.uri}" }
+            }
+            configurations {
+                conf {
+                    attributes.attribute(CUSTOM_ATTRIBUTE, configValue)
+                }
+            }
+            dependencies {
+                components {
+                    all {
+                        attributes {
+                            attribute(CUSTOM_ATTRIBUTE, dependencyValue)
+                        }
+                    }
+                }
+                conf('org:testA:1.0') {
+                    attributes {
+                        attribute(CUSTOM_ATTRIBUTE, dependencyValue)
+                    }
+                }
+                conf('org:testB:+') {
+                    attributes {
+                        attribute(CUSTOM_ATTRIBUTE, dependencyValue)
+                    }
+                }
+            }
+
+            interface CustomAttributeType extends Named {}
+        """
+
+        when:
+        run 'dependencyInsight', "--dependency", "test", "--configuration", "conf"
+
+        then:
+        outputContains """
+org:testA:1.0
+   variant "runtime" [
+      custom                     = dep_value
+      org.gradle.status          = release (not requested)
+      org.gradle.usage           = java-runtime (not requested)
+      org.gradle.libraryelements = jar (not requested)
+      org.gradle.category        = library (not requested)
+   ]
+
+org:testA:1.0
+\\--- conf
+
+org:testB:1.0
+   variant "runtime" [
+      custom                     = dep_value
+      org.gradle.status          = release (not requested)
+      org.gradle.usage           = java-runtime (not requested)
+      org.gradle.libraryelements = jar (not requested)
+      org.gradle.category        = library (not requested)
+   ]
+
+org:testB:+ -> 1.0
+\\--- conf
+"""
+
+    }
+
 
 }

@@ -17,10 +17,12 @@
 package org.gradle.play.integtest
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.hamcrest.Matchers
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.hamcrest.CoreMatchers
 
 class PlayApplicationBinariesIntegrationTest extends AbstractIntegrationSpec {
     def setup() {
+        executer.expectDeprecationWarnings(6)
         buildFile << """
             plugins {
                 id 'play-application'
@@ -28,6 +30,7 @@ class PlayApplicationBinariesIntegrationTest extends AbstractIntegrationSpec {
         """
     }
 
+    @ToBeFixedForInstantExecution
     def "produces sensible error when play binary is not buildable" () {
         buildFile << """
             model {
@@ -44,9 +47,9 @@ class PlayApplicationBinariesIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         failureDescriptionContains("Execution failed for task ':assemble'.")
-        failure.assertThatCause(Matchers.<String>allOf(
-                Matchers.startsWith("No buildable binaries found:"),
-                Matchers.containsString("Play Application Jar 'play:binary': Disabled by user")
+        failure.assertThatCause(CoreMatchers.<String>allOf(
+            CoreMatchers.startsWith("No buildable binaries found:"),
+            CoreMatchers.containsString("Play Application Jar 'play:binary': Disabled by user")
         ))
     }
 }

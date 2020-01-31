@@ -25,6 +25,7 @@ import org.gradle.api.Action;
 import org.gradle.api.Incubating;
 import org.gradle.api.InvalidUserCodeException;
 import org.gradle.api.Task;
+import org.gradle.api.Transformer;
 import org.gradle.api.artifacts.ArtifactCollection;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
@@ -32,13 +33,17 @@ import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
 import org.gradle.api.artifacts.result.ResolvedArtifactResult;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.FileCopyDetails;
+import org.gradle.api.internal.CollectionCallbackActionDecorator;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.internal.file.copy.CopySpecInternal;
+import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.Sync;
 import org.gradle.api.tasks.application.CreateStartScripts;
 import org.gradle.api.tasks.bundling.AbstractArchiveTask;
 import org.gradle.api.tasks.bundling.Tar;
 import org.gradle.api.tasks.bundling.Zip;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.jvm.tasks.Jar;
@@ -71,14 +76,16 @@ import static org.gradle.internal.FileUtils.hasExtension;
  */
 @SuppressWarnings("UnusedDeclaration")
 @Incubating
+@Deprecated
 public class PlayDistributionPlugin extends RuleSource {
     public static final String DISTRIBUTION_GROUP = "distribution";
     public static final String DIST_LIFECYCLE_TASK_NAME = "dist";
     public static final String STAGE_LIFECYCLE_TASK_NAME = "stage";
 
     @Model
-    PlayDistributionContainer distributions(Instantiator instantiator) {
-        return new DefaultPlayDistributionContainer(instantiator);
+    PlayDistributionContainer distributions(Instantiator instantiator, CollectionCallbackActionDecorator collectionCallbackActionDecorator) {
+        DeprecationLogger.deprecatePlugin("Play Distribution").replaceWithExternalPlugin("org.gradle.playframework-distribution").withUserManual("play_plugin").nagUser();
+        return new DefaultPlayDistributionContainer(instantiator, collectionCallbackActionDecorator);
     }
 
     @Mutate
@@ -103,10 +110,11 @@ public class PlayDistributionPlugin extends RuleSource {
     @Defaults
     void createDistributions(@Path("distributions") PlayDistributionContainer distributions, @Path("binaries") ModelMap<PlayApplicationBinarySpecInternal> playBinaries, PlayPluginConfigurations configurations, ServiceRegistry serviceRegistry) {
         FileOperations fileOperations = serviceRegistry.get(FileOperations.class);
-        Instantiator instantiator = serviceRegistry.get(Instantiator.class);
+        ObjectFactory objectFactory = serviceRegistry.get(ObjectFactory.class);
         for (PlayApplicationBinarySpecInternal binary : playBinaries) {
-            PlayDistribution distribution = instantiator.newInstance(DefaultPlayDistribution.class, binary.getProjectScopedName(), fileOperations.copySpec(), binary);
-            distribution.setBaseName(binary.getProjectScopedName());
+            PlayDistribution distribution = objectFactory.newInstance(DefaultPlayDistribution.class, binary.getProjectScopedName(), fileOperations.copySpec(), binary);
+
+            distribution.getDistributionBaseName().set(binary.getProjectScopedName());
             distributions.add(distribution);
         }
     }
@@ -122,15 +130,15 @@ public class PlayDistributionPlugin extends RuleSource {
             }
 
             final File distJarDir = new File(buildDir, "distributionJars/" + distribution.getName());
-            final String jarTaskName = "create" +  StringUtils.capitalize(distribution.getName()) + "DistributionJar";
+            final String jarTaskName = "create" + StringUtils.capitalize(distribution.getName()) + "DistributionJar";
             tasks.create(jarTaskName, Jar.class, new Action<Jar>() {
                 @Override
                 public void execute(Jar jar) {
                     jar.setDescription("Assembles an application jar suitable for deployment for the " + binary + ".");
                     jar.dependsOn(binary.getTasks().withType(Jar.class));
                     jar.from(jar.getProject().zipTree(binary.getJarFile()));
-                    jar.setDestinationDir(distJarDir);
-                    jar.setArchiveName(binary.getJarFile().getName());
+                    jar.getDestinationDirectory().set(distJarDir);
+                    jar.getArchiveFileName().set(binary.getJarFile().getName());
 
                     Map<String, Object> classpath = Maps.newHashMap();
                     classpath.put("Class-Path", new PlayManifestClasspath(configurations.getPlayRun(), binary.getAssetsJarFile()));
@@ -174,7 +182,6 @@ public class PlayDistributionPlugin extends RuleSource {
         PlayPlatform playPlatform = distribution.getBinary().getTargetPlatform();
         String playVersion = playPlatform.getPlayVersion();
         switch (PlayMajorVersion.forPlatform(playPlatform)) {
-            case PLAY_2_2_X:
             case PLAY_2_3_X:
                 return "play.core.server.NettyServer";
             case PLAY_2_4_X:
@@ -192,7 +199,7 @@ public class PlayDistributionPlugin extends RuleSource {
             String capitalizedDistName = StringUtils.capitalize(distribution.getName());
             final String stageTaskName = "stage" + capitalizedDistName + "Dist";
             final File stageDir = new File(buildDir, "stage");
-            final String baseName = StringUtils.isNotEmpty(distribution.getBaseName()) ? distribution.getBaseName() : distribution.getName();
+            final Provider<String> baseName = distribution.getDistributionBaseName();
             tasks.create(stageTaskName, Sync.class, new Action<Sync>() {
                 @Override
                 public void execute(Sync sync) {
@@ -217,8 +224,8 @@ public class PlayDistributionPlugin extends RuleSource {
                 @Override
                 public void execute(final Zip zip) {
                     zip.setDescription("Packages the '" + distribution.getName() + "' distribution as a zip file.");
-                    zip.setBaseName(baseName);
-                    zip.setDestinationDir(new File(buildDir, "distributions"));
+                    zip.getArchiveBaseName().set(baseName);
+                    zip.getDestinationDirectory().set(new File(buildDir, "distributions"));
                     zip.from(stageTask);
                 }
             });
@@ -228,8 +235,8 @@ public class PlayDistributionPlugin extends RuleSource {
                 @Override
                 public void execute(final Tar tar) {
                     tar.setDescription("Packages the '" + distribution.getName() + "' distribution as a tar file.");
-                    tar.setBaseName(baseName);
-                    tar.setDestinationDir(new File(buildDir, "distributions"));
+                    tar.getArchiveBaseName().set(baseName);
+                    tar.getDestinationDirectory().set(new File(buildDir, "distributions"));
                     tar.from(stageTask);
                 }
             });
@@ -248,8 +255,13 @@ public class PlayDistributionPlugin extends RuleSource {
 
     static class DistributionArchiveRules extends RuleSource {
         @Finalize
-        void fixupDistributionArchiveNames(AbstractArchiveTask archiveTask) {
-            archiveTask.setArchiveName(archiveTask.getBaseName() + "." + archiveTask.getExtension());
+        void fixupDistributionArchiveNames(final AbstractArchiveTask archiveTask) {
+            archiveTask.getArchiveFileName().set(archiveTask.getArchiveBaseName().map(new Transformer<String, String>() {
+                @Override
+                public String transform(String baseName) {
+                    return baseName + "." + archiveTask.getArchiveExtension().get();
+                }
+            }));
         }
     }
 
@@ -296,7 +308,7 @@ public class PlayDistributionPlugin extends RuleSource {
         public String apply(File input) {
             calculateRenames();
             String rename = renames.get(input);
-            if (rename!=null) {
+            if (rename != null) {
                 return rename;
             }
             return input.getName();

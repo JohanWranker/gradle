@@ -15,11 +15,11 @@
  */
 package org.gradle.language.nativeplatform.internal.incremental
 
-import org.gradle.api.internal.changedetection.state.TestFileSnapshotter
+import org.gradle.api.internal.file.TestFiles
 import org.gradle.language.nativeplatform.internal.Include
 import org.gradle.language.nativeplatform.internal.IncludeDirectives
 import org.gradle.language.nativeplatform.internal.incremental.sourceparser.RegexBackedCSourceParser
-import org.gradle.language.nativeplatform.internal.incremental.sourceparser.UnresolveableMacro
+import org.gradle.language.nativeplatform.internal.incremental.sourceparser.UnresolvableMacro
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
@@ -27,7 +27,7 @@ import spock.lang.Specification
 
 class DefaultSourceIncludesResolverTest extends Specification {
     @Rule final TestNameTestDirectoryProvider temporaryFolder = new TestNameTestDirectoryProvider()
-    def fileSystemSnapshotter = new TestFileSnapshotter()
+    def virtualFileSystem = TestFiles.virtualFileSystem()
     def testDirectory = temporaryFolder.testDirectory
     def sourceDirectory = testDirectory.createDir("sources")
     def systemIncludeDir = testDirectory.createDir("headers")
@@ -38,8 +38,12 @@ class DefaultSourceIncludesResolverTest extends Specification {
 
     def setup() {
         included = Mock(IncludeDirectives)
-        included.getMacros() >> macros
-        included.getMacrosFunctions() >> macroFunctions
+        included.getAllMacros() >> macros
+        included.getMacros(_) >> { String name -> macros.findAll {it.name == name} }
+        included.hasMacros() >> { !macros.empty }
+        included.getAllMacroFunctions() >> macroFunctions
+        included.getMacroFunctions(_) >> { String name -> macroFunctions.findAll {it.name == name} }
+        included.hasMacroFunctions() >> { !macroFunctions.empty }
     }
 
     protected TestFile getSourceFile() {
@@ -49,7 +53,7 @@ class DefaultSourceIncludesResolverTest extends Specification {
     def resolve(Include include) {
         def macros = new CollectingMacroLookup()
         macros.append(sourceFile, included)
-        return new DefaultSourceIncludesResolver(includePaths, fileSystemSnapshotter).resolveInclude(sourceFile, include, macros)
+        return new DefaultSourceIncludesResolver(includePaths, virtualFileSystem).resolveInclude(sourceFile, include, macros)
     }
 
     def "ignores system include file that does not exist"() {
@@ -83,7 +87,7 @@ class DefaultSourceIncludesResolverTest extends Specification {
         expect:
         def result = resolve(include("\"${path}\""))
         result.complete
-        result.files.file as List == [new File(sourceDirectory, path)] // not canonicalized
+        result.files.file as List == [new File(sourceDirectory, path).getCanonicalFile()]
 
         where:
         path << ["nested/test.h", "../sibling/test.h", "./test.h"]
@@ -138,7 +142,7 @@ class DefaultSourceIncludesResolverTest extends Specification {
 
         macros << macro("TEST", '"test.h"')
         macros << macro("IGNORE", "'broken'")
-        macros << unresolveableMacro("IGNORE")
+        macros << unresolvableMacro("IGNORE")
 
         expect:
         def result = resolve(include('TEST'))
@@ -171,7 +175,7 @@ class DefaultSourceIncludesResolverTest extends Specification {
         macroFunctions << macroFunction("TEST1", "TEST")
         macros << macro("TEST2", "TEST1()")
         macros << macro("TEST3", "TEST2")
-        macros << unresolveableMacro("IGNORE")
+        macros << unresolvableMacro("IGNORE")
 
         expect:
         def result = resolve(include('TEST3'))
@@ -217,8 +221,8 @@ class DefaultSourceIncludesResolverTest extends Specification {
 
     def "marks macro include as unresolved when target macro value cannot be resolved"() {
         given:
-        macros << unresolveableMacro("TEST")
-        macros << unresolveableMacro("NESTED")
+        macros << unresolvableMacro("TEST")
+        macros << unresolvableMacro("NESTED")
         macros << macro("TEST", "NESTED")
 
         expect:
@@ -233,7 +237,7 @@ class DefaultSourceIncludesResolverTest extends Specification {
 
         macros << macro("TEST", '"test.h"')
         macros << macro("IGNORE", '"broken"')
-        macros << unresolveableMacro("TEST")
+        macros << unresolvableMacro("TEST")
 
         expect:
         def result = resolve(include('TEST'))
@@ -324,8 +328,8 @@ class DefaultSourceIncludesResolverTest extends Specification {
         def header = systemIncludeDir.createFile("test.h")
 
         macros << macro("TEST", 'FILE##NAME')
-        macros << unresolveableMacro("FILE")
-        macros << unresolveableMacro("NAME")
+        macros << unresolvableMacro("FILE")
+        macros << unresolvableMacro("NAME")
         macros << macro("FILENAME", '"test.h"')
 
         expect:
@@ -364,8 +368,8 @@ class DefaultSourceIncludesResolverTest extends Specification {
         given:
         def header = systemIncludeDir.createFile("test.h")
 
-        macros << unresolveableMacro("FILE")
-        macros << unresolveableMacro("NAME")
+        macros << unresolvableMacro("FILE")
+        macros << unresolvableMacro("NAME")
         macros << macro("FILENAME", '"test.h"')
         macroFunctions << macroFunction("TEST(X, Y)", "X##Y")
 
@@ -475,15 +479,15 @@ class DefaultSourceIncludesResolverTest extends Specification {
 
     def macro(String name, String value) {
         def directives = new RegexBackedCSourceParser().parseSource(new StringReader("#define ${name} $value"))
-        return directives.macros.first()
+        return directives.allMacros.first()
     }
 
     def macroFunction(String name, String value) {
         def directives = new RegexBackedCSourceParser().parseSource(new StringReader("#define ${name}${name.contains('(') ? "" : "()"} $value"))
-        return directives.macrosFunctions.first()
+        return directives.allMacroFunctions.first()
     }
 
-    def unresolveableMacro(String name) {
-        new UnresolveableMacro(name)
+    def unresolvableMacro(String name) {
+        new UnresolvableMacro(name)
     }
 }

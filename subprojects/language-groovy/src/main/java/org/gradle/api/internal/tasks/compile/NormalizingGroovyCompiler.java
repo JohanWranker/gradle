@@ -16,13 +16,13 @@
 package org.gradle.api.internal.tasks.compile;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Predicate;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import org.gradle.api.Transformer;
-import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.file.collections.SimpleFileCollection;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
-import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.api.tasks.WorkResults;
 import org.gradle.language.base.internal.compile.Compiler;
@@ -30,6 +30,7 @@ import org.gradle.util.CollectionUtils;
 
 import java.io.File;
 import java.util.List;
+import java.util.function.Function;
 
 import static org.gradle.internal.FileUtils.hasExtension;
 
@@ -46,12 +47,21 @@ public class NormalizingGroovyCompiler implements Compiler<GroovyJavaJointCompil
 
     @Override
     public WorkResult execute(GroovyJavaJointCompileSpec spec) {
-        resolveAndFilterSourceFiles(spec);
+        return withResolvedClasspath(spec, specWithExtraClasspath -> {
+            resolveAndFilterSourceFiles(specWithExtraClasspath);
+            resolveNonStringsInCompilerArgs(specWithExtraClasspath);
+            logSourceFiles(specWithExtraClasspath);
+            logCompilerArguments(specWithExtraClasspath);
+            return delegateAndHandleErrors(specWithExtraClasspath);
+        });
+    }
+
+    private WorkResult withResolvedClasspath(GroovyJavaJointCompileSpec spec, Function<GroovyJavaJointCompileSpec, WorkResult> function) {
+        List<File> originalClasspath = spec.getCompileClasspath();
         resolveClasspath(spec);
-        resolveNonStringsInCompilerArgs(spec);
-        logSourceFiles(spec);
-        logCompilerArguments(spec);
-        return delegateAndHandleErrors(spec);
+        WorkResult result = function.apply(spec);
+        restoreClasspath(spec, originalClasspath);
+        return result;
     }
 
     private void resolveAndFilterSourceFiles(final GroovyJavaJointCompileSpec spec) {
@@ -61,8 +71,9 @@ public class NormalizingGroovyCompiler implements Compiler<GroovyJavaJointCompil
                 return '.' + extension;
             }
         });
-        FileCollection filtered = spec.getSource().filter(new Spec<File>() {
-            public boolean isSatisfiedBy(File element) {
+        Iterable<File> filtered = Iterables.filter(spec.getSourceFiles(), new Predicate<File>() {
+            @Override
+            public boolean apply(File element) {
                 for (String fileExtension : fileExtensions) {
                     if (hasExtension(element, fileExtension)) {
                         return true;
@@ -72,7 +83,7 @@ public class NormalizingGroovyCompiler implements Compiler<GroovyJavaJointCompil
             }
         });
 
-        spec.setSource(new SimpleFileCollection(filtered.getFiles()));
+        spec.setSourceFiles(ImmutableSet.copyOf(filtered));
     }
 
     private void resolveClasspath(GroovyJavaJointCompileSpec spec) {
@@ -84,6 +95,11 @@ public class NormalizingGroovyCompiler implements Compiler<GroovyJavaJointCompil
         List<File> classPath = Lists.newArrayList(spec.getCompileClasspath());
         classPath.add(spec.getDestinationDir());
         spec.setCompileClasspath(classPath);
+    }
+
+    private void restoreClasspath(GroovyJavaJointCompileSpec spec, List<File> originalClasspath) {
+        // inverse process of resolveClasspath to make sure IncrementalResultStoringCompiler stores correct result
+        spec.setCompileClasspath(originalClasspath);
     }
 
     private void resolveNonStringsInCompilerArgs(GroovyJavaJointCompileSpec spec) {
@@ -98,7 +114,7 @@ public class NormalizingGroovyCompiler implements Compiler<GroovyJavaJointCompil
 
         StringBuilder builder = new StringBuilder();
         builder.append("Source files to be compiled:");
-        for (File file : spec.getSource()) {
+        for (File file : spec.getSourceFiles()) {
             builder.append('\n');
             builder.append(file);
         }

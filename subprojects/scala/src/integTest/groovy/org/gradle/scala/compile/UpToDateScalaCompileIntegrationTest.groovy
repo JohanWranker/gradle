@@ -18,11 +18,14 @@ package org.gradle.scala.compile
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.AvailableJavaHomes
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.language.scala.internal.toolchain.DefaultScalaToolProvider
 import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 import spock.lang.Unroll
 
-import static org.gradle.api.JavaVersion.VERSION_1_7
 import static org.gradle.api.JavaVersion.VERSION_1_8
+import static org.gradle.api.JavaVersion.VERSION_1_9
 
 @Unroll
 class UpToDateScalaCompileIntegrationTest extends AbstractIntegrationSpec {
@@ -31,6 +34,8 @@ class UpToDateScalaCompileIntegrationTest extends AbstractIntegrationSpec {
         file('src/main/scala/Person.scala') << "class Person(name: String)"
     }
 
+    @Requires(TestPrecondition.JDK8_OR_EARLIER)
+    @ToBeFixedForInstantExecution
     def "compile is out of date when changing the #changedVersion version"() {
         buildScript(scalaProjectBuildScript(defaultZincVersion, defaultScalaVersion))
 
@@ -55,34 +60,35 @@ class UpToDateScalaCompileIntegrationTest extends AbstractIntegrationSpec {
 
         where:
         newScalaVersion | newZincVersion
-        '2.11.8'       | '0.3.12'
-        '2.11.9'        | '0.3.13'
-        defaultScalaVersion = '2.11.8'
-        defaultZincVersion = '0.3.13'
+        '2.11.12'       | '1.2.0'
+        '2.12.6'        | '1.2.5'
+        defaultScalaVersion = '2.11.12'
+        defaultZincVersion = DefaultScalaToolProvider.DEFAULT_ZINC_VERSION
         changedVersion = defaultScalaVersion != newScalaVersion ? 'scala' : 'zinc'
     }
 
-    @Requires(adhoc = { AvailableJavaHomes.getJdk(VERSION_1_7) && AvailableJavaHomes.getJdk(VERSION_1_8) })
+    @Requires(adhoc = { AvailableJavaHomes.getJdk(VERSION_1_8) && AvailableJavaHomes.getJdk(VERSION_1_9) })
+    @ToBeFixedForInstantExecution
     def "compile is out of date when changing the java version"() {
-        def jdk7 = AvailableJavaHomes.getJdk(VERSION_1_7)
         def jdk8 = AvailableJavaHomes.getJdk(VERSION_1_8)
+        def jdk9 = AvailableJavaHomes.getJdk(VERSION_1_9)
 
-        buildScript(scalaProjectBuildScript('0.3.13', '2.11.8'))
+        buildScript(scalaProjectBuildScript(DefaultScalaToolProvider.DEFAULT_ZINC_VERSION, '2.12.6'))
         when:
-        executer.withJavaHome(jdk7.javaHome)
+        executer.withJavaHome(jdk8.javaHome)
         run 'compileScala'
 
         then:
         executedAndNotSkipped(':compileScala')
 
         when:
-        executer.withJavaHome(jdk7.javaHome)
+        executer.withJavaHome(jdk8.javaHome)
         run 'compileScala'
         then:
         skipped ':compileScala'
 
         when:
-        executer.withJavaHome(jdk8.javaHome)
+        executer.withJavaHome(jdk9.javaHome)
         run 'compileScala', '--info'
         then:
         executedAndNotSkipped(':compileScala')
@@ -95,8 +101,11 @@ class UpToDateScalaCompileIntegrationTest extends AbstractIntegrationSpec {
             ${jcenterRepository()}
 
             dependencies {
-                zinc "com.typesafe.zinc:zinc:${zincVersion}"
-                compile "org.scala-lang:scala-library:${scalaVersion}" 
+                implementation "org.scala-lang:scala-library:${scalaVersion}" 
+            }
+            
+            scala {
+                zincVersion = "${zincVersion}"
             }
             
             sourceCompatibility = '1.7'

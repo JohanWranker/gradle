@@ -16,7 +16,6 @@
 
 package org.gradle.api.artifacts.result;
 
-import org.gradle.api.Incubating;
 import org.gradle.internal.HasInternalProtocol;
 import org.gradle.internal.scan.UsedByScanPlugin;
 
@@ -28,7 +27,6 @@ import java.util.List;
  * @since 1.3
  */
 @UsedByScanPlugin
-@Incubating
 @HasInternalProtocol
 public interface ComponentSelectionReason {
 
@@ -39,7 +37,7 @@ public interface ComponentSelectionReason {
     boolean isForced();
 
     /**
-     * Informs whether the component was selected by conflict resolution. For more information about Gradle's conflict resolution please refer to the user guide. {@link
+     * Informs whether the component was selected by conflict resolution. For more information about Gradle's conflict resolution please refer to the user manual. {@link
      * org.gradle.api.artifacts.ResolutionStrategy} contains information about conflict resolution and includes means to configure it.
      */
     boolean isConflictResolution();
@@ -67,6 +65,15 @@ public interface ComponentSelectionReason {
     boolean isCompositeSubstitution();
 
     /**
+     * Informs whether the selected component version has been influenced by a dependency constraint.
+     *
+     * @return true if a dependency constraint influenced the selection of this component
+     *
+     * @since 4.6
+     */
+    boolean isConstrained();
+
+    /**
      * Returns a human-consumable description of this selection reason.
      *
      * @deprecated Use {@link #getDescriptions()} instead
@@ -82,14 +89,4 @@ public interface ComponentSelectionReason {
      * @since 4.6
      */
     List<ComponentSelectionDescriptor> getDescriptions();
-
-    /**
-     * Informs whether the selected component version has been influenced by a dependency constraint.
-     *
-     * @return true if a dependency constraint influenced the selection of this component
-     *
-     * @since 4.6
-     */
-    @Incubating
-    boolean isConstrained();
 }

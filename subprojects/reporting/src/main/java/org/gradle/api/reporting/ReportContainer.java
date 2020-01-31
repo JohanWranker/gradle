@@ -17,17 +17,13 @@
 package org.gradle.api.reporting;
 
 import org.gradle.api.GradleException;
-import org.gradle.api.Incubating;
 import org.gradle.api.NamedDomainObjectSet;
 import org.gradle.api.Namer;
 import org.gradle.api.Rule;
-import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Internal;
-import org.gradle.api.tasks.OutputDirectories;
-import org.gradle.api.tasks.OutputFiles;
+import org.gradle.api.tasks.Nested;
 import org.gradle.util.Configurable;
 
-import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -91,15 +87,11 @@ public interface ReportContainer<T extends Report> extends NamedDomainObjectSet<
     @Internal
     boolean isEmpty();
 
-    @Incubating
-    @OutputDirectories
-    Map<String, File> getEnabledDirectoryReportDestinations();
-
-    @Incubating
-    @OutputFiles
-    Map<String, File> getEnabledFileReportDestinations();
-
-    @Incubating
-    @Input
-    SortedSet<String> getEnabledReportNames();
+    /**
+     * Returns the enabled reports, keyed by report name.
+     *
+     * @since 4.7
+     */
+    @Nested
+    Map<String, T> getEnabledReports();
 }

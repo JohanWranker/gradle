@@ -16,9 +16,9 @@
 
 package org.gradle.cache.internal;
 
-import org.gradle.internal.classloader.ClassLoaderHierarchyHasher;
 import org.gradle.internal.classloader.ClasspathHasher;
 import org.gradle.internal.classpath.ClassPath;
+import org.gradle.internal.hash.ClassLoaderHierarchyHasher;
 import org.gradle.internal.hash.FileHasher;
 import org.gradle.internal.hash.HashCode;
 import org.gradle.internal.hash.HashFunction;
@@ -53,13 +53,16 @@ class DefaultCacheKeyBuilder implements CacheKeyBuilder {
             case 0:
                 return prefix;
             case 1:
-                return prefix + "/" + compactStringFor(hashOf(components[0]));
+                return prefix + "/" + compactStringFor(hashOf(components[0]).toByteArray());
             default:
-                return prefix + "/" + compactStringFor(combinedHashOf(components));
+                return prefix + "/" + compactStringFor(combinedHashOf(components).toByteArray());
         }
     }
 
     private HashCode hashOf(Object component) {
+        if (component instanceof HashCode) {
+            return (HashCode) component;
+        }
         if (component instanceof String) {
             return hashFunction.hashString((String) component);
         }

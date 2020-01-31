@@ -18,7 +18,8 @@ package org.gradle.api.internal.artifacts.ivyservice.projectmodule
 import org.gradle.api.artifacts.ModuleIdentifier
 import org.gradle.api.artifacts.component.ComponentIdentifier
 import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionDescriptorInternal
+import org.gradle.api.internal.project.ProjectState
+import org.gradle.api.internal.project.ProjectStateRegistry
 import org.gradle.internal.component.local.model.LocalComponentMetadata
 import org.gradle.internal.component.local.model.TestComponentIdentifiers
 import org.gradle.internal.component.model.ComponentOverrideMetadata
@@ -34,7 +35,14 @@ import static org.gradle.internal.component.local.model.TestComponentIdentifiers
 class ProjectDependencyResolverTest extends Specification {
     final LocalComponentRegistry registry = Mock()
     final ComponentIdentifierFactory componentIdentifierFactory = Mock()
-    final ProjectDependencyResolver resolver = new ProjectDependencyResolver(registry, componentIdentifierFactory)
+    final ProjectStateRegistry projectRegistry = Stub()
+    final ProjectDependencyResolver resolver = new ProjectDependencyResolver(registry, componentIdentifierFactory, projectRegistry)
+
+    def setup() {
+        def projectState = Stub(ProjectState)
+        _ * projectRegistry.stateFor(_) >> projectState
+        _ * projectState.withMutableState(_) >> { Runnable action -> action.run() }
+    }
 
     def "resolves project dependency"() {
         setup:
@@ -47,14 +55,12 @@ class ProjectDependencyResolverTest extends Specification {
         def id = newProjectId(":project")
 
         when:
-        resolver.resolve(dependencyMetaData, result)
+        resolver.resolve(dependencyMetaData, null, null, result)
 
         then:
         1 * componentIdentifierFactory.createProjectComponentIdentifier(selector) >> id
         1 * registry.getComponent(id) >> componentMetaData
         1 * result.resolved(componentMetaData)
-        1 * result.getSelectionDescription() >> Mock(ComponentSelectionDescriptorInternal)
-        1 * result.setSelectionDescription(_)
         0 * result._
     }
 
@@ -65,7 +71,7 @@ class ProjectDependencyResolverTest extends Specification {
         def projectComponentId = newProjectId(":projectPath")
 
         when:
-        resolver.resolve(projectComponentId, new DefaultComponentOverrideMetadata(), result)
+        resolver.resolve(projectComponentId, DefaultComponentOverrideMetadata.EMPTY, result)
 
         then:
         1 * registry.getComponent(projectComponentId) >> componentMetaData
@@ -79,7 +85,7 @@ class ProjectDependencyResolverTest extends Specification {
         def targetModuleId = Stub(ModuleIdentifier)
 
         when:
-        resolver.resolve(dependencyMetaData, result)
+        resolver.resolve(dependencyMetaData, null, null, result)
 
         then:
         0 * registry.getComponent(_)

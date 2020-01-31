@@ -16,76 +16,63 @@
 
 package org.gradle.workers.internal;
 
-import org.gradle.api.internal.InstantiatorFactory;
-import org.gradle.internal.operations.BuildOperationContext;
+import org.gradle.internal.Factory;
+import org.gradle.internal.classloader.ClassLoaderUtils;
+import org.gradle.internal.instantiation.InstantiatorFactory;
+import org.gradle.internal.isolated.IsolationScheme;
 import org.gradle.internal.operations.BuildOperationExecutor;
-import org.gradle.internal.operations.CallableBuildOperation;
-import org.gradle.internal.progress.BuildOperationDescriptor;
-import org.gradle.internal.progress.BuildOperationState;
-import org.gradle.internal.reflect.Instantiator;
-import org.gradle.internal.service.DefaultServiceRegistry;
-import org.gradle.internal.work.AsyncWorkTracker;
-import org.gradle.internal.work.WorkerLeaseRegistry;
+import org.gradle.internal.operations.BuildOperationRef;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.workers.IsolationMode;
+import org.gradle.workers.WorkAction;
+import org.gradle.workers.WorkParameters;
 import org.gradle.workers.WorkerExecutor;
 
-public class NoIsolationWorkerFactory implements WorkerFactory {
-    private final WorkerLeaseRegistry workerLeaseRegistry;
-    private final BuildOperationExecutor buildOperationExecutor;
-    private final AsyncWorkTracker workTracker;
-    private final InstantiatorFactory instantiatorFactory;
-    private Instantiator actionInstantiator;
+import javax.annotation.Nullable;
+import java.util.Collections;
 
-    public NoIsolationWorkerFactory(WorkerLeaseRegistry workerLeaseRegistry, BuildOperationExecutor buildOperationExecutor, AsyncWorkTracker workTracker, InstantiatorFactory instantiatorFactory) {
-        this.workerLeaseRegistry = workerLeaseRegistry;
+public class NoIsolationWorkerFactory implements WorkerFactory {
+    private final BuildOperationExecutor buildOperationExecutor;
+    private final ActionExecutionSpecFactory specFactory;
+    private final Worker workerServer;
+    private WorkerExecutor workerExecutor;
+
+    public NoIsolationWorkerFactory(BuildOperationExecutor buildOperationExecutor, InstantiatorFactory instantiatorFactory, ActionExecutionSpecFactory specFactory, ServiceRegistry internalServices) {
         this.buildOperationExecutor = buildOperationExecutor;
-        this.workTracker = workTracker;
-        this.instantiatorFactory = instantiatorFactory;
+        this.specFactory = specFactory;
+        IsolationScheme<WorkAction, WorkParameters> isolationScheme = new IsolationScheme<>(WorkAction.class, WorkParameters.class, WorkParameters.None.class);
+        workerServer = new DefaultWorkerServer(internalServices, instantiatorFactory, isolationScheme, Collections.singleton(WorkerExecutor.class));
     }
 
     // Attaches the owning WorkerExecutor to this factory
     public void setWorkerExecutor(WorkerExecutor workerExecutor) {
-        DefaultServiceRegistry services = new DefaultServiceRegistry();
-        services.add(WorkerExecutor.class, workerExecutor);
-        actionInstantiator = instantiatorFactory.inject(services);
+        this.workerExecutor = workerExecutor;
     }
 
     @Override
-    public Worker getWorker(final DaemonForkOptions forkOptions) {
-        return new Worker() {
+    public BuildOperationAwareWorker getWorker(WorkerRequirement workerRequirement) {
+        final WorkerExecutor workerExecutor = this.workerExecutor;
+        final ClassLoader contextClassLoader = ((FixedClassLoaderWorkerRequirement) workerRequirement).getContextClassLoader();
+        return new AbstractWorker(buildOperationExecutor) {
             @Override
-            public DefaultWorkResult execute(ActionExecutionSpec spec) {
-                return execute(spec, workerLeaseRegistry.getCurrentWorkerLease(), buildOperationExecutor.getCurrentOperation());
-            }
-
-            @Override
-            public DefaultWorkResult execute(final ActionExecutionSpec spec, WorkerLeaseRegistry.WorkerLease parentWorkerWorkerLease, final BuildOperationState parentBuildOperation) {
-                WorkerLeaseRegistry.WorkerLeaseCompletion workerLease = parentWorkerWorkerLease.startChild();
-
-                try {
-                    return buildOperationExecutor.call(new CallableBuildOperation<DefaultWorkResult>() {
-                        @Override
-                        public DefaultWorkResult call(BuildOperationContext context) {
-                            DefaultWorkResult result;
-                            try {
-                                WorkerProtocol<ActionExecutionSpec> workerServer = new DefaultWorkerServer(actionInstantiator);
-                                result = workerServer.execute(spec);
-                            } finally {
-                                //TODO the async work tracker should wait for children of an operation to finish first.
-                                //It should not be necessary to call it here.
-                                workTracker.waitForCompletion(buildOperationExecutor.getCurrentOperation(), false);
+            public DefaultWorkResult execute(IsolatedParametersActionExecutionSpec<?> spec, BuildOperationRef parentBuildOperation) {
+                return executeWrappedInBuildOperation(spec, parentBuildOperation, workSpec -> {
+                    DefaultWorkResult result;
+                    try {
+                        result = ClassLoaderUtils.executeInClassloader(contextClassLoader, new Factory<DefaultWorkResult>() {
+                            @Nullable
+                            @Override
+                            public DefaultWorkResult create() {
+                                return workerServer.execute(specFactory.newSimpleSpec(workSpec));
                             }
-                            return result;
-                        }
-
-                        @Override
-                        public BuildOperationDescriptor.Builder description() {
-                            return BuildOperationDescriptor.displayName(spec.getDisplayName()).parent(parentBuildOperation);
-                        }
-                    });
-                } finally {
-                    workerLease.leaseFinish();
-                }
+                        });
+                    } finally {
+                        //TODO the async work tracker should wait for children of an operation to finish first.
+                        //It should not be necessary to call it here.
+                        workerExecutor.await();
+                    }
+                    return result;
+                });
             }
         };
     }

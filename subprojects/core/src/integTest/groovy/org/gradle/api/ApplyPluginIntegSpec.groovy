@@ -20,21 +20,21 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.executer.UnexpectedBuildFailure
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.util.GradleVersion
-import org.gradle.util.TextUtil
 import org.gradle.util.UsesNativeServices
 import spock.lang.FailsWith
 import spock.lang.Issue
+
+import static org.gradle.util.TextUtil.normaliseFileSeparators
 
 // TODO: This needs a better home - Possibly in the test kit package in the future
 
 @UsesNativeServices
 class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
+
     def testProjectPath
-    def gradleUserHome
 
     def setup() {
-        testProjectPath = TextUtil.normaliseFileSeparators(file("test-project-dir").absolutePath)
-        gradleUserHome = TextUtil.normaliseFileSeparators(buildContext.gradleUserHomeDir.absolutePath)
+        testProjectPath = normalisedPathOf(file("test-project-dir"))
     }
 
     @Issue("GRADLE-2358")
@@ -118,6 +118,7 @@ class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
 
     def "generated Gradle API JAR in custom Gradle user home is reused across multiple invocations"() {
         requireGradleDistribution()
+        requireOwnGradleUserHomeDir()
 
         given:
         file("src/test/groovy/org/acme/ProjectBuilderTest.groovy") << """
@@ -152,7 +153,7 @@ class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
                 static Project createProject(File gradleUserHome) {
                     def project = ProjectBuilder.builder().withGradleUserHomeDir(gradleUserHome).build()
                     project.plugins.apply('java')
-                    project.dependencies.add('compile', project.dependencies.gradleApi())
+                    project.dependencies.add('implementation', project.dependencies.gradleApi())
                     project
                 }
             }
@@ -171,7 +172,7 @@ class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
             ${basicBuildScript()}
 
             dependencies {
-                testCompile 'junit:junit:4.12'
+                testImplementation  'junit:junit:4.12'
             }
         """
     }
@@ -181,7 +182,7 @@ class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
             ${basicBuildScript()}
 
             dependencies {
-                testCompile('org.spockframework:spock-core:1.0-groovy-2.4') {
+                testImplementation ('org.spockframework:spock-core:1.0-groovy-2.4') {
                     exclude module: 'groovy-all'
                 }
             }
@@ -195,8 +196,8 @@ class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
             ${mavenCentralRepository()}
 
             dependencies {
-                compile gradleApi()
-                compile localGroovy()
+                implementation gradleApi()
+                implementation localGroovy()
             }
         """
     }
@@ -212,4 +213,13 @@ class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
             }
         """
     }
+
+    private String getGradleUserHome() {
+        normalisedPathOf(executer.gradleUserHomeDir)
+    }
+
+    static String normalisedPathOf(File file) {
+        normaliseFileSeparators(file.absolutePath)
+    }
+
 }

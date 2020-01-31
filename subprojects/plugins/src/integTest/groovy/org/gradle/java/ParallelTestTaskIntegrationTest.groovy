@@ -30,7 +30,7 @@ import java.util.concurrent.CountDownLatch
 @IgnoreIf({ !GradleContextualExecuter.isParallel() })
 class ParallelTestTaskIntegrationTest extends AbstractIntegrationSpec {
     String getVersion() {
-        return "1.6"
+        return "1.7"
     }
 
     JavaVersion getJavaVersion() {
@@ -57,7 +57,7 @@ subprojects {
     targetCompatibility = ${version}
 
     ${mavenCentralRepository()}
-    dependencies { testCompile 'junit:junit:4.12' }
+    dependencies { testImplementation 'junit:junit:4.12' }
 
     test {
         doFirst {

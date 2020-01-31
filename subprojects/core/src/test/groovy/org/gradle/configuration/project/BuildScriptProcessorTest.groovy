@@ -15,30 +15,34 @@
  */
 package org.gradle.configuration.project
 
-import org.gradle.api.initialization.dsl.ScriptHandler
+
 import org.gradle.api.internal.initialization.ClassLoaderScope
+import org.gradle.api.internal.initialization.ScriptHandlerInternal
 import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.api.internal.project.ProjectState
 import org.gradle.configuration.ScriptPlugin
 import org.gradle.configuration.ScriptPluginFactory
 import org.gradle.groovy.scripts.ScriptSource
 import spock.lang.Specification
 
-public class BuildScriptProcessorTest extends Specification {
+class BuildScriptProcessorTest extends Specification {
     def project = Mock(ProjectInternal)
     def scriptSource = Mock(ScriptSource)
     def configurerFactory = Mock(ScriptPluginFactory)
     def scriptPlugin = Mock(ScriptPlugin)
     def targetScope = Mock(ClassLoaderScope)
     def baseScope = Mock(ClassLoaderScope)
-    def BuildScriptProcessor buildScriptProcessor = new BuildScriptProcessor(configurerFactory)
-    private ScriptHandler scriptHandler;
+    def projectState = Mock(ProjectState)
+    def buildScriptProcessor = new BuildScriptProcessor(configurerFactory)
+    def scriptHandler = Mock(ScriptHandlerInternal)
 
     def "setup"() {
         _ * project.buildScriptSource >> scriptSource
-        scriptHandler = Mock(ScriptHandler)
         project.getBuildscript() >> scriptHandler
         project.getClassLoaderScope() >> targetScope
         project.getBaseClassLoaderScope() >> baseScope
+        project.getMutationState() >> projectState
+        projectState.withMutableState(_) >> { args -> args[0].run() }
     }
 
     def configuresProjectUsingBuildScript() {

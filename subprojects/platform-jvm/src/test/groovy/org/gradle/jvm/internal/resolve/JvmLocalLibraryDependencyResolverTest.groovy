@@ -22,7 +22,9 @@ import org.gradle.api.artifacts.component.LibraryBinaryIdentifier
 import org.gradle.api.artifacts.component.LibraryComponentSelector
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.specs.ExcludeSpec
 import org.gradle.api.internal.artifacts.type.ArtifactTypeRegistry
+import org.gradle.api.internal.attributes.ImmutableAttributes
 import org.gradle.api.internal.component.ArtifactType
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.project.ProjectRegistry
@@ -37,7 +39,7 @@ import org.gradle.internal.component.model.ComponentArtifactMetadata
 import org.gradle.internal.component.model.ComponentResolveMetadata
 import org.gradle.internal.component.model.ConfigurationMetadata
 import org.gradle.internal.component.model.DependencyMetadata
-import org.gradle.internal.component.model.ModuleSource
+import org.gradle.internal.component.model.ImmutableModuleSources
 import org.gradle.internal.resolve.result.DefaultBuildableArtifactResolveResult
 import org.gradle.internal.resolve.result.DefaultBuildableArtifactSetResolveResult
 import org.gradle.internal.resolve.result.DefaultBuildableComponentIdResolveResult
@@ -66,6 +68,8 @@ import spock.lang.Unroll
 import static org.gradle.util.WrapUtil.toDomainObjectSet
 
 class JvmLocalLibraryDependencyResolverTest extends Specification {
+
+    public static final ExcludeSpec NOTHING = new ModuleExclusions().nothing()
 
     Map<String, Project> projects
     ProjectRegistry<ProjectInternal> projectRegistry
@@ -129,7 +133,7 @@ class JvmLocalLibraryDependencyResolverTest extends Specification {
         def result = new DefaultBuildableComponentIdResolveResult()
 
         when:
-        resolver.resolve(metadata, result)
+        resolver.resolve(metadata, null, null, result)
 
         then:
         result.hasResult()
@@ -137,12 +141,12 @@ class JvmLocalLibraryDependencyResolverTest extends Specification {
             assert result.failure.cause.message =~ failure
         } else {
             assert result.failure == null
-            def md = result.metaData
-            assert md.id.group == selector.projectPath
+            def md = result.metadata
+            assert md.moduleVersionId.group == selector.projectPath
             if (selector.libraryName) {
-                assert md.id.name == selector.libraryName
+                assert md.moduleVersionId.name == selector.libraryName
             } else {
-                assert md.id.name.length() > 0
+                assert md.moduleVersionId.name.length() > 0
             }
         }
 
@@ -175,7 +179,7 @@ class JvmLocalLibraryDependencyResolverTest extends Specification {
         artifact.componentId >> Mock(LibraryBinaryIdentifier)
 
         when:
-        resolver.resolveArtifact(artifact, Mock(ModuleSource), result)
+        resolver.resolveArtifact(artifact, ImmutableModuleSources.of(), result)
 
         then:
         result.hasResult()
@@ -188,7 +192,7 @@ class JvmLocalLibraryDependencyResolverTest extends Specification {
         artifact.componentId >> Mock(ModuleComponentIdentifier)
 
         when:
-        resolver.resolveArtifact(artifact, Mock(ModuleSource), result)
+        resolver.resolveArtifact(artifact, ImmutableModuleSources.of(), result)
 
         then:
         !result.hasResult()
@@ -199,7 +203,7 @@ class JvmLocalLibraryDependencyResolverTest extends Specification {
         def component = Mock(ComponentResolveMetadata)
         def configuration = Mock(ConfigurationMetadata)
         def result = new DefaultBuildableArtifactSetResolveResult()
-        component.componentId >> Mock(LibraryBinaryIdentifier)
+        component.id >> Mock(LibraryBinaryIdentifier)
         configuration.variants >> ([] as Set)
 
         when:
@@ -209,7 +213,7 @@ class JvmLocalLibraryDependencyResolverTest extends Specification {
         result.hasResult()
 
         when:
-        def artifacts = resolver.resolveArtifacts(component, configuration, Stub(ArtifactTypeRegistry), ModuleExclusions.excludeNone())
+        def artifacts = resolver.resolveArtifacts(component, configuration, Stub(ArtifactTypeRegistry), NOTHING, ImmutableAttributes.EMPTY)
 
         then:
         artifacts != null
@@ -220,7 +224,7 @@ class JvmLocalLibraryDependencyResolverTest extends Specification {
         def component = Mock(ComponentResolveMetadata)
         def configuration = Mock(ConfigurationMetadata)
         def result = new DefaultBuildableArtifactSetResolveResult()
-        component.componentId >> Mock(ModuleComponentIdentifier)
+        component.id >> Mock(ModuleComponentIdentifier)
 
         when:
         resolver.resolveArtifactsWithType(component, ArtifactType.SOURCES, result)
@@ -229,7 +233,7 @@ class JvmLocalLibraryDependencyResolverTest extends Specification {
         !result.hasResult()
 
         when:
-        def artifacts = resolver.resolveArtifacts(component, configuration, Stub(ArtifactTypeRegistry), ModuleExclusions.excludeNone())
+        def artifacts = resolver.resolveArtifacts(component, configuration, Stub(ArtifactTypeRegistry), NOTHING, ImmutableAttributes.EMPTY)
 
         then:
         artifacts == null

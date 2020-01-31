@@ -16,8 +16,6 @@
 
 package org.gradle.plugin.use;
 
-import org.gradle.api.Incubating;
-
 /**
  * The DSL for declaring plugins to use in a script.
  * <p>
@@ -30,12 +28,12 @@ import org.gradle.api.Incubating;
  * that can be used to apply a plugin directly to a {@code Project} object or similar.
  * A key difference is that plugins applied via the <code>plugins {}</code> block are conceptually applied to the script, and by extension the script target.
  * At this time there is no observable practical difference between the two approaches with regard to the end result.
- * The <code>plugins {}</code> block is a new, incubating, Gradle feature that will evolve to offer benefits over the {@code apply()} approach.
  * </p>
  * <h3>Strict Syntax</h3>
  * <p>
- * The <code>plugins {}</code> block only allows a strict subset of the full build script programming language.
+ * When used in a build script, the <code>plugins {}</code> block only allows a strict subset of the full build script programming language.
  * Only the API of this type can be used, and values must be literal (e.g. constant strings, not variables).
+ * Interpolated strings are permitted for {@link PluginDependencySpec#version(String)}, however replacement values must be sourced from Gradle properties.
  * Moreover, the <code>plugins {}</code> block must be the first code of a build script.
  * There is one exception to this, in that the {@code buildscript {}} block (used for declaring script dependencies) must precede it.
  * </p>
@@ -72,7 +70,7 @@ import org.gradle.api.Incubating;
  * Core Gradle plugins use the {@code org.gradle} namespace.
  * </p>
  * <p>
- * For the list of available core plugins for a particular Gradle version, please consult the User Guide.
+ * For the list of available core plugins for a particular Gradle version, please consult the user manual.
  * </p>
  * <h4>Community Plugins</h4>
  * <p>
@@ -83,8 +81,17 @@ import org.gradle.api.Incubating;
  * <p>
  * To use a community plugin, the fully qualified id must be specified along with a version.
  * </p>
+ * <h3>Settings Script Usage</h3>
+ * <p>
+ * When used in a settings script, this API sets the default version of a plugin, allowing build scripts to
+ * reference a plugin id without an associated version.
+ * </p>
+ * <p>
+ * Within a settings script, the "Strict Syntax" rules outlined above do not apply. The `plugins` block may contain
+ * arbitrary code, and version Strings may contain property replacements. It is an error to call the `apply` method
+ * with a value other than `false` (the default).
+ * </p>
  */
-@Incubating
 public interface PluginDependenciesSpec {
 
     /**

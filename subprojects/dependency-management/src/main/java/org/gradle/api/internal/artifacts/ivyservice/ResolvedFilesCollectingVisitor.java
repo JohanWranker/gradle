@@ -17,10 +17,10 @@
 package org.gradle.api.internal.artifacts.ivyservice;
 
 import com.google.common.collect.Sets;
-import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactVisitor;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvableArtifact;
+import org.gradle.internal.DisplayName;
 
 import java.io.File;
 import java.util.Collection;
@@ -31,11 +31,11 @@ public class ResolvedFilesCollectingVisitor implements ArtifactVisitor {
     private final Set<Throwable> failures = Sets.newLinkedHashSet();
 
     @Override
-    public void visitArtifact(String variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
+    public void visitArtifact(DisplayName variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
         try {
-            File file = artifact.getFile(); // triggering file resolve
+            File file = artifact.getFile(); // maybe triggering file resolve
             this.files.add(file);
-        } catch (Throwable t) {
+        } catch (Exception t) {
             failures.add(t);
         }
     }
@@ -48,16 +48,6 @@ public class ResolvedFilesCollectingVisitor implements ArtifactVisitor {
     @Override
     public void visitFailure(Throwable failure) {
         failures.add(failure);
-    }
-
-    @Override
-    public boolean includeFiles() {
-        return true;
-    }
-
-    @Override
-    public void visitFile(ComponentArtifactIdentifier artifactIdentifier, String variantName, AttributeContainer variantAttributes, File file) {
-        this.files.add(file);
     }
 
     public Set<File> getFiles() {

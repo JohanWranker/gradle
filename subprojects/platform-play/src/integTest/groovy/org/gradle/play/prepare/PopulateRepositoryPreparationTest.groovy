@@ -43,7 +43,7 @@ allprojects {
         doFirst {
            configurations.all {
                if (it.canBeResolved) {
-                  println "Pre-emptively download all files for configuration \${it.name}"
+                  println "Preemptively download all files for configuration \${it.name}"
                   println it.resolve()*.name
                }
            }
@@ -56,6 +56,6 @@ allprojects {
         run 'resolveAll'
 
         where:
-        playApp << [new BasicPlayApp(), new AdvancedPlayApp(), new PlayAppWithDependencies(), new PlayCompositeBuild(), new WithFailingTestsApp()]
+        playApp << [new BasicPlayApp(versionNumber), new AdvancedPlayApp(versionNumber), new PlayAppWithDependencies(versionNumber), new PlayCompositeBuild(versionNumber), new WithFailingTestsApp(versionNumber)]
     }
 }

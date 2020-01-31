@@ -21,6 +21,7 @@ import org.gradle.integtests.tooling.fixture.TestOutputStream
 import org.gradle.integtests.tooling.fixture.ToolingApiLoggingSpecification
 import org.gradle.integtests.tooling.fixture.ToolingApiVersion
 import org.gradle.tooling.ProjectConnection
+import org.gradle.util.GradleVersion
 import org.gradle.util.RedirectStdOutAndErr
 import org.junit.Rule
 
@@ -28,7 +29,6 @@ class StandardStreamsCrossVersionSpec extends ToolingApiLoggingSpecification {
     @Rule RedirectStdOutAndErr stdOutAndErr = new RedirectStdOutAndErr()
     def escapeHeader = "\u001b["
 
-    @TargetGradleVersion(">=2.3")
     def "logging is not sent to System.out or System.err"() {
         file("build.gradle") << """
 project.logger.error("error log message");
@@ -57,7 +57,6 @@ task log {
         !stdOutAndErr.stdErr.contains("log message")
     }
 
-    @TargetGradleVersion(">=2.3")
     def "logging is not sent to System.out or System.err when using custom output streams"() {
         file("build.gradle") << """
 project.logger.error("error logging");
@@ -90,15 +89,20 @@ task log {
         output.toString().contains("warn logging")
         output.toString().contains("lifecycle logging")
         output.toString().contains("quiet logging")
-        error.toString().contains("error logging")
+        if (targetVersion.baseVersion >= GradleVersion.version('4.7')) {
+            // Changed handling of error log messages
+            output.toString().contains("error logging")
+        } else {
+            error.toString().contains("error logging")
+        }
 
         and:
         !stdOutAndErr.stdOut.contains("logging")
         !stdOutAndErr.stdErr.contains("logging")
     }
 
-    @ToolingApiVersion(">=2.3 <4.0")
-    @TargetGradleVersion(">=2.3 <4.0")
+    @ToolingApiVersion(">=3.0 <4.0")
+    @TargetGradleVersion(">=2.6 <4.0")
     def "can specify color output"() {
         file("build.gradle") << """
 task log {
@@ -124,34 +128,6 @@ task log {
         !stdOutAndErr.stdErr.contains(escapeHeader)
     }
 
-    @ToolingApiVersion(">=2.3")
-    @TargetGradleVersion(">=1.2 <2.3")
-    def "can specify color output when target version does not support colored output"() {
-        file("build.gradle") << """
-task log {
-    outputs.upToDateWhen { true }
-}
-"""
-
-        when:
-        def output = new TestOutputStream()
-        withConnection { ProjectConnection connection ->
-            def build = connection.newBuild()
-            build.standardOutput = output
-            build.colorOutput = true
-            build.forTasks("log")
-            build.run()
-        }
-
-        then:
-        !output.toString().contains(escapeHeader)
-
-        and:
-        !stdOutAndErr.stdOut.contains(escapeHeader)
-        !stdOutAndErr.stdErr.contains(escapeHeader)
-    }
-
-    @ToolingApiVersion(">=2.3")
     def "can specify color output when output is being ignored"() {
         file("build.gradle") << """
 task log {

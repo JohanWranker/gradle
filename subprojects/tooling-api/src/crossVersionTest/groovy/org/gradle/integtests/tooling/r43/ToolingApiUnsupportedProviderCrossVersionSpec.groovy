@@ -18,66 +18,61 @@ package org.gradle.integtests.tooling.r43
 
 import org.gradle.integtests.tooling.fixture.TargetGradleVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiVersion
+import org.gradle.tooling.GradleConnectionException
 
 @ToolingApiVersion("current")
 class ToolingApiUnsupportedProviderCrossVersionSpec extends ToolingApiVersionSpecification {
-    @TargetGradleVersion("<1.2")
-    def "fail in build execution for <1.2 providers"() {
+    @TargetGradleVersion("<2.6")
+    def "fail in build execution for <2.6 providers"() {
         when:
         build()
 
         then:
-        caughtGradleConnectionException = thrown()
-        caughtGradleConnectionException.message.contains("Support for builds using Gradle versions older than 1.2 was removed in tooling API version 3.0. You are currently using Gradle version ${targetDist.version.version}. You should upgrade your Gradle build to use Gradle 1.2 or later.")
+        GradleConnectionException connectionException = thrown()
+        connectionException.message.contains(unsupportedGradleVersion())
     }
 
-    @TargetGradleVersion("<1.2")
-    def "fail in model retrieval for <1.2 providers"() {
+    @TargetGradleVersion("<2.6")
+    def "fail in model retrieval for <2.6 providers"() {
         when:
         getModel()
 
         then:
-        caughtGradleConnectionException = thrown()
-        caughtGradleConnectionException.message.contains("Support for builds using Gradle versions older than 1.2 was removed in tooling API version 3.0. You are currently using Gradle version ${targetDist.version.version}. You should upgrade your Gradle build to use Gradle 1.2 or later.")
+        GradleConnectionException connectionException = thrown()
+        connectionException.message.contains(unsupportedGradleVersion())
     }
 
-    @TargetGradleVersion("<1.2")
-    def "fail in build action execution for <1.2 providers"() {
+    @TargetGradleVersion("<2.6")
+    def "fail in build action execution for <2.6 providers"() {
         when:
         buildAction()
 
         then:
-        caughtGradleConnectionException = thrown()
-        caughtGradleConnectionException.message.contains("The version of Gradle you are using (${targetDist.version.version}) does not support the BuildActionExecuter API. Support for this is available in Gradle 1.8 and all later versions.")
+        GradleConnectionException connectionException = thrown()
+        connectionException.message.contains(unsupportedGradleVersion())
     }
 
-    @TargetGradleVersion(">=1.2 <1.8")
-    def "fail in build action execution for >=1.2 <1.8 providers"() {
-        when:
-        buildAction()
-
-        then:
-        caughtGradleConnectionException = thrown()
-        caughtGradleConnectionException.message == "The version of Gradle you are using (${targetDist.version.version}) does not support the BuildActionExecuter API. Support for this is available in Gradle 1.8 and all later versions."
-    }
-
-    @TargetGradleVersion("<1.2")
-    def "fail in test execution execution for <1.2 providers"() {
+    @TargetGradleVersion("<2.6")
+    def "fail in test execution execution for <2.6 providers"() {
         when:
         testExecution()
 
         then:
-        caughtGradleConnectionException = thrown()
-        caughtGradleConnectionException.message.contains("The version of Gradle you are using (${targetDist.version.version}) does not support the TestLauncher API. Support for this is available in Gradle 2.6 and all later versions.")
+        GradleConnectionException connectionException = thrown()
+        connectionException.message.contains(unsupportedGradleVersion())
     }
 
-    @TargetGradleVersion(">=1.2 <2.6")
-    def "fail in test execution execution for >=1.2 <2.6 providers"() {
+    @TargetGradleVersion("<2.6")
+    def "fail notifying daemons about changed paths for <2.6 providers"() {
         when:
-        testExecution()
+        notifyDaemonsAboutChangedPaths()
 
         then:
-        caughtGradleConnectionException = thrown()
-        caughtGradleConnectionException.message == "The version of Gradle you are using (${targetDist.version.version}) does not support the TestLauncher API. Support for this is available in Gradle 2.6 and all later versions."
+        GradleConnectionException connectionException = thrown()
+        connectionException.message.contains(unsupportedGradleVersion())
+    }
+
+    private static String unsupportedGradleVersion() {
+        "Support for builds using Gradle versions older than 2.6 was removed in tooling API version 5.0. You are currently using Gradle version ${targetDist.version.version}. You should upgrade your Gradle build to use Gradle 2.6 or later."
     }
 }

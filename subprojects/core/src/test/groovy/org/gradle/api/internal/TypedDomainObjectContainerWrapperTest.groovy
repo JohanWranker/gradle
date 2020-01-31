@@ -18,12 +18,12 @@ package org.gradle.api.internal
 
 import org.gradle.api.Action
 import org.gradle.api.Named
-import org.gradle.internal.reflect.DirectInstantiator
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class TypedDomainObjectContainerWrapperTest extends Specification {
 
-    DefaultPolymorphicDomainObjectContainer<Type> parent = new DefaultPolymorphicDomainObjectContainer<Type>(Type, DirectInstantiator.INSTANCE)
+    DefaultPolymorphicDomainObjectContainer<Type> parent = new DefaultPolymorphicDomainObjectContainer<Type>(Type, TestUtil.instantiatorFactory().decorateLenient(), CollectionCallbackActionDecorator.NOOP)
 
     def setup() {
         parent.add(type("typeOne"))
@@ -114,6 +114,24 @@ class TypedDomainObjectContainerWrapperTest extends Specification {
         then:
         container.asList() == [created]
         created.value == "changed"
+    }
+
+    def "register methods delegated to parent"() {
+        given:
+        def container = parent.containerWithType(CreatedSubType)
+        container.register("createdOne")
+        container.register("createdTwo") {
+            it.value = "changed"
+        }
+
+        when:
+        def namedOne = container.named("createdOne")
+        def namedTwo = container.named("createdTwo")
+        then:
+        namedOne.present
+        namedOne.get().value == "original"
+        namedTwo.present
+        namedTwo.get().value == "changed"
     }
 
     def containerHas(def container, String... names) {

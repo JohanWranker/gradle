@@ -16,7 +16,7 @@
 
 package org.gradle.performance.regression.corefeature
 
-import org.gradle.performance.AbstractCrossVersionPerformanceTest
+import org.gradle.performance.AbstractCrossVersionGradleInternalPerformanceTest
 import org.gradle.performance.WithExternalRepository
 import org.gradle.performance.fixture.BuildExperimentInvocationInfo
 import org.gradle.performance.fixture.BuildExperimentListener
@@ -35,7 +35,7 @@ import javax.servlet.ServletResponse
 import javax.servlet.http.HttpServletRequest
 import java.util.concurrent.atomic.AtomicInteger
 
-class ParallelDownloadsPerformanceTest extends AbstractCrossVersionPerformanceTest implements WithExternalRepository {
+class ParallelDownloadsPerformanceTest extends AbstractCrossVersionGradleInternalPerformanceTest implements WithExternalRepository {
     private final static String TEST_PROJECT_NAME = 'springBootApp'
 
     File tmpRepoDir = temporaryFolder.createDir('repository')
@@ -46,6 +46,9 @@ class ParallelDownloadsPerformanceTest extends AbstractCrossVersionPerformanceTe
     }
 
     def setup() {
+        runner.targetVersions = ["6.2-20200108160029+0000"]
+        // Example project requires TaskContainer.register
+        runner.minimumBaseVersion = "4.9"
         runner.warmUpRuns = 5
         runner.runs = 15
         runner.addBuildExperimentListener(new BuildExperimentListenerAdapter() {
@@ -69,8 +72,7 @@ class ParallelDownloadsPerformanceTest extends AbstractCrossVersionPerformanceTe
         given:
         runner.tasksToRun = ['resolveDependencies']
         runner.gradleOpts = ["-Xms1g", "-Xmx1g"]
-        runner.targetVersions = ["4.6-20180125002142+0000"]
-        runner.args = ['-I', 'init.gradle', "-PmirrorPath=${repoDir.absolutePath}", "-PmavenRepoURL=http://localhost:${serverPort}/"]
+        runner.args = ['-I', 'init.gradle', "-PmirrorPath=${repoDir.absolutePath}", "-PmavenRepoURL=http://127.0.0.1:${serverPort}/"]
 
         when:
         def result = runner.run()
@@ -89,8 +91,7 @@ class ParallelDownloadsPerformanceTest extends AbstractCrossVersionPerformanceTe
         given:
         runner.tasksToRun = ['resolveDependencies']
         runner.gradleOpts = ["-Xms1g", "-Xmx1g"]
-        runner.targetVersions = ["4.6-20180125002142+0000"]
-        runner.args = ['-I', 'init.gradle', "-PmirrorPath=${repoDir.absolutePath}", "-PmavenRepoURL=http://localhost:${serverPort}/", '--parallel']
+        runner.args = ['-I', 'init.gradle', "-PmirrorPath=${repoDir.absolutePath}", "-PmavenRepoURL=http://127.0.0.1:${serverPort}/", '--parallel']
 
         when:
         def result = runner.run()

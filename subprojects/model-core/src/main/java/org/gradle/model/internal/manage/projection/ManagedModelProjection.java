@@ -18,7 +18,6 @@ package org.gradle.model.internal.manage.projection;
 
 import com.google.common.base.Optional;
 import groovy.lang.Closure;
-import org.gradle.api.internal.ClosureBackedAction;
 import org.gradle.internal.Cast;
 import org.gradle.internal.typeconversion.TypeConverter;
 import org.gradle.model.internal.core.DefaultModelViewState;
@@ -38,12 +37,13 @@ import org.gradle.model.internal.manage.schema.ScalarCollectionSchema;
 import org.gradle.model.internal.manage.schema.StructSchema;
 import org.gradle.model.internal.manage.schema.extract.ScalarCollectionModelView;
 import org.gradle.model.internal.type.ModelType;
+import org.gradle.util.ClosureBackedAction;
 
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.gradle.internal.reflect.JavaReflectionUtil.hasDefaultToString;
+import static org.gradle.internal.reflect.JavaPropertyReflectionUtil.hasDefaultToString;
 
 public class ManagedModelProjection<M> extends TypeCompatibilityModelProjectionSupport<M> {
 
@@ -76,14 +76,17 @@ public class ManagedModelProjection<M> extends TypeCompatibilityModelProjectionS
                 return modelNode.getPath();
             }
 
+            @Override
             public ModelType<M> getType() {
                 return ManagedModelProjection.this.getType();
             }
 
+            @Override
             public M getInstance() {
                 return proxyFactory.createProxy(new State(), schema, bindings, typeConverter);
             }
 
+            @Override
             public void close() {
                 state.close();
             }

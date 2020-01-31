@@ -19,16 +19,22 @@ package org.gradle.api.initialization;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
 import org.gradle.api.artifacts.DependencySubstitutions;
-import org.gradle.internal.HasInternalProtocol;
 
 /**
  * A build that is to be included in the composite.
  *
  * @since 3.1
  */
-@Incubating
-@HasInternalProtocol
 public interface ConfigurableIncludedBuild extends IncludedBuild {
+
+    /**
+     * Sets the name of the included build.
+     *
+     * @param name the name of the build
+     * @since 6.0
+     */
+    @Incubating
+    void setName(String name);
 
     /**
      * Configures the dependency substitution rules for this included build.

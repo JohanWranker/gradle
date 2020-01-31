@@ -33,9 +33,10 @@ public class ExecOutputHandleRunner implements Runnable {
     private final OutputStream outputStream;
     private final int bufferSize;
     private final CountDownLatch completed;
+    private volatile boolean closed;
 
     public ExecOutputHandleRunner(String displayName, InputStream inputStream, OutputStream outputStream, CountDownLatch completed) {
-        this(displayName, inputStream, outputStream, 2048, completed);
+        this(displayName, inputStream, outputStream, 8192, completed);
     }
 
     ExecOutputHandleRunner(String displayName, InputStream inputStream, OutputStream outputStream, int bufferSize, CountDownLatch completed) {
@@ -46,6 +47,7 @@ public class ExecOutputHandleRunner implements Runnable {
         this.completed = completed;
     }
 
+    @Override
     public void run() {
         try {
             forwardContent();
@@ -55,9 +57,9 @@ public class ExecOutputHandleRunner implements Runnable {
     }
 
     private void forwardContent() {
-        byte[] buffer = new byte[bufferSize];
         try {
-            while (true) {
+            byte[] buffer = new byte[bufferSize];
+            while (!closed) {
                 int nread = inputStream.read(buffer);
                 if (nread < 0) {
                     break;
@@ -67,16 +69,31 @@ public class ExecOutputHandleRunner implements Runnable {
             }
             CompositeStoppable.stoppable(inputStream, outputStream).stop();
         } catch (Throwable t) {
-            LOGGER.error(String.format("Could not %s.", displayName), t);
+            if (!closed && !wasInterrupted(t)) {
+                LOGGER.error(String.format("Could not %s.", displayName), t);
+            }
         }
     }
 
+    /**
+     * This can happen e.g. on IBM JDK when a remote process was terminated. Instead of
+     * returning -1 on the next read() call, it will interrupt the current read call.
+     */
+    private boolean wasInterrupted(Throwable t) {
+        return t instanceof IOException && "Interrupted system call".equals(t.getMessage());
+    }
+
     public void closeInput() throws IOException {
+        disconnect();
         inputStream.close();
     }
 
     @Override
     public String toString() {
         return displayName;
+    }
+
+    public void disconnect() {
+        closed = true;
     }
 }

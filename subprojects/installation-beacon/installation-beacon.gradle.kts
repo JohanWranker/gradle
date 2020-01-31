@@ -1,3 +1,5 @@
+import org.gradle.gradlebuild.unittestandcompile.ModuleType
+
 /*
  * Copyright 2016 the original author or authors.
  *
@@ -13,9 +15,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+plugins {
+    `java-library`
+}
 // This lib should not have any dependencies.
-dependencies {
-    //import dependency constraints
-    compile(project(":distributionsDependencies"))
+gradlebuildJava {
+    moduleType = ModuleType.CORE
 }

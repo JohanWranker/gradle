@@ -15,7 +15,8 @@
  */
 package org.gradle.integtests.resolve.ivy
 
-import org.gradle.integtests.resolve.ComponentMetadataRulesStatusIntegrationTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.resolve.rules.ComponentMetadataRulesStatusIntegrationTest
 import org.gradle.test.fixtures.server.http.IvyHttpRepository
 
 class IvyComponentMetadataRulesStatusIntegrationTest extends ComponentMetadataRulesStatusIntegrationTest {
@@ -42,12 +43,15 @@ repositories {
     def "module with custom status can be resolved by adapting status scheme"() {
         buildFile <<
                 """
+class StatusRule implements ComponentMetadataRule {
+    public void execute(ComponentMetadataContext context) {
+        assert context.details.status == "silver"
+        context.details.statusScheme = ["gold", "silver", "bronze"]
+    }
+}
 dependencies {
     components {
-        all { details ->
-            assert details.status == "silver"
-            details.statusScheme = ["gold", "silver", "bronze"]
-        }
+        all(StatusRule)
     }
 }
 """
@@ -57,20 +61,26 @@ dependencies {
         file('libs').assertHasDescendants('projectA-1.0.jar')
     }
 
+    @ToBeFixedForInstantExecution
     def "resolve fails if status doesn't match default status scheme"() {
         expect:
         fails 'resolve'
         failure.assertHasCause(/Unexpected status 'silver' specified for org.test:projectA:1.0. Expected one of: [integration, milestone, release]/)
     }
 
+    @ToBeFixedForInstantExecution
     def "resolve fails if status doesn't match custom status scheme"() {
         buildFile <<
                 """
+class StatusRule implements ComponentMetadataRule {
+    public void execute(ComponentMetadataContext context) {
+        assert context.details.status == "silver"
+        context.details.statusScheme = ["gold", "bronze"]
+    }
+}
 dependencies {
     components {
-        all { details ->
-            details.statusScheme = ["gold", "bronze"]
-        }
+        all(StatusRule)
     }
 }
 """
@@ -83,11 +93,14 @@ dependencies {
     def "rule can change status"() {
         buildFile <<
                 """
+class StatusRule implements ComponentMetadataRule {
+    public void execute(ComponentMetadataContext context) {
+        context.details.status = "milestone"
+    }
+}
 dependencies {
     components {
-        all { details ->
-            details.status = "milestone"
-        }
+        all(StatusRule)
     }
 }
 """

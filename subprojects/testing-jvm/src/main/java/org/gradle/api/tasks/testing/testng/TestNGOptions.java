@@ -19,11 +19,18 @@ package org.gradle.api.tasks.testing.testng;
 import groovy.lang.MissingMethodException;
 import groovy.lang.MissingPropertyException;
 import groovy.xml.MarkupBuilder;
-import org.gradle.api.Incubating;
+import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.Optional;
+import org.gradle.api.tasks.OutputDirectory;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.testing.TestFrameworkOptions;
 import org.gradle.internal.ErroringAction;
 import org.gradle.internal.IoActions;
 
+import javax.annotation.Nullable;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.StringWriter;
@@ -38,6 +45,8 @@ import java.util.Set;
  */
 public class TestNGOptions extends TestFrameworkOptions {
     public static final String DEFAULT_CONFIG_FAILURE_POLICY = "skip";
+    private static final String DEFAULT_PARALLEL_MODE = null;
+    private static final int DEFAULT_THREAD_COUNT = -1;
 
     private File outputDirectory;
 
@@ -49,9 +58,9 @@ public class TestNGOptions extends TestFrameworkOptions {
 
     private Set<String> listeners = new LinkedHashSet<String>();
 
-    private String parallel;
+    private String parallel = DEFAULT_PARALLEL_MODE;
 
-    private int threadCount = 1;
+    private int threadCount = DEFAULT_THREAD_COUNT;
 
     private boolean useDefaultListeners;
 
@@ -90,6 +99,7 @@ public class TestNGOptions extends TestFrameworkOptions {
         }
     }
 
+    @Internal
     protected File getProjectDir() {
         return projectDir;
     }
@@ -113,7 +123,6 @@ public class TestNGOptions extends TestFrameworkOptions {
                 if (!buildSuiteXml.delete()) {
                     throw new RuntimeException("failed to remove already existing build-suite.xml file");
                 }
-
             }
 
             IoActions.writeTextFile(buildSuiteXml, new ErroringAction<BufferedWriter>() {
@@ -121,13 +130,12 @@ public class TestNGOptions extends TestFrameworkOptions {
                 protected void doExecute(BufferedWriter writer) throws Exception {
                     writer.write("<!DOCTYPE suite SYSTEM \"http://testng.org/testng-1.0.dtd\">");
                     writer.newLine();
-                    writer.write(suiteXmlWriter.toString());
+                    writer.write(getSuiteXml());
                 }
             });
 
             suites.add(buildSuiteXml);
         }
-
 
         return suites;
     }
@@ -173,12 +181,11 @@ public class TestNGOptions extends TestFrameworkOptions {
      *
      * @since 1.11
      */
-    @Incubating
+    @OutputDirectory
     public File getOutputDirectory() {
         return outputDirectory;
     }
 
-    @Incubating
     public void setOutputDirectory(File outputDirectory) {
         this.outputDirectory = outputDirectory;
     }
@@ -186,6 +193,7 @@ public class TestNGOptions extends TestFrameworkOptions {
     /**
      * The set of groups to run.
      */
+    @Input
     public Set<String> getIncludeGroups() {
         return includeGroups;
     }
@@ -197,6 +205,7 @@ public class TestNGOptions extends TestFrameworkOptions {
     /**
      * The set of groups to exclude.
      */
+    @Input
     public Set<String> getExcludeGroups() {
         return excludeGroups;
     }
@@ -208,6 +217,7 @@ public class TestNGOptions extends TestFrameworkOptions {
     /**
      * Option for what to do for other tests that use a configuration step when that step fails. Can be "skip" or "continue", defaults to "skip".
      */
+    @Internal
     public String getConfigFailurePolicy() {
         return configFailurePolicy;
     }
@@ -232,6 +242,7 @@ public class TestNGOptions extends TestFrameworkOptions {
      * }
      * </pre>
      */
+    @Internal
     public Set<String> getListeners() {
         return listeners;
     }
@@ -247,6 +258,8 @@ public class TestNGOptions extends TestFrameworkOptions {
      *
      * If not present, parallel mode will not be selected
      */
+    @Nullable
+    @Internal
     public String getParallel() {
         return parallel;
     }
@@ -258,6 +271,7 @@ public class TestNGOptions extends TestFrameworkOptions {
     /**
      * The number of threads to use for this run. Ignored unless the parallel mode is also specified
      */
+    @Internal
     public int getThreadCount() {
         return threadCount;
     }
@@ -266,6 +280,7 @@ public class TestNGOptions extends TestFrameworkOptions {
         this.threadCount = threadCount;
     }
 
+    @Internal
     public boolean getUseDefaultListeners() {
         return useDefaultListeners;
     }
@@ -293,6 +308,7 @@ public class TestNGOptions extends TestFrameworkOptions {
      * Please refer to the documentation of your version of TestNG what are the default listeners. At the moment of writing this documentation, the default listeners are a set of reporters that
      * generate: TestNG variant of HTML results, TestNG variant of XML results in JUnit format, emailable HTML test report, XML results in TestNG format.
      */
+    @Internal
     public boolean isUseDefaultListeners() {
         return useDefaultListeners;
     }
@@ -304,6 +320,7 @@ public class TestNGOptions extends TestFrameworkOptions {
     /**
      * Sets the default name of the test suite, if one is not specified in a suite XML file or in the source code.
      */
+    @Internal
     public String getSuiteName() {
         return suiteName;
     }
@@ -315,6 +332,7 @@ public class TestNGOptions extends TestFrameworkOptions {
     /**
      * Sets the default name of the test, if one is not specified in a suite XML file or in the source code.
      */
+    @Internal
     public String getTestName() {
         return testName;
     }
@@ -328,6 +346,8 @@ public class TestNGOptions extends TestFrameworkOptions {
      *
      * Note: The suiteXmlFiles can be used in conjunction with the suiteXmlBuilder.
      */
+    @InputFiles
+    @PathSensitive(PathSensitivity.NONE)
     public List<File> getSuiteXmlFiles() {
         return suiteXmlFiles;
     }
@@ -336,6 +356,7 @@ public class TestNGOptions extends TestFrameworkOptions {
         this.suiteXmlFiles = suiteXmlFiles;
     }
 
+    @Internal
     public boolean getPreserveOrder() {
         return preserveOrder;
     }
@@ -348,17 +369,16 @@ public class TestNGOptions extends TestFrameworkOptions {
      *
      * If not present, the order will not be preserved.
      */
-    @Incubating
+    @Internal
     public boolean isPreserveOrder() {
         return preserveOrder;
     }
 
-    @Incubating
     public void setPreserveOrder(boolean preserveOrder) {
         this.preserveOrder = preserveOrder;
     }
 
-    @Incubating
+    @Internal
     public boolean getGroupByInstances() {
         return groupByInstances;
     }
@@ -371,16 +391,27 @@ public class TestNGOptions extends TestFrameworkOptions {
      *
      * If not present, the tests will not be grouped by instances.
      */
-    @Incubating
+    @Internal
     public boolean isGroupByInstances() {
         return groupByInstances;
     }
 
-    @Incubating
     public void setGroupByInstances(boolean groupByInstances) {
         this.groupByInstances = groupByInstances;
     }
 
+    /**
+     * Returns the XML generated using {@link #suiteXmlBuilder()}, if any.
+     *
+     * <p>This property is read-only and exists merely for up-to-date checking.
+     */
+    @Input
+    @Optional
+    protected String getSuiteXml() {
+        return suiteXmlWriter == null ? null : suiteXmlWriter.toString();
+    }
+
+    @Internal
     public StringWriter getSuiteXmlWriter() {
         return suiteXmlWriter;
     }
@@ -389,6 +420,7 @@ public class TestNGOptions extends TestFrameworkOptions {
         this.suiteXmlWriter = suiteXmlWriter;
     }
 
+    @Internal
     public MarkupBuilder getSuiteXmlBuilder() {
         return suiteXmlBuilder;
     }

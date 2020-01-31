@@ -16,17 +16,16 @@
 package org.gradle.internal.logging
 
 import org.gradle.api.logging.LogLevel
+import org.gradle.internal.logging.console.StyledTextOutputBackedRenderer
 import org.gradle.internal.logging.events.LogEvent
-import org.gradle.internal.logging.events.OperationIdentifier
 import org.gradle.internal.logging.events.ProgressCompleteEvent
 import org.gradle.internal.logging.events.ProgressEvent
 import org.gradle.internal.logging.events.ProgressStartEvent
 import org.gradle.internal.logging.events.UpdateNowEvent
-import org.gradle.internal.progress.BuildOperationCategory
+import org.gradle.internal.operations.BuildOperationCategory
+import org.gradle.internal.operations.OperationIdentifier
 import org.gradle.util.TextUtil
 import spock.lang.Specification
-
-import java.text.SimpleDateFormat
 
 abstract class OutputSpecification extends Specification {
 
@@ -41,12 +40,15 @@ abstract class OutputSpecification extends Specification {
      * Returns timestamp representing 10AM today in local time.
      */
     long getTenAm() {
-        return getTime('10:00:00.000')
+        return getTenAmAsDate().getTimeInMillis()
     }
 
-    long getTime(String time) {
-        String today = new SimpleDateFormat("yyyyMMdd").format(new Date())
-        return new SimpleDateFormat('yyyyMMdd HH:mm:ss.SSS').parse(today + ' ' + time).getTime()
+    String getTenAmFormatted() {
+        return getTenAmAsDate().format(StyledTextOutputBackedRenderer.ISO_8601_DATE_TIME_FORMAT)
+    }
+
+    private GregorianCalendar getTenAmAsDate() {
+        new GregorianCalendar(2012, Calendar.JUNE, 11, 10, 0, 0)
     }
 
     LogEvent event(String text) {
@@ -57,7 +59,11 @@ abstract class OutputSpecification extends Specification {
         return new LogEvent(tenAm, 'category', logLevel, text, null)
     }
 
-    LogEvent event(String text, LogLevel logLevel, Object buildOperationId) {
+    LogEvent event(String text, LogLevel logLevel, long buildOperationId) {
+        event(text, logLevel, new OperationIdentifier(buildOperationId))
+    }
+
+    LogEvent event(String text, LogLevel logLevel, OperationIdentifier buildOperationId) {
         return new LogEvent(tenAm, 'category', logLevel, text, null, buildOperationId)
     }
 
@@ -65,7 +71,7 @@ abstract class OutputSpecification extends Specification {
         return new LogEvent(timestamp, 'category', logLevel, text, null)
     }
 
-    LogEvent event(long timestamp, String text, LogLevel logLevel, Object buildOperationId) {
+    LogEvent event(long timestamp, String text, LogLevel logLevel, OperationIdentifier buildOperationId) {
         return new LogEvent(timestamp, 'category', logLevel, text, null, buildOperationId)
     }
 
@@ -90,14 +96,14 @@ abstract class OutputSpecification extends Specification {
     }
 
     ProgressStartEvent start(Map args) {
-        Long parentId = args.containsKey("parentId") ? args.parentId : counter
+        Long parentId = args.containsKey("parentId") ? args.parentId : null
         OperationIdentifier parent = parentId ? new OperationIdentifier(parentId) : null
-        Object buildOperationId = args.containsKey("buildOperationId") ? args.buildOperationId : null
-        Object parentBuildOperationId = args.containsKey("parentBuildOperationId") ? args.parentBuildOperationId : null
+        Object buildOperationId = args.containsKey("buildOperationId") ? new OperationIdentifier(args.buildOperationId) : null
+        boolean buildOperationStart = args.buildOperationStart
         BuildOperationCategory buildOperationCategory = args.containsKey("buildOperationCategory") ? args.buildOperationCategory : BuildOperationCategory.UNCATEGORIZED
         Long id = args.containsKey("id") ? args.id : ++counter
         String category = args.containsKey("category") ? args.category : CATEGORY
-        return new ProgressStartEvent(new OperationIdentifier(id), parent, tenAm, category, args.description, args.shortDescription, args.loggingHeader, args.status, 0, buildOperationId, parentBuildOperationId, buildOperationCategory)
+        return new ProgressStartEvent(new OperationIdentifier(id), parent, tenAm, category, args.description, args.loggingHeader, args.status, 0, buildOperationStart, buildOperationId, buildOperationCategory)
     }
 
     ProgressEvent progress(String status) {
@@ -110,7 +116,7 @@ abstract class OutputSpecification extends Specification {
         return new ProgressCompleteEvent(new OperationIdentifier(id), tenAm, status, false)
     }
 
-    ProgressCompleteEvent complete(Long id, status='STATUS') {
+    ProgressCompleteEvent complete(Long id, status = 'STATUS') {
         new ProgressCompleteEvent(new OperationIdentifier(id), tenAm, status, false)
     }
 

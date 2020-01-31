@@ -36,14 +36,14 @@ public abstract class Units<Q> implements Comparable<Units<Q>> {
      * Creates the base units for a given quantity.
      */
     public static <Q> Units<Q> base(Class<Q> type, String displaySingular) {
-        return new BaseUnits<Q>(type, displaySingular, displaySingular);
+        return new BaseUnits<>(type, displaySingular, displaySingular);
     }
 
     /**
      * Creates the base units for a given quantity.
      */
     public static <Q> Units<Q> base(Class<Q> type, String displaySingular, String displayPlural) {
-        return new BaseUnits<Q>(type, displaySingular, displayPlural);
+        return new BaseUnits<>(type, displaySingular, displayPlural);
     }
 
     protected Class<Q> getType() {
@@ -80,7 +80,7 @@ public abstract class Units<Q> implements Comparable<Units<Q>> {
     }
 
     private static class BaseUnits<Q> extends Units<Q> {
-        private final List<Units<Q>> units = new ArrayList<Units<Q>>();
+        private final List<Units<Q>> units = new ArrayList<>();
 
         protected BaseUnits(Class<Q> type, String displaySingular, String displayPlural) {
             super(type, displaySingular, displayPlural);
@@ -103,7 +103,7 @@ public abstract class Units<Q> implements Comparable<Units<Q>> {
 
         @Override
         public Units<Q> times(long value, String displaySingular, String displayPlural) {
-            return new ScaledUnits<Q>(this, displaySingular, displayPlural, BigDecimal.valueOf(value));
+            return new ScaledUnits<>(this, displaySingular, displayPlural, BigDecimal.valueOf(value));
         }
 
         @Override
@@ -116,6 +116,7 @@ public abstract class Units<Q> implements Comparable<Units<Q>> {
             return BigDecimal.ONE;
         }
 
+        @Override
         public int compareTo(Units<Q> o) {
             if (o == this) {
                 return 0;
@@ -146,7 +147,7 @@ public abstract class Units<Q> implements Comparable<Units<Q>> {
 
         @Override
         public Units<Q> times(long value, String displaySingular, String displayPlural) {
-            return new ScaledUnits<Q>(baseUnits, displaySingular, displayPlural, factor.multiply(BigDecimal.valueOf(value)));
+            return new ScaledUnits<>(baseUnits, displaySingular, displayPlural, factor.multiply(BigDecimal.valueOf(value)));
         }
 
         @Override
@@ -176,6 +177,7 @@ public abstract class Units<Q> implements Comparable<Units<Q>> {
             return factor;
         }
 
+        @Override
         public int compareTo(Units<Q> o) {
             if (o.getType() != getType()) {
                 throw new IllegalArgumentException(String.format("Cannot compare units of %s with units of %s.", getType(), o.getType()));

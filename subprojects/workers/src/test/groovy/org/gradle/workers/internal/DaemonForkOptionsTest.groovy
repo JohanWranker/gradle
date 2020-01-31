@@ -16,17 +16,20 @@
 
 package org.gradle.workers.internal
 
+import org.gradle.api.internal.file.TestFiles
+import org.gradle.internal.classloader.ClassLoaderSpec
 import org.gradle.process.JavaForkOptions
-import org.gradle.process.internal.DefaultJavaForkOptions
 import spock.lang.Specification
 
-import static org.gradle.api.internal.file.TestFiles.*
+import static org.gradle.api.internal.file.TestFiles.execFactory
+import static org.gradle.api.internal.file.TestFiles.systemSpecificAbsolutePath
 
 class DaemonForkOptionsTest extends Specification {
     def "is compatible with itself"() {
+        def spec1 = Mock(ClassLoaderSpec)
+        def spec2 = Mock(ClassLoaderSpec)
         def settings = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar"), new File("lib/lib2.jar")])
-            .sharedPackages(["foo.bar", "foo.baz"])
+            .withClassLoaderStructure(new HierarchicalClassLoaderStructure(spec1).withChild(spec2))
             .keepAliveMode(KeepAliveMode.SESSION)
             .build()
 
@@ -35,91 +38,19 @@ class DaemonForkOptionsTest extends Specification {
     }
 
     def "is compatible with same settings"() {
+        def spec1 = Mock(ClassLoaderSpec)
+        def spec2 = Mock(ClassLoaderSpec)
         def settings1 = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar"), new File("lib/lib2.jar")])
-            .sharedPackages(["foo.bar", "foo.baz"])
+            .withClassLoaderStructure(new HierarchicalClassLoaderStructure(spec1).withChild(spec2))
             .keepAliveMode(KeepAliveMode.SESSION)
             .build()
         def settings2 = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar"), new File("lib/lib2.jar")])
-            .sharedPackages(["foo.bar", "foo.baz"])
+            .withClassLoaderStructure(new HierarchicalClassLoaderStructure(spec1).withChild(spec2))
             .keepAliveMode(KeepAliveMode.SESSION)
             .build()
 
         expect:
         settings1.isCompatibleWith(settings2)
-    }
-
-    def "is compatible with same class path"() {
-        def settings1 = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar"), new File("lib/lib2.jar")])
-            .build()
-        def settings2 = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar"), new File("lib/lib2.jar")])
-            .build()
-
-        expect:
-        settings1.isCompatibleWith(settings2)
-    }
-
-    def "is compatible with subset of class path"() {
-        def settings1 = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar"), new File("lib/lib2.jar")])
-            .build()
-        def settings2 = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar")])
-            .build()
-
-        expect:
-        settings1.isCompatibleWith(settings2)
-    }
-
-    def "is not compatible with different class path"() {
-        def settings1 = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar"), new File("lib/lib2.jar")])
-            .build()
-        def settings2 = daemonForkOptionsBuilder()
-            .classpath([new File("lib/lib1.jar"), new File("lib/lib3.jar")])
-            .build()
-
-        expect:
-        !settings1.isCompatibleWith(settings2)
-    }
-
-    def "is compatible with same set of shared packages"() {
-        def settings1 = daemonForkOptionsBuilder()
-            .sharedPackages(["foo.bar", "foo.baz"])
-            .build()
-        def settings2 = daemonForkOptionsBuilder()
-            .sharedPackages(["foo.bar", "foo.baz"])
-            .build()
-
-        expect:
-        settings1.isCompatibleWith(settings2)
-    }
-
-    def "is compatible with subset of shared packages"() {
-        def settings1 = daemonForkOptionsBuilder()
-            .sharedPackages(["foo.bar", "foo.baz"])
-            .build()
-        def settings2 = daemonForkOptionsBuilder()
-            .sharedPackages(["foo.bar"])
-            .build()
-
-        expect:
-        settings1.isCompatibleWith(settings2)
-    }
-
-    def "is not compatible with different set of shared packages"() {
-        def settings1 = daemonForkOptionsBuilder()
-            .sharedPackages(["foo.bar", "foo.baz"])
-            .build()
-        def settings2 = daemonForkOptionsBuilder()
-            .sharedPackages(["bar.foo", "foo.baz"])
-            .build()
-
-        expect:
-        !settings1.isCompatibleWith(settings2)
     }
 
     def "is compatible with same keep alive modes"() {
@@ -146,13 +77,71 @@ class DaemonForkOptionsTest extends Specification {
         !settings1.isCompatibleWith(settings2)
     }
 
-    def "unspecified class path and shared packages default to empty list"() {
+    def "is not compatible with different classloader structures"() {
+        def spec1 = Mock(ClassLoaderSpec)
+        def spec2 = Mock(ClassLoaderSpec)
+        def spec3 = Mock(ClassLoaderSpec)
+        def spec4 = Mock(ClassLoaderSpec)
+        def settings1 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(new HierarchicalClassLoaderStructure(spec1).withChild(spec2).withChild(spec3))
+                .build()
+        def settings2 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(new HierarchicalClassLoaderStructure(spec1).withChild(spec2).withChild(spec4))
+                .build()
+
+        expect:
+        !settings1.isCompatibleWith(settings2)
+    }
+
+    def "is compatible with the same classloader structure"() {
+        def spec1 = Mock(ClassLoaderSpec)
+        def spec2 = Mock(ClassLoaderSpec)
+        def spec3 = Mock(ClassLoaderSpec)
+        def settings1 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(new HierarchicalClassLoaderStructure(spec1).withChild(spec2).withChild(spec3))
+                .build()
+        def settings2 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(new HierarchicalClassLoaderStructure(spec1).withChild(spec2).withChild(spec3))
+                .build()
+
+        expect:
+        settings1.isCompatibleWith(settings2)
+    }
+
+    def "is compatible when classloader structures are null"() {
+        def settings1 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(null)
+                .build()
+        def settings2 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(null)
+                .build()
+
+        expect:
+        settings1.isCompatibleWith(settings2)
+    }
+
+    def "is not compatible when one classloader structure is null"() {
         when:
-        def options = daemonForkOptionsBuilder().build()
+        def settings1 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(null)
+                .build()
+        def settings2 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(new HierarchicalClassLoaderStructure(Mock(ClassLoaderSpec)))
+                .build()
 
         then:
-        options.classpath == []
-        options.sharedPackages == []
+        !settings1.isCompatibleWith(settings2)
+
+        when:
+        settings1 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(new HierarchicalClassLoaderStructure(Mock(ClassLoaderSpec)))
+                .build()
+        settings2 = daemonForkOptionsBuilder()
+                .withClassLoaderStructure(null)
+                .build()
+
+        then:
+        !settings1.isCompatibleWith(settings2)
     }
 
     def "unspecified keepAlive mode defaults to DAEMON"() {
@@ -164,7 +153,7 @@ class DaemonForkOptionsTest extends Specification {
     }
 
     def "is compatible with compatible java forkOptions"() {
-        def javaForkOptions = new DefaultJavaForkOptions(resolver())
+        def javaForkOptions = TestFiles.execFactory().newJavaForkOptions()
         javaForkOptions.workingDir = systemSpecificAbsolutePath("foo")
         javaForkOptions.minHeapSize = "128m"
         javaForkOptions.maxHeapSize = "1g"
@@ -179,12 +168,12 @@ class DaemonForkOptionsTest extends Specification {
     }
 
     def "is not compatible with incompatible java forkOptions"() {
-        def javaForkOptions1 = new DefaultJavaForkOptions(resolver())
+        def javaForkOptions1 = TestFiles.execFactory().newJavaForkOptions()
         javaForkOptions1.workingDir = systemSpecificAbsolutePath("foo")
         javaForkOptions1.minHeapSize = "128m"
         javaForkOptions1.maxHeapSize = "1g"
         javaForkOptions1.jvmArgs = ["-server", "-verbose:gc"]
-        def javaForkOptions2 = new DefaultJavaForkOptions(resolver())
+        def javaForkOptions2 = TestFiles.execFactory().newJavaForkOptions()
         javaForkOptions2.workingDir = systemSpecificAbsolutePath("foo")
         javaForkOptions2.minHeapSize = "256m"
         javaForkOptions2.maxHeapSize = "1g"
@@ -199,12 +188,12 @@ class DaemonForkOptionsTest extends Specification {
     }
 
     DaemonForkOptionsBuilder daemonForkOptionsBuilder() {
-        def javaForkOptions = new DefaultJavaForkOptions(resolver())
+        def javaForkOptions = TestFiles.execFactory().newJavaForkOptions()
         javaForkOptions.workingDir = systemSpecificAbsolutePath("foo")
         return daemonForkOptionsBuilder(javaForkOptions)
     }
 
     DaemonForkOptionsBuilder daemonForkOptionsBuilder(JavaForkOptions javaForkOptions) {
-        return new DaemonForkOptionsBuilder(resolver()).javaForkOptions(javaForkOptions)
+        return new DaemonForkOptionsBuilder(execFactory()).javaForkOptions(javaForkOptions)
     }
 }

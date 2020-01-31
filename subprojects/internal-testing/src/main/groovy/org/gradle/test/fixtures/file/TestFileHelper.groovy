@@ -28,10 +28,12 @@ import org.apache.tools.ant.types.EnumeratedAttribute
 import org.apache.tools.ant.types.ZipFileSet
 import org.apache.tools.bzip2.CBZip2OutputStream
 
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipInputStream
 
-import static org.hamcrest.Matchers.equalTo
+import static org.hamcrest.CoreMatchers.equalTo
 import static org.junit.Assert.assertThat
 import static org.junit.Assert.assertTrue
 
@@ -61,7 +63,7 @@ class TestFileHelper {
         }
 
         if (nativeTools && isUnix()) {
-            def process = ['unzip', '-o', file.absolutePath, '-d', target.absolutePath].execute()
+            def process = ['unzip', '-q', '-o', file.absolutePath, '-d', target.absolutePath].execute()
             process.consumeProcessOutput(System.out, System.err)
             assertThat(process.waitFor(), equalTo(0))
             return
@@ -129,11 +131,12 @@ class TestFileHelper {
         if (!isUnix()) {
             return
         }
-        int m = toMode(permissions)
-        setMode(m)
+        def perms = PosixFilePermissions.fromString(permissions)
+        Files.setPosixFilePermissions(file.toPath(), perms)
     }
 
     void setMode(int mode) {
+        // TODO: Remove this entirely and use built-in Files.setPosixFilePermissions
         def process = ["chmod", Integer.toOctalString(mode), file.absolutePath].execute()
         def error = process.errorStream.text
         def retval = process.waitFor()
@@ -218,7 +221,7 @@ class TestFileHelper {
 
     public void zipTo(TestFile zipFile, boolean nativeTools, boolean readOnly) {
         if (nativeTools && isUnix()) {
-            def process = ['zip', zipFile.absolutePath, "-r", file.name].execute(null, zipFile.parentFile)
+            def process = ['zip', zipFile.absolutePath, "-r", file.name].execute(null, file.parentFile)
             process.consumeProcessOutput(System.out, System.err)
             assertThat(process.waitFor(), equalTo(0))
         } else {
@@ -247,7 +250,7 @@ class TestFileHelper {
 
     public void tarTo(TestFile tarFile, boolean nativeTools, boolean readOnly) {
         if (nativeTools && isUnix()) {
-            def process = ['tar', "-cf", tarFile.absolutePath, file.name].execute(null, tarFile.parentFile)
+            def process = ['tar', "-cf", tarFile.absolutePath, file.name].execute(null, file.parentFile)
             process.consumeProcessOutput(System.out, System.err)
             assertThat(process.waitFor(), equalTo(0))
         } else {

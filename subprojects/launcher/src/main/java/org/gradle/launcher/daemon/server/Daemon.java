@@ -31,7 +31,7 @@ import org.gradle.launcher.daemon.server.expiry.DaemonExpirationListener;
 import org.gradle.launcher.daemon.server.expiry.DaemonExpirationResult;
 import org.gradle.launcher.daemon.server.expiry.DaemonExpirationStatus;
 import org.gradle.launcher.daemon.server.expiry.DaemonExpirationStrategy;
-import org.gradle.process.internal.shutdown.ShutdownHookActionRegister;
+import org.gradle.process.internal.shutdown.ShutdownHooks;
 
 import java.security.SecureRandom;
 import java.util.Date;
@@ -120,7 +120,7 @@ public class Daemon implements Stoppable {
 
             registryUpdater = new DaemonRegistryUpdater(daemonRegistry, daemonContext, token);
 
-            ShutdownHookActionRegister.addAction(new Runnable() {
+            ShutdownHooks.addShutdownHook(new Runnable() {
                 @Override
                 public void run() {
                     try {
@@ -265,7 +265,6 @@ public class Daemon implements Stoppable {
         public void run() {
             if (lock.tryLock()) {
                 try {
-                    LOGGER.debug("DaemonExpirationPeriodicCheck running");
                     final DaemonExpirationResult result = expirationStrategy.checkExpiration();
                     if (result.getStatus() != DO_NOT_EXPIRE) {
                         listenerBroadcast.onExpirationEvent(result);

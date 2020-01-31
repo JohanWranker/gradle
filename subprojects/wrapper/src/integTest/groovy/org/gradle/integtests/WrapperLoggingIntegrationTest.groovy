@@ -16,19 +16,112 @@
 
 package org.gradle.integtests
 
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
+
 class WrapperLoggingIntegrationTest extends AbstractWrapperIntegrationSpec {
-    def "wrapper does not output anything when executed in quiet mode"() {
+
+    def setup() {
+        file("build.gradle") << "task emptyTask"
+        executer.beforeExecute {
+            withWelcomeMessageEnabled()
+        }
+    }
+
+    def "wrapper does not render welcome message when executed in quiet mode"() {
         given:
-        file("build.gradle") << """
-task emptyTask
-        """
         prepareWrapper()
 
         when:
         args '-q'
-        def result = wrapperExecuter.withTasks("emptyTask").run()
+        result = wrapperExecuter.withTasks("emptyTask").run()
 
         then:
         result.output.empty
+    }
+
+    def "wrapper renders welcome message when executed the first time"() {
+        given:
+        prepareWrapper()
+
+        when:
+        result = wrapperExecuter.withTasks("emptyTask").run()
+
+        then:
+        outputContains("Welcome to Gradle $wrapperExecuter.distribution.version.version!")
+
+        when:
+        result = wrapperExecuter.withTasks("emptyTask").run()
+
+        then:
+        outputDoesNotContain("Welcome to Gradle $wrapperExecuter.distribution.version.version!")
+    }
+
+    def "wrapper renders welcome message when executed the first time after being executed in quiet mode"() {
+        given:
+        prepareWrapper()
+
+        when:
+        args '-q'
+        result = wrapperExecuter.withTasks("emptyTask").run()
+
+        then:
+        result.output.empty
+
+        when:
+        result = wrapperExecuter.withTasks("emptyTask").run()
+
+        then:
+        outputContains("Welcome to Gradle $wrapperExecuter.distribution.version.version!")
+    }
+
+    @Requires(TestPrecondition.NOT_WINDOWS)
+    def "wrapper logs and continues when there is a problem setting permissions"() {
+        given: "malformed distribution"
+        // Repackage distribution with bin/gradle removed so permissions cannot be set
+        TestFile tempUnzipDir = temporaryFolder.createDir("temp-unzip")
+        distribution.binDistribution.unzipTo(tempUnzipDir)
+        assert tempUnzipDir.file("gradle-${distribution.version.version}", "bin", "gradle").delete()
+        TestFile tempZipDir = temporaryFolder.createDir("temp-zip-foo")
+        TestFile malformedDistZip = new TestFile(tempZipDir, "gradle-${distribution.version.version}-bin.zip")
+        tempUnzipDir.zipTo(malformedDistZip)
+        prepareWrapper(malformedDistZip.toURI())
+
+        when:
+        result = wrapperExecuter
+            .withTasks("emptyTask")
+            .run()
+
+        then:
+        outputContains("Could not set executable permissions")
+    }
+
+    def "wrapper prints error and fails build if downloaded zip is empty"() {
+        given: "empty distribution"
+        TestFile tempUnzipDir = temporaryFolder.createDir("empty-distribution")
+        TestFile malformedDistZip = new TestFile(tempUnzipDir, "gradle-${distribution.version.version}-bin.zip") << ""
+        prepareWrapper(malformedDistZip.toURI())
+
+        when:
+        failure = wrapperExecuter
+            .withTasks("emptyTask")
+            .withStackTraceChecksDisabled()
+            .runWithFailure()
+
+        then:
+        failure.assertOutputContains("Could not unzip")
+        failure.assertNotOutput("Could not set executable permissions")
+    }
+
+    def "wrapper prints progress which contains all tenths of percentages except zero"() {
+        given:
+        prepareWrapper()
+
+        when:
+        result = wrapperExecuter.run()
+
+        then:
+        result.getOutputLineThatContains("10%").replaceAll("\\.+", "|") == '|10%|20%|30%|40%|50%|60%|70%|80%|90%|100%'
     }
 }

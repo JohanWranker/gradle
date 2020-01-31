@@ -16,9 +16,11 @@
 package org.gradle.integtests.resolve.ivy
 
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class IvyChangingModuleRemoteResolveIntegrationTest extends AbstractHttpDependencyResolutionTest {
 
+    @ToBeFixedForInstantExecution
     def "detects changed module descriptor when flagged as changing"() {
         given:
         buildFile << """
@@ -79,6 +81,7 @@ task retrieve(type: Copy) {
         file('build').assertHasDescendants('projectA-1.1.jar', 'other-1.1.jar', 'projectB-2.0.jar')
     }
 
+    @ToBeFixedForInstantExecution
     def "can mark a module as changing after first retrieval"() {
         given:
         buildFile << """
@@ -127,6 +130,7 @@ task retrieve(type: Copy) {
         file('build/projectA-1.1.jar').assertHasChangedSince(jarSnapshot)
     }
 
+    @ToBeFixedForInstantExecution
     def "detects changed artifact when flagged as changing"() {
         given:
         buildFile << """
@@ -184,6 +188,7 @@ task retrieve(type: Copy) {
         changedJarFile.assertIsCopyOf(module.jarFile)
     }
 
+    @ToBeFixedForInstantExecution
     def "caches changing module descriptor and artifacts until cache expiry"() {
         given:
         buildFile << """
@@ -259,83 +264,7 @@ task retrieve(type: Copy) {
         jarFile.assertIsCopyOf(module.jarFile)
     }
 
-    def "can use cache-control DSL to mimic changing pattern for ivy repository"() {
-        given:
-        buildFile << """
-repositories {
-    ivy { url "${ivyHttpRepo.uri}" }
-}
-
-configurations { compile }
-
-import static java.util.concurrent.TimeUnit.SECONDS
-configurations.all {
-    resolutionStrategy.resolutionRules.with {
-        eachModule({ moduleResolve ->
-            if (moduleResolve.request.version.endsWith('-CHANGING')) {
-                moduleResolve.cacheFor(0, SECONDS)
-            }
-        } as Action)
-
-        eachArtifact({ artifactResolve ->
-            if (artifactResolve.request.moduleVersionIdentifier.version.endsWith('-CHANGING')) {
-                artifactResolve.cacheFor(0, SECONDS)
-            }
-        } as Action)
-    }
-}
-
-dependencies {
-    compile group: "group", name: "projectA", version: "1-CHANGING"
-}
-
-task retrieve(type: Copy) {
-    into 'build'
-    from configurations.compile
-}
-"""
-
-        when: "Version 1-CHANGING is published"
-        def module = ivyHttpRepo.module("group", "projectA", "1-CHANGING").publish()
-
-        and: "Server handles requests"
-        module.ivy.expectGet()
-        module.jar.expectGet()
-
-        and: "We request 1-CHANGING"
-        run 'retrieve'
-
-        then: "Version 1-CHANGING jar is used"
-        file('build').assertHasDescendants('projectA-1-CHANGING.jar')
-        def jarFile = file('build/projectA-1-CHANGING.jar')
-        jarFile.assertIsCopyOf(module.jarFile)
-        def snapshot = jarFile.snapshot()
-
-        when: "Module meta-data is changed and artifacts are modified"
-        module.artifact([name: 'other'])
-        module.publishWithChangedContent()
-
-        and: "Server handles requests"
-        server.resetExpectations()
-        // Server will be hit to get updated versions
-        module.ivy.expectHead()
-        module.ivy.sha1.expectGet()
-        module.ivy.expectGet()
-        module.jar.expectHead()
-        module.jar.sha1.expectGet()
-        module.jar.expectGet()
-        module.getArtifact(name: 'other').expectGet()
-
-        and: "We request 1-CHANGING again"
-        executer.withArguments()
-        run 'retrieve'
-
-        then: "We get new artifacts based on the new meta-data"
-        file('build').assertHasDescendants('projectA-1-CHANGING.jar', 'other-1-CHANGING.jar')
-        jarFile.assertHasChangedSince(snapshot)
-        jarFile.assertIsCopyOf(module.jarFile)
-    }
-
+    @ToBeFixedForInstantExecution
     def "avoid redownload unchanged artifact when no checksum available"() {
         given:
         buildFile << """

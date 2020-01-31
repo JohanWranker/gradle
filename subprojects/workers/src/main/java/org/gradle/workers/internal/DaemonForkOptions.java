@@ -16,36 +16,22 @@
 
 package org.gradle.workers.internal;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
-import com.google.common.collect.Sets;
 import org.gradle.process.JavaForkOptions;
 import org.gradle.process.internal.JavaForkOptionsInternal;
 
-import java.io.File;
-import java.util.Set;
-
-import static com.google.common.base.Strings.nullToEmpty;
-
 public class DaemonForkOptions {
     private final JavaForkOptionsInternal forkOptions;
-    private final Iterable<File> classpath;
-    private final Iterable<String> sharedPackages;
     private final KeepAliveMode keepAliveMode;
+    private final ClassLoaderStructure classLoaderStructure;
 
-    DaemonForkOptions(JavaForkOptionsInternal forkOptions, Iterable<File> classpath,
-                      Iterable<String> sharedPackages, KeepAliveMode keepAliveMode) {
+    DaemonForkOptions(JavaForkOptionsInternal forkOptions,
+                      KeepAliveMode keepAliveMode,
+                      ClassLoaderStructure classLoaderStructure) {
         this.forkOptions = forkOptions;
-        this.classpath = classpath;
-        this.sharedPackages = sharedPackages;
         this.keepAliveMode = keepAliveMode;
-    }
-
-    public Iterable<File> getClasspath() {
-        return classpath;
-    }
-
-    public Iterable<String> getSharedPackages() {
-        return sharedPackages;
+        this.classLoaderStructure = classLoaderStructure;
     }
 
     public KeepAliveMode getKeepAliveMode() {
@@ -56,40 +42,23 @@ public class DaemonForkOptions {
         return forkOptions;
     }
 
+    public ClassLoaderStructure getClassLoaderStructure() {
+        return classLoaderStructure;
+    }
+
     public boolean isCompatibleWith(DaemonForkOptions other) {
         return forkOptions.isCompatibleWith(other.forkOptions)
-                && getNormalizedClasspath(classpath).containsAll(getNormalizedClasspath(other.getClasspath()))
-                && getNormalizedSharedPackages(sharedPackages).containsAll(getNormalizedSharedPackages(other.sharedPackages))
-                && keepAliveMode == other.getKeepAliveMode();
-    }
-
-    // one way to merge fork options, good for current use case
-    public DaemonForkOptions mergeWith(DaemonForkOptions other) {
-        if (keepAliveMode != other.getKeepAliveMode()) {
-            throw new IllegalArgumentException("Cannot merge a fork options object with a different keep alive mode (this: " + keepAliveMode + ", other: " + other.getKeepAliveMode() + ").");
-        }
-
-        Set<File> mergedClasspath = getNormalizedClasspath(classpath);
-        mergedClasspath.addAll(getNormalizedClasspath(other.classpath));
-        Set<String> mergedAllowedPackages = getNormalizedSharedPackages(sharedPackages);
-        mergedAllowedPackages.addAll(getNormalizedSharedPackages(other.sharedPackages));
-
-        return new DaemonForkOptions(forkOptions.mergeWith(other.forkOptions), mergedClasspath, mergedAllowedPackages, keepAliveMode);
-    }
-
-    private Set<File> getNormalizedClasspath(Iterable<File> classpath) {
-        return Sets.newLinkedHashSet(classpath);
-    }
-
-    private Set<String> getNormalizedSharedPackages(Iterable<String> allowedPackages) {
-        return Sets.newLinkedHashSet(allowedPackages);
-    }
-
-    private String getNormalized(String string) {
-        return nullToEmpty(string).trim();
+                && keepAliveMode == other.getKeepAliveMode()
+                && Objects.equal(classLoaderStructure, other.getClassLoaderStructure());
     }
 
     public String toString() {
-        return Objects.toStringHelper(this).add("executable", forkOptions.getExecutable()).add("minHeapSize", forkOptions.getMinHeapSize()).add("maxHeapSize", forkOptions.getMaxHeapSize()).add("jvmArgs", forkOptions.getJvmArgs()).add("classpath", classpath).add("keepAliveMode", keepAliveMode).toString();
+        return MoreObjects.toStringHelper(this)
+                .add("executable", forkOptions.getExecutable())
+                .add("minHeapSize", forkOptions.getMinHeapSize())
+                .add("maxHeapSize", forkOptions.getMaxHeapSize())
+                .add("jvmArgs", forkOptions.getJvmArgs())
+                .add("keepAliveMode", keepAliveMode)
+                .toString();
     }
 }

@@ -17,7 +17,8 @@
 package org.gradle.language.base
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.hamcrest.Matchers
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.internal.logging.text.DiagnosticsVisitor
 
 class BinariesLifecycleTaskIntegrationTest extends AbstractIntegrationSpec {
     def setup() {
@@ -41,7 +42,7 @@ class BinariesLifecycleTaskIntegrationTest extends AbstractIntegrationSpec {
                         }
 
                         @Override
-                        public void explain(org.gradle.util.TreeVisitor<? super String> visitor) {
+                        public void explain(${DiagnosticsVisitor.name} visitor) {
                             visitor.node("Binary \${name} has 'notBuildable' in the name")
                         }
                     };
@@ -59,6 +60,7 @@ class BinariesLifecycleTaskIntegrationTest extends AbstractIntegrationSpec {
         """
     }
 
+    @ToBeFixedForInstantExecution
     def "produces sensible error when there are component binaries and all are not buildable" () {
         withLibBinaries("notBuildableBinary1", "notBuildableBinary2")
         withStandaloneBinaries("ignoreMe")
@@ -68,11 +70,11 @@ class BinariesLifecycleTaskIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         failureDescriptionContains("Execution failed for task ':assemble'.")
-        failure.assertThatCause(Matchers.<String>allOf(
-            Matchers.startsWith("No buildable binaries found:"),
-            Matchers.containsString("SampleBinary 'lib:notBuildableBinary1': Binary notBuildableBinary1 has 'notBuildable' in the name"),
-            Matchers.containsString("SampleBinary 'lib:notBuildableBinary2': Binary notBuildableBinary2 has 'notBuildable' in the name")
-        ))
+        failure.assertHasCause("""No buildable binaries found:
+  - SampleBinary 'lib:notBuildableBinary1':
+      - Binary notBuildableBinary1 has 'notBuildable' in the name
+  - SampleBinary 'lib:notBuildableBinary2':
+      - Binary notBuildableBinary2 has 'notBuildable' in the name""")
     }
 
     def "builds those component binaries that are buildable and skips those that are not" () {
@@ -91,6 +93,7 @@ class BinariesLifecycleTaskIntegrationTest extends AbstractIntegrationSpec {
         result.assertTasksExecuted(":libBuildableBinary1", ":libBuildableBinary2", ":assemble", ":check", ":build")
     }
 
+    @ToBeFixedForInstantExecution
     def "does not produce error when assemble task has other dependencies" () {
         withLibBinaries("notBuildableBinary")
         buildFile << """

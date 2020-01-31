@@ -42,6 +42,14 @@
             <tr>
                 <td>fromArchiveEntry</td>
             </tr>
+
+            <tr>
+                <td>fromUri</td>
+            </tr>
+
+            <tr>
+                <td>fromInsecureUri</td>
+            </tr>
         </table>
     </section>
 </section>

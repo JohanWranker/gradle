@@ -52,20 +52,27 @@ public class ForwardStdinStreamsHandler implements StreamsHandler {
         standardInputWriter = new ExecOutputHandleRunner("write standard input to " + processName, instr, process.getOutputStream(), completed);
     }
 
+    @Override
     public void start() {
         executor.execute(standardInputWriter);
     }
 
+    @Override
     public void stop() {
+        disconnect();
+        try {
+            completed.await();
+        } catch (InterruptedException e) {
+            throw UncheckedException.throwAsUncheckedException(e);
+        }
+    }
+
+    @Override
+    public void disconnect() {
         try {
             standardInputWriter.closeInput();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
-        }
-        try {
-            completed.await();
-        } catch (InterruptedException e) {
-            throw new UncheckedException(e);
         }
     }
 }

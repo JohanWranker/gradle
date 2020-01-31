@@ -15,28 +15,27 @@
  */
 package org.gradle.launcher.daemon.client
 
+import org.gradle.api.internal.file.TestFiles
 import org.gradle.initialization.BuildLayoutParameters
+import org.gradle.internal.logging.services.LoggingServiceRegistry
 import org.gradle.internal.service.ServiceRegistryBuilder
-import org.gradle.internal.service.scopes.GlobalScopeServices
+import org.gradle.internal.service.scopes.BasicGlobalScopeServices
 import org.gradle.launcher.daemon.configuration.DaemonParameters
 import org.gradle.launcher.daemon.context.DaemonContext
 import org.gradle.launcher.daemon.registry.DaemonRegistry
 import org.gradle.launcher.daemon.registry.PersistentDaemonRegistry
-import org.gradle.internal.logging.services.LoggingServiceRegistry
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.testfixtures.internal.NativeServicesTestFixture
-import org.gradle.util.UsesNativeServices
 import org.junit.Rule
 import spock.lang.Specification
 
-@UsesNativeServices
 class DaemonClientServicesTest extends Specification {
     @Rule TestNameTestDirectoryProvider tmp = new TestNameTestDirectoryProvider()
-    final DaemonParameters parameters = new DaemonParameters(new BuildLayoutParameters()).setBaseDir(tmp.testDirectory)
+    final DaemonParameters parameters = new DaemonParameters(new BuildLayoutParameters(), TestFiles.fileCollectionFactory()).setBaseDir(tmp.testDirectory)
     final parentServices = ServiceRegistryBuilder.builder()
             .parent(LoggingServiceRegistry.newEmbeddableLogging())
             .parent(NativeServicesTestFixture.instance)
-            .provider(new GlobalScopeServices(false))
+            .provider(new BasicGlobalScopeServices())
             .provider(new DaemonClientGlobalServices())
             .build()
     final services = new DaemonClientServices(parentServices, parameters, System.in)

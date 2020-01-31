@@ -16,8 +16,14 @@
 
 package org.gradle.internal.resolve.result;
 
+import org.gradle.api.Action;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelector;
+import org.gradle.api.internal.artifacts.repositories.ArtifactResolutionDetails;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.resolve.ModuleVersionResolveException;
+import org.gradle.internal.resolve.RejectedByAttributesVersion;
+import org.gradle.internal.resolve.RejectedByRuleVersion;
 
 /**
  * The result of resolving some dynamic version selector to a particular component id.
@@ -41,10 +47,36 @@ public interface ComponentSelectionContext {
     /**
      * Adds a candidate version that did not match the provided selector.
      */
-    void notMatched(String candidateVersion);
+    void notMatched(ModuleComponentIdentifier id, VersionSelector requestedVersionMatcher);
 
     /**
      * Adds a candidate version that matched the provided selector, but was rejected by some rule.
      */
-    void rejected(String version);
+    void rejectedByRule(RejectedByRuleVersion id);
+
+    /**
+     * Adds a candidate version that matched the provided selector, but was rejected by some constraint.
+     */
+    void rejectedBySelector(ModuleComponentIdentifier id, VersionSelector versionSelector);
+
+    /**
+     * Adds a candidate that matched the provided selector, but was rejected because it didn't match the consumer attributes.
+     * @param rejectedVersion a version rejected by attribute matching
+     */
+    void doesNotMatchConsumerAttributes(RejectedByAttributesVersion rejectedVersion);
+
+    /**
+     * Returns the repository content filter, if any.
+     */
+    Action<? super ArtifactResolutionDetails> getContentFilter();
+
+    /**
+     * Returns the name of the configuration being resolved
+     */
+    String getConfigurationName();
+
+    /**
+     * Returns the consumer attributes
+     */
+    ImmutableAttributes getConsumerAttributes();
 }

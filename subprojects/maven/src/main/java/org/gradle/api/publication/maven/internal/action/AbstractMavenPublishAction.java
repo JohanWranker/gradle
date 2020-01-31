@@ -16,8 +16,6 @@
 
 package org.gradle.api.publication.maven.internal.action;
 
-import org.apache.maven.model.Model;
-import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.apache.maven.repository.internal.MavenRepositorySystemSession;
 import org.apache.maven.repository.internal.SnapshotMetadataGeneratorFactory;
 import org.apache.maven.repository.internal.VersionsMetadataGeneratorFactory;
@@ -29,7 +27,12 @@ import org.codehaus.plexus.classworlds.ClassWorld;
 import org.codehaus.plexus.classworlds.realm.ClassRealm;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.gradle.api.GradleException;
+import org.gradle.api.publish.maven.internal.publisher.MavenProjectIdentity;
 import org.gradle.internal.UncheckedException;
+import org.gradle.internal.operations.BuildOperationRef;
+import org.gradle.internal.operations.CurrentBuildOperationRef;
+import org.gradle.internal.resource.UriTextResource;
+import org.sonatype.aether.ConfigurationProperties;
 import org.sonatype.aether.RepositoryException;
 import org.sonatype.aether.RepositorySystem;
 import org.sonatype.aether.RepositorySystemSession;
@@ -42,8 +45,6 @@ import org.sonatype.aether.util.DefaultRepositorySystemSession;
 import org.sonatype.aether.util.artifact.DefaultArtifact;
 
 import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,40 +53,36 @@ import java.util.List;
 abstract class AbstractMavenPublishAction implements MavenPublishAction {
     private final PlexusContainer container;
     private final DefaultRepositorySystemSession session;
+    private final MavenProjectIdentity projectIdentity;
 
     private final List<Artifact> attached = new ArrayList<Artifact>();
-    private final Artifact pomArtifact;
-    private final Artifact metadataArtifact;
+    private Artifact pomArtifact;
     private Artifact mainArtifact;
-    private SnapshotVersionManager snapshotVersionManager = new SnapshotVersionManager();
 
-    protected AbstractMavenPublishAction(File pomFile, File metadataFile, List<File> wagonJars) {
+    protected AbstractMavenPublishAction(String packaging, MavenProjectIdentity projectIdentity, List<File> wagonJars) {
         container = newPlexusContainer(wagonJars);
         session = new MavenRepositorySystemSession();
-        session.setTransferListener(new LoggingMavenTransferListener());
+        this.projectIdentity = projectIdentity;
 
-        Model pom = parsePom(pomFile);
-        pomArtifact = new DefaultArtifact(pom.getGroupId(), pom.getArtifactId(), "pom", pom.getVersion()).setFile(pomFile);
-        metadataArtifact = toGradleMetadataArtifact(pom, metadataFile);
-        mainArtifact = createTypedArtifact(pom.getPackaging(), null);
-    }
+        CurrentBuildOperationRef currentBuildOperationRef = CurrentBuildOperationRef.instance();
+        BuildOperationRef currentBuildOperation = currentBuildOperationRef.get();
+        session.getConfigProperties().put(ConfigurationProperties.USER_AGENT, UriTextResource.getUserAgentString());
+        session.setTransferListener(new LoggingMavenTransferListener(currentBuildOperationRef, currentBuildOperation));
 
-    private Artifact toGradleMetadataArtifact(Model pom, File metadataFile) {
-        if (metadataFile == null || !metadataFile.exists()) {
-            // possible if experimental features are disabled
-            return null;
-        }
-        return new DefaultArtifact(pom.getGroupId(), pom.getArtifactId(), "module", pom.getVersion()).setFile(metadataFile);
+        pomArtifact = new DefaultArtifact(projectIdentity.getGroupId().get(), projectIdentity.getArtifactId().get(), "pom", projectIdentity.getVersion().get());
+        mainArtifact = createTypedArtifact(packaging, null);
     }
 
     public void setLocalMavenRepositoryLocation(File localMavenRepository) {
         session.setLocalRepositoryManager(new SimpleLocalRepositoryManager(localMavenRepository));
     }
 
-    public void produceLegacyMavenMetadata() {
-        session.getConfigProperties().put("maven.metadata.legacy", "true");
+    @Override
+    public void setPomArtifact(File file) {
+        pomArtifact = pomArtifact.setFile(file);
     }
 
+    @Override
     public void setMainArtifact(File file) {
         mainArtifact = mainArtifact.setFile(file);
     }
@@ -95,15 +92,13 @@ abstract class AbstractMavenPublishAction implements MavenPublishAction {
         attached.add(createTypedArtifact(type, classifier).setFile(file));
     }
 
+    @Override
     public void publish() {
         List<Artifact> artifacts = new ArrayList<Artifact>();
         if (mainArtifact.getFile() != null) {
             artifacts.add(mainArtifact);
         }
         artifacts.add(pomArtifact);
-        if (metadataArtifact != null) {
-            artifacts.add(metadataArtifact);
-        }
         for (Artifact artifact : attached) {
             File file = artifact.getFile();
             if (file != null && file.isFile()) {
@@ -134,9 +129,7 @@ abstract class AbstractMavenPublishAction implements MavenPublishAction {
                 }
             }
             return new DefaultPlexusContainer(new DefaultContainerConfiguration().setRealm(classRealm));
-        } catch (PlexusContainerException e) {
-            throw UncheckedException.throwAsUncheckedException(e);
-        } catch (MalformedURLException e) {
+        } catch (PlexusContainerException | MalformedURLException e) {
             throw UncheckedException.throwAsUncheckedException(e);
         }
     }
@@ -150,26 +143,9 @@ abstract class AbstractMavenPublishAction implements MavenPublishAction {
             deployer.setMetadataFactories(null);
             deployer.addMetadataGeneratorFactory(new VersionsMetadataGeneratorFactory());
             deployer.addMetadataGeneratorFactory(new SnapshotMetadataGeneratorFactory());
-            deployer.addMetadataGeneratorFactory(snapshotVersionManager);
             return container.lookup(RepositorySystem.class);
         } catch (ComponentLookupException e) {
             throw UncheckedException.throwAsUncheckedException(e);
-        }
-    }
-
-    private Model parsePom(File pomFile) {
-        FileReader reader = null;
-        try {
-            reader = new FileReader(pomFile);
-            return new MavenXpp3Reader().read(reader, false);
-        } catch (Exception e) {
-            throw UncheckedException.throwAsUncheckedException(e);
-        } finally {
-            try {
-                reader.close();
-            } catch (IOException e) {
-                throw UncheckedException.throwAsUncheckedException(e);
-            }
         }
     }
 
@@ -182,10 +158,6 @@ abstract class AbstractMavenPublishAction implements MavenPublishAction {
                 classifier = stereotype.getClassifier();
             }
         }
-        return new DefaultArtifact(pomArtifact.getGroupId(), pomArtifact.getArtifactId(), classifier, extension, pomArtifact.getVersion());
-    }
-
-    public void setUniqueVersion(boolean uniqueVersion) {
-        snapshotVersionManager.setUniqueVersion(uniqueVersion);
+        return new DefaultArtifact(projectIdentity.getGroupId().get(), projectIdentity.getArtifactId().get(), classifier, extension, projectIdentity.getVersion().get());
     }
 }

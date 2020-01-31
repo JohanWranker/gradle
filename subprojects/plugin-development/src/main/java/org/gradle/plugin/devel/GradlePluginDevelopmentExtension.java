@@ -17,7 +17,6 @@
 package org.gradle.plugin.devel;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.Project;
 import org.gradle.api.tasks.SourceSet;
@@ -36,6 +35,11 @@ import java.util.Set;
  * <pre class='autoTested'>
  *     apply plugin: "java-gradle-plugin"
  *
+ *     sourceSets {
+ *         customMain
+ *         functionalTest
+ *     }
+ *
  *     gradlePlugin {
  *         pluginSourceSet project.sourceSets.customMain
  *         testSourceSets project.sourceSets.functionalTest
@@ -51,7 +55,6 @@ import java.util.Set;
  * @see org.gradle.plugin.devel.plugins.JavaGradlePluginPlugin
  * @since 2.13
  */
-@Incubating
 public class GradlePluginDevelopmentExtension {
 
     private SourceSet pluginSourceSet;

@@ -15,134 +15,77 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.modulecache.dynamicversions;
 
-import com.google.common.collect.Maps;
-import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
-import org.gradle.api.internal.artifacts.ivyservice.CacheLockingManager;
-import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ModuleComponentRepository;
+import org.gradle.api.internal.artifacts.ivyservice.ArtifactCacheLockingManager;
 import org.gradle.cache.PersistentIndexedCache;
 import org.gradle.internal.serialize.AbstractSerializer;
 import org.gradle.internal.serialize.Decoder;
 import org.gradle.internal.serialize.Encoder;
 import org.gradle.util.BuildCommencedTimeProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Set;
 
-public class DefaultModuleVersionsCache implements ModuleVersionsCache {
-    private static final Logger LOGGER = LoggerFactory.getLogger(DefaultModuleVersionsCache.class);
+public class DefaultModuleVersionsCache extends AbstractModuleVersionsCache {
 
-    private final BuildCommencedTimeProvider timeProvider;
-    private final CacheLockingManager cacheLockingManager;
+    private final ArtifactCacheLockingManager artifactCacheLockingManager;
     private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
 
-    private final Map<ModuleKey, ModuleVersionsCacheEntry> inMemoryCache = Maps.newConcurrentMap();
-    private PersistentIndexedCache<ModuleKey, ModuleVersionsCacheEntry> cache;
+    private PersistentIndexedCache<ModuleAtRepositoryKey, ModuleVersionsCacheEntry> cache;
 
-    public DefaultModuleVersionsCache(BuildCommencedTimeProvider timeProvider, CacheLockingManager cacheLockingManager, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
-        this.timeProvider = timeProvider;
-        this.cacheLockingManager = cacheLockingManager;
+    public DefaultModuleVersionsCache(BuildCommencedTimeProvider timeProvider, ArtifactCacheLockingManager artifactCacheLockingManager, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
+        super(timeProvider);
+        this.artifactCacheLockingManager = artifactCacheLockingManager;
         this.moduleIdentifierFactory = moduleIdentifierFactory;
     }
 
-    private PersistentIndexedCache<ModuleKey, ModuleVersionsCacheEntry> getCache() {
+    private PersistentIndexedCache<ModuleAtRepositoryKey, ModuleVersionsCacheEntry> getCache() {
         if (cache == null) {
             cache = initCache();
         }
         return cache;
     }
 
-    private PersistentIndexedCache<ModuleKey, ModuleVersionsCacheEntry> initCache() {
-        return cacheLockingManager.createCache("module-versions", new ModuleKeySerializer(moduleIdentifierFactory), new ModuleVersionsCacheEntrySerializer());
+    private PersistentIndexedCache<ModuleAtRepositoryKey, ModuleVersionsCacheEntry> initCache() {
+        return artifactCacheLockingManager.createCache("module-versions", new ModuleKeySerializer(moduleIdentifierFactory), new ModuleVersionsCacheEntrySerializer());
     }
 
-    public void cacheModuleVersionList(ModuleComponentRepository repository, ModuleIdentifier moduleId, Set<String> listedVersions) {
-        LOGGER.debug("Caching version list in module versions cache: Using '{}' for '{}'", listedVersions, moduleId);
-        ModuleKey key = createKey(repository, moduleId);
-        ModuleVersionsCacheEntry entry = createEntry(listedVersions);
-        inMemoryCache.put(key, entry);
+    @Override
+    protected void store(ModuleAtRepositoryKey key, ModuleVersionsCacheEntry entry) {
         getCache().put(key, entry);
     }
 
-    public CachedModuleVersionList getCachedModuleResolution(ModuleComponentRepository repository, ModuleIdentifier moduleId) {
-        ModuleKey key = createKey(repository, moduleId);
-
-        ModuleVersionsCacheEntry inMemoryEntry = inMemoryCache.get(key);
-        if (inMemoryEntry != null) {
-            return versionList(inMemoryEntry);
-        }
-
-        ModuleVersionsCacheEntry cachedEntry = getCache().get(key);
-        if (cachedEntry != null) {
-            inMemoryCache.put(key, cachedEntry);
-            return versionList(cachedEntry);
-        }
-
-        return null;
+    @Override
+    protected ModuleVersionsCacheEntry get(ModuleAtRepositoryKey key) {
+        return getCache().get(key);
     }
 
-    private CachedModuleVersionList versionList(ModuleVersionsCacheEntry moduleVersionsCacheEntry) {
-        return new DefaultCachedModuleVersionList(moduleVersionsCacheEntry, timeProvider);
-    }
-
-    private ModuleKey createKey(ModuleComponentRepository repository, ModuleIdentifier moduleId) {
-        return new ModuleKey(repository.getId(), moduleId);
-    }
-
-    private ModuleVersionsCacheEntry createEntry(Set<String> listedVersions) {
-        return new ModuleVersionsCacheEntry(listedVersions, timeProvider.getCurrentTime());
-    }
-
-    private static class ModuleKey {
-        private final String repositoryId;
-        private final ModuleIdentifier moduleId;
-
-        private ModuleKey(String repositoryId, ModuleIdentifier moduleId) {
-            this.repositoryId = repositoryId;
-            this.moduleId = moduleId;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (o == null || !(o instanceof ModuleKey)) {
-                return false;
-            }
-            ModuleKey other = (ModuleKey) o;
-            return repositoryId.equals(other.repositoryId) && moduleId.equals(other.moduleId);
-        }
-
-        @Override
-        public int hashCode() {
-            return repositoryId.hashCode() ^ moduleId.hashCode();
-        }
-    }
-
-    private static class ModuleKeySerializer extends AbstractSerializer<ModuleKey> {
+    private static class ModuleKeySerializer extends AbstractSerializer<ModuleAtRepositoryKey> {
         private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
 
         private ModuleKeySerializer(ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
             this.moduleIdentifierFactory = moduleIdentifierFactory;
         }
 
-        public void write(Encoder encoder, ModuleKey value) throws Exception {
+        @Override
+        public void write(Encoder encoder, ModuleAtRepositoryKey value) throws Exception {
             encoder.writeString(value.repositoryId);
             encoder.writeString(value.moduleId.getGroup());
             encoder.writeString(value.moduleId.getName());
         }
 
-        public ModuleKey read(Decoder decoder) throws Exception {
+        @Override
+        public ModuleAtRepositoryKey read(Decoder decoder) throws Exception {
             String resolverId = decoder.readString();
             String group = decoder.readString();
             String module = decoder.readString();
-            return new ModuleKey(resolverId, moduleIdentifierFactory.module(group, module));
+            return new ModuleAtRepositoryKey(resolverId, moduleIdentifierFactory.module(group, module));
         }
     }
 
     private static class ModuleVersionsCacheEntrySerializer extends AbstractSerializer<ModuleVersionsCacheEntry> {
 
+        @Override
         public void write(Encoder encoder, ModuleVersionsCacheEntry value) throws Exception {
             Set<String> versions = value.moduleVersionListing;
             encoder.writeInt(versions.size());
@@ -152,6 +95,7 @@ public class DefaultModuleVersionsCache implements ModuleVersionsCache {
             encoder.writeLong(value.createTimestamp);
         }
 
+        @Override
         public ModuleVersionsCacheEntry read(Decoder decoder) throws Exception {
             int size = decoder.readInt();
             Set<String> versions = new LinkedHashSet<String>();

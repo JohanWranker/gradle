@@ -22,11 +22,6 @@ import org.gradle.nativeplatform.fixtures.app.XCTestSourceFileElement
 
 class SwiftXCTestWithoutComponentIntegrationTest extends AbstractSwiftXCTestIntegrationTest {
     @Override
-    protected String[] getTaskToAssembleComponentUnderTest() {
-        return []
-    }
-
-    @Override
     protected String[] getTasksToCompileComponentUnderTest() {
         return []
     }
@@ -48,5 +43,10 @@ class SwiftXCTestWithoutComponentIntegrationTest extends AbstractSwiftXCTestInte
         buildFile << """
             apply plugin: 'xctest'
         """
+    }
+
+    @Override
+    protected String getComponentUnderTestDsl() {
+        return null
     }
 }

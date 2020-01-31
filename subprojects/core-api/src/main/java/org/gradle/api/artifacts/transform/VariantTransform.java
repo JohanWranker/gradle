@@ -18,15 +18,15 @@ package org.gradle.api.artifacts.transform;
 
 import org.gradle.api.Action;
 import org.gradle.api.ActionConfiguration;
-import org.gradle.api.Incubating;
 import org.gradle.api.attributes.AttributeContainer;
 
 /**
  * Registration of an variant transform.
  *
  * @since 3.5
+ * @deprecated Use {@link TransformSpec} instead.
  */
-@Incubating
+@Deprecated
 public interface VariantTransform {
     /**
      * Attributes that match the variant that is consumed.

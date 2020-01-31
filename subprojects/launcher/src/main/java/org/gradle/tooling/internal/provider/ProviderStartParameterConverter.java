@@ -15,7 +15,6 @@
  */
 package org.gradle.tooling.internal.provider;
 
-import org.gradle.StartParameter;
 import org.gradle.TaskExecutionRequest;
 import org.gradle.api.internal.StartParameterInternal;
 import org.gradle.cli.CommandLineArgumentException;
@@ -53,7 +52,7 @@ class ProviderStartParameterConverter {
         return requests;
     }
 
-    public StartParameter toStartParameter(ProviderOperationParameters parameters, Map<String, String> properties) {
+    public StartParameterInternal toStartParameter(ProviderOperationParameters parameters, Map<String, String> properties) {
         // Important that this is constructed on the client so that it has the right gradleHomeDir and other state internally
         StartParameterInternal startParameter = new StartParameterInternal();
 
@@ -82,22 +81,18 @@ class ProviderStartParameterConverter {
                     + "\n" + e.getMessage()
                     + "\nEither it is not a valid build option or it is not supported in the target Gradle version."
                     + "\nNot all of the Gradle command line options are supported build arguments."
-                    + "\nExamples of supported build arguments: '--info', '-u', '-p'."
+                    + "\nExamples of supported build arguments: '--info', '-p'."
                     + "\nExamples of unsupported build options: '--daemon', '-?', '-v'."
                     + "\nPlease find more information in the javadoc for the BuildLauncher class.", e);
             }
         }
 
         if (parameters.isSearchUpwards() != null) {
-            startParameter.setSearchUpwards(parameters.isSearchUpwards());
+            startParameter.setSearchUpwardsWithoutDeprecationWarning(parameters.isSearchUpwards());
         }
 
         if (parameters.getBuildLogLevel() != null) {
             startParameter.setLogLevel(parameters.getBuildLogLevel());
-        }
-
-        if (parameters.getStandardInput() != null) {
-            startParameter.setInteractive(true);
         }
 
         return startParameter;

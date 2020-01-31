@@ -18,7 +18,6 @@ package org.gradle.api.tasks.javadoc;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.tasks.CacheableTask;
@@ -35,6 +34,7 @@ import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.javadoc.internal.JavadocSpec;
 import org.gradle.external.javadoc.MinimalJavadocOptions;
 import org.gradle.external.javadoc.StandardJavadocDocletOptions;
+import org.gradle.internal.file.Deleter;
 import org.gradle.jvm.internal.toolchain.JavaToolChainInternal;
 import org.gradle.jvm.platform.JavaPlatform;
 import org.gradle.jvm.platform.internal.DefaultJavaPlatform;
@@ -46,6 +46,8 @@ import org.gradle.util.GUtil;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -103,7 +105,12 @@ public class Javadoc extends SourceTask {
 
     @TaskAction
     protected void generate() {
-        final File destinationDir = getDestinationDir();
+        File destinationDir = getDestinationDir();
+        try {
+            getDeleter().ensureEmptyDirectory(destinationDir);
+        } catch (IOException ex) {
+            throw new UncheckedIOException(ex);
+        }
 
         StandardJavadocDocletOptions options = new StandardJavadocDocletOptions((StandardJavadocDocletOptions) getOptions());
 
@@ -169,7 +176,7 @@ public class Javadoc extends SourceTask {
     /**
      * Returns the tool chain that will be used to generate the Javadoc.
      */
-    @Incubating @Inject
+    @Inject
     public JavaToolChain getToolChain() {
         // Implementation is generated
         throw new UnsupportedOperationException();
@@ -178,7 +185,6 @@ public class Javadoc extends SourceTask {
     /**
      * Sets the tool chain to use to generate the Javadoc.
      */
-    @Incubating
     public void setToolChain(@SuppressWarnings("unused") JavaToolChain toolChain) {
         // Implementation is generated
         throw new UnsupportedOperationException();
@@ -238,8 +244,9 @@ public class Javadoc extends SourceTask {
      *
      * @return The title, possibly null.
      */
-    @Input
+    @Nullable
     @Optional
+    @Input
     public String getTitle() {
         return title;
     }
@@ -247,7 +254,7 @@ public class Javadoc extends SourceTask {
     /**
      * <p>Sets the title for the generated documentation.</p>
      */
-    public void setTitle(String title) {
+    public void setTitle(@Nullable String title) {
         this.title = title;
     }
 
@@ -345,12 +352,17 @@ public class Javadoc extends SourceTask {
      *
      * @return The executable. May be null.
      */
-    @Input @Optional
+    @Nullable @Optional @Input
     public String getExecutable() {
         return executable;
     }
 
-    public void setExecutable(String executable) {
+    public void setExecutable(@Nullable String executable) {
         this.executable = executable;
+    }
+
+    @Inject
+    protected Deleter getDeleter() {
+        throw new UnsupportedOperationException("Decorator takes care of injection");
     }
 }

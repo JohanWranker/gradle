@@ -16,8 +16,13 @@
 
 package org.gradle.language.scala.plugins;
 
-import org.gradle.api.*;
+import org.gradle.api.DefaultTask;
+import org.gradle.api.Incubating;
+import org.gradle.api.Plugin;
+import org.gradle.api.Project;
+import org.gradle.api.Task;
 import org.gradle.api.file.FileCollection;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.jvm.JvmByteCode;
 import org.gradle.jvm.internal.JvmAssembly;
@@ -43,7 +48,6 @@ import org.gradle.platform.base.BinarySpec;
 import org.gradle.platform.base.ComponentType;
 import org.gradle.platform.base.TypeBuilder;
 
-import java.io.File;
 import java.util.Collections;
 import java.util.Map;
 
@@ -55,10 +59,12 @@ import static org.gradle.util.CollectionUtils.single;
  * Registers "scala" language support with the {@link org.gradle.language.scala.ScalaLanguageSourceSet}.
  */
 @Incubating
+@Deprecated
 public class ScalaLanguagePlugin implements Plugin<Project> {
 
     @Override
     public void apply(Project project) {
+        DeprecationLogger.deprecatePlugin("scala-lang").withUpgradeGuideSection(6, "upgrading_jvm_plugins").nagUser();
         project.getPluginManager().apply(ComponentModelBasePlugin.class);
         project.getPluginManager().apply(JvmResourcesPlugin.class);
     }
@@ -107,6 +113,7 @@ public class ScalaLanguagePlugin implements Plugin<Project> {
         @Override
         public JointCompileTaskConfig getTransformTask() {
             return new JointCompileTaskConfig() {
+                @Override
                 public String getTaskPrefix() {
                     return "compile";
                 }
@@ -116,10 +123,12 @@ public class ScalaLanguagePlugin implements Plugin<Project> {
                     return candidate instanceof ScalaLanguageSourceSet || candidate instanceof JavaSourceSet;
                 }
 
+                @Override
                 public Class<? extends DefaultTask> getTaskType() {
                     return PlatformScalaCompile.class;
                 }
 
+                @Override
                 public void configureTask(Task task, BinarySpec binarySpec, LanguageSourceSet sourceSet, ServiceRegistry serviceRegistry) {
                     PlatformScalaCompile compile = (PlatformScalaCompile) task;
                     configureScalaTask(compile, ((WithJvmAssembly) binarySpec).getAssembly(), "Compiles " + sourceSet + ".");
@@ -137,9 +146,11 @@ public class ScalaLanguagePlugin implements Plugin<Project> {
                     assembly.builtBy(compile);
 
                     compile.setDescription(description);
-                    compile.setDestinationDir(single(assembly.getClassDirectories()));
-                    File analysisFile = new File(compile.getProject().getBuildDir(), "tmp/scala/compilerAnalysis/" + compile.getName() + ".analysis");
-                    compile.getScalaCompileOptions().getIncrementalOptions().setAnalysisFile(analysisFile);
+                    compile.getDestinationDirectory().set(single(assembly.getClassDirectories()));
+
+                    compile.getScalaCompileOptions().getIncrementalOptions().getAnalysisFile().set(
+                        compile.getProject().getLayout().getBuildDirectory().file("tmp/scala/compilerAnalysis/" + compile.getName() + ".analysis")
+                    );
 
                     JavaPlatform javaPlatform = assembly.getTargetPlatform();
                     String targetCompatibility = javaPlatform.getTargetCompatibility().toString();

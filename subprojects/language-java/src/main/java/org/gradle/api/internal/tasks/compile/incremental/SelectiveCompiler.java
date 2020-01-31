@@ -16,64 +16,76 @@
 
 package org.gradle.api.internal.tasks.compile.incremental;
 
+import com.google.common.collect.Iterables;
 import org.gradle.api.internal.tasks.compile.CleaningJavaCompiler;
 import org.gradle.api.internal.tasks.compile.JavaCompileSpec;
-import org.gradle.api.internal.tasks.compile.incremental.jar.JarClasspathSnapshot;
-import org.gradle.api.internal.tasks.compile.incremental.jar.JarClasspathSnapshotProvider;
-import org.gradle.api.internal.tasks.compile.incremental.jar.PreviousCompilation;
+import org.gradle.api.internal.tasks.compile.incremental.classpath.ClasspathSnapshotProvider;
+import org.gradle.api.internal.tasks.compile.incremental.recomp.CurrentCompilation;
+import org.gradle.api.internal.tasks.compile.incremental.recomp.PreviousCompilation;
 import org.gradle.api.internal.tasks.compile.incremental.recomp.RecompilationSpec;
-import org.gradle.api.logging.Logger;
-import org.gradle.api.logging.Logging;
+import org.gradle.api.internal.tasks.compile.incremental.recomp.RecompilationSpecProvider;
 import org.gradle.api.tasks.WorkResult;
-import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
+import org.gradle.api.tasks.WorkResults;
 import org.gradle.internal.time.Time;
 import org.gradle.internal.time.Timer;
+import org.gradle.language.base.internal.compile.Compiler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 
-class SelectiveCompiler implements org.gradle.language.base.internal.compile.Compiler<JavaCompileSpec> {
-    private static final Logger LOG = Logging.getLogger(SelectiveCompiler.class);
-    private final IncrementalTaskInputs inputs;
+class SelectiveCompiler<T extends JavaCompileSpec> implements org.gradle.language.base.internal.compile.Compiler<T> {
+    private static final Logger LOG = LoggerFactory.getLogger(SelectiveCompiler.class);
     private final PreviousCompilation previousCompilation;
-    private final CleaningJavaCompiler cleaningCompiler;
+    private final CleaningJavaCompiler<T> cleaningCompiler;
+    private final Compiler<T> rebuildAllCompiler;
     private final RecompilationSpecProvider recompilationSpecProvider;
-    private final IncrementalCompilationInitializer incrementalCompilationInitilizer;
-    private final JarClasspathSnapshotProvider jarClasspathSnapshotProvider;
+    private final ClasspathSnapshotProvider classpathSnapshotProvider;
 
-    public SelectiveCompiler(IncrementalTaskInputs inputs, PreviousCompilation previousCompilation, CleaningJavaCompiler cleaningCompiler,
-                             RecompilationSpecProvider recompilationSpecProvider, IncrementalCompilationInitializer compilationInitializer, JarClasspathSnapshotProvider jarClasspathSnapshotProvider) {
-        this.inputs = inputs;
+    public SelectiveCompiler(PreviousCompilation previousCompilation,
+                             CleaningJavaCompiler<T> cleaningJavaCompiler,
+                             Compiler<T> rebuildAllCompiler,
+                             RecompilationSpecProvider recompilationSpecProvider,
+                             ClasspathSnapshotProvider classpathSnapshotProvider) {
         this.previousCompilation = previousCompilation;
-        this.cleaningCompiler = cleaningCompiler;
+        this.cleaningCompiler = cleaningJavaCompiler;
+        this.rebuildAllCompiler = rebuildAllCompiler;
         this.recompilationSpecProvider = recompilationSpecProvider;
-        this.incrementalCompilationInitilizer = compilationInitializer;
-        this.jarClasspathSnapshotProvider = jarClasspathSnapshotProvider;
+        this.classpathSnapshotProvider = classpathSnapshotProvider;
     }
 
     @Override
-    public WorkResult execute(JavaCompileSpec spec) {
+    public WorkResult execute(T spec) {
+        if (spec.getSourceRoots().isEmpty()) {
+            LOG.info("Full recompilation is required because the source roots could not be inferred.");
+            return rebuildAllCompiler.execute(spec);
+        }
+
         Timer clock = Time.startTimer();
-        JarClasspathSnapshot jarClasspathSnapshot = jarClasspathSnapshotProvider.getJarClasspathSnapshot(spec.getCompileClasspath());
-        RecompilationSpec recompilationSpec = recompilationSpecProvider.provideRecompilationSpec(inputs, previousCompilation, jarClasspathSnapshot);
+        CurrentCompilation currentCompilation = new CurrentCompilation(spec, classpathSnapshotProvider);
+
+        RecompilationSpec recompilationSpec = recompilationSpecProvider.provideRecompilationSpec(currentCompilation, previousCompilation);
 
         if (recompilationSpec.isFullRebuildNeeded()) {
             LOG.info("Full recompilation is required because {}. Analysis took {}.", recompilationSpec.getFullRebuildCause(), clock.getElapsed());
-            return cleaningCompiler.execute(spec);
+            return rebuildAllCompiler.execute(spec);
         }
 
-        Collection<String> classNames = recompilationSpec.getClassNames();
-        incrementalCompilationInitilizer.initializeCompilation(spec, classNames);
-        if (spec.getSource().isEmpty()) {
+        boolean cleanedOutput = recompilationSpecProvider.initializeCompilation(spec, recompilationSpec);
+
+        if (Iterables.isEmpty(spec.getSourceFiles()) && spec.getClasses().isEmpty()) {
             LOG.info("None of the classes needs to be compiled! Analysis took {}. ", clock.getElapsed());
             return new RecompilationNotNecessary();
         }
 
         try {
-            //use the original compiler to avoid cleaning up all the files
-            return cleaningCompiler.getCompiler().execute(spec);
+            WorkResult result = recompilationSpecProvider.decorateResult(recompilationSpec, cleaningCompiler.getCompiler().execute(spec));
+            return result
+                .or(WorkResults.didWork(cleanedOutput));
         } finally {
-            LOG.info("Incremental compilation of {} classes completed in {}.", classNames.size(), clock.getElapsed());
-            LOG.debug("Recompiled classes {}", classNames);
+            Collection<String> classesToCompile = recompilationSpec.getClassesToCompile();
+            LOG.info("Incremental compilation of {} classes completed in {}.", classesToCompile.size(), clock.getElapsed());
+            LOG.debug("Recompiled classes {}", classesToCompile);
         }
     }
 }

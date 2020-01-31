@@ -21,21 +21,45 @@ import org.gradle.api.GradleException
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectFactory
-import org.gradle.internal.reflect.DirectInstantiator
+import org.gradle.api.PolymorphicDomainObjectContainer
+import org.gradle.util.TestUtil
 
-import spock.lang.Specification
-
-class DefaultPolymorphicDomainObjectContainerTest extends Specification {
+class DefaultPolymorphicDomainObjectContainerTest extends AbstractPolymorphicDomainObjectContainerSpec<Person> {
     def fred = new DefaultPerson(name: "fred")
     def barney = new DefaultPerson(name: "barney")
     def agedFred = new DefaultAgeAwarePerson(name: "fred", age: 42)
     def agedBarney = new DefaultAgeAwarePerson(name: "barney", age: 42)
 
-    def container = new DefaultPolymorphicDomainObjectContainer<Person>(Person, DirectInstantiator.INSTANCE)
+    def container = new DefaultPolymorphicDomainObjectContainer<Person>(Person, TestUtil.instantiatorFactory().decorateLenient(), callbackActionDecorator)
+
+    final boolean supportsBuildOperations = true
+
+    @Override
+    final PolymorphicDomainObjectContainer<Person> getContainer() {
+        return container
+    }
+
+    Person a = new DefaultPerson(name: "a")
+    Person b = new DefaultPerson(name: "b")
+    Person c = new DefaultPerson(name: "c")
+    Person d = new DefaultCtorNamedPerson("d")
+    boolean externalProviderAllowed = true
+    boolean directElementAdditionAllowed = true
+    boolean elementRemovalAllowed = true
+
+    @Override
+    void setupContainerDefaults() {
+        container.registerDefaultFactory({ new DefaultPerson(name: it) } as NamedDomainObjectFactory )
+    }
+
+    @Override
+    List<Person> iterationOrder(Person... elements) {
+        return elements.sort { it.name }
+    }
 
     interface Person extends Named {}
 
-    static class DefaultPerson implements Person {
+    static abstract class AbstractPerson implements Person {
         String name
         String toString() { name }
 
@@ -49,11 +73,14 @@ class DefaultPolymorphicDomainObjectContainerTest extends Specification {
         }
     }
 
+    static class DefaultPerson extends AbstractPerson {
+    }
+
     interface AgeAwarePerson extends Person {
         int getAge()
     }
 
-    static class DefaultAgeAwarePerson extends DefaultPerson implements AgeAwarePerson {
+    static class DefaultAgeAwarePerson extends AbstractPerson implements AgeAwarePerson {
         int age
 
         boolean equals(DefaultAgeAwarePerson other) {
@@ -71,7 +98,7 @@ class DefaultPolymorphicDomainObjectContainerTest extends Specification {
 
     interface CtorNamedPerson extends Person {}
 
-    static class DefaultCtorNamedPerson extends DefaultPerson implements CtorNamedPerson {
+    static class DefaultCtorNamedPerson extends AbstractPerson implements CtorNamedPerson {
         DefaultCtorNamedPerson(String name) {
             this.name = name
         }
@@ -116,7 +143,7 @@ class DefaultPolymorphicDomainObjectContainerTest extends Specification {
     }
 
     def "throws meaningful exception if it doesn't support creating domain objects without specifying a type"() {
-        container = new DefaultPolymorphicDomainObjectContainer<Person>(Person, DirectInstantiator.INSTANCE)
+        container = new DefaultPolymorphicDomainObjectContainer<Person>(Person, TestUtil.instantiatorFactory().decorateLenient(), CollectionCallbackActionDecorator.NOOP)
 
         when:
         container.create("fred")
@@ -160,8 +187,8 @@ class DefaultPolymorphicDomainObjectContainerTest extends Specification {
     }
 
     def "create elements with specified type based on type binding"() {
-        container = new DefaultPolymorphicDomainObjectContainer<?>(Object, DirectInstantiator.INSTANCE,
-                { it instanceof Named ? it.name : "unknown" } as Named.Namer)
+        container = new DefaultPolymorphicDomainObjectContainer<?>(Object, TestUtil.instantiatorFactory().decorateLenient(),
+                { it instanceof Named ? it.name : "unknown" } as Named.Namer, CollectionCallbackActionDecorator.NOOP)
 
         container.registerBinding(UnnamedPerson, DefaultUnnamedPerson)
         container.registerBinding(CtorNamedPerson, DefaultCtorNamedPerson)
@@ -174,10 +201,10 @@ class DefaultPolymorphicDomainObjectContainerTest extends Specification {
         container.size() == 2
         !container.findByName("fred")
         with(container.findByName("unknown")) {
-            it.getClass() == DefaultUnnamedPerson
+            DefaultUnnamedPerson.isInstance(it)
         }
         with(container.findByName("barney")) {
-            it.getClass() == DefaultCtorNamedPerson
+            DefaultCtorNamedPerson.isInstance(it)
             name == "barney"
         }
         container.createableTypes == Sets.newHashSet(UnnamedPerson, CtorNamedPerson)
@@ -210,7 +237,7 @@ class DefaultPolymorphicDomainObjectContainerTest extends Specification {
     }
 
     def "throws meaningful exception if it doesn't support creating domain objects with the specified type"() {
-        container = new DefaultPolymorphicDomainObjectContainer<Person>(Person, DirectInstantiator.INSTANCE)
+        container = new DefaultPolymorphicDomainObjectContainer<Person>(Person, TestUtil.instantiatorFactory().decorateLenient(), CollectionCallbackActionDecorator.NOOP)
 
         when:
         container.create("fred", Person)
@@ -262,5 +289,166 @@ class DefaultPolymorphicDomainObjectContainerTest extends Specification {
         then:
         def e = thrown(GradleException)
         e.message == "Cannot register a factory for type Person because a factory for this type is already registered."
+    }
+
+    def "can register objects"() {
+        container.registerFactory(Person, { new DefaultPerson(name: it) } as NamedDomainObjectFactory)
+        container.registerFactory(AgeAwarePerson, { new DefaultAgeAwarePerson(name: it) } as NamedDomainObjectFactory)
+        when:
+        def fred = container.register("fred", Person)
+        def bob = container.register("bob", AgeAwarePerson) {
+            it.age = 50
+        }
+        then:
+        fred.present
+        fred.get().name == "fred"
+        bob.present
+        bob.get().age == 50
+    }
+
+    def "can look up objects by name"() {
+        container.registerFactory(Person, { new DefaultPerson(name: it) } as NamedDomainObjectFactory)
+        when:
+        container.register("fred", Person)
+        container.create("bob", Person)
+        def fred = container.named("fred")
+        def bob = container.named("bob")
+
+        then:
+        fred.present
+        fred.get().name == "fred"
+        bob.present
+        bob.get().name == "bob"
+    }
+
+    def "can configure objects via provider"() {
+        given:
+        container.registerFactory(AgeAwarePerson, { new DefaultAgeAwarePerson(name: it) } as NamedDomainObjectFactory)
+
+        when:
+        container.register("fred", AgeAwarePerson).configure {
+            it.age = 50
+        }
+        container.create("bob", AgeAwarePerson)
+
+        def fred = container.named("fred")
+        def bob = container.named("bob")
+        bob.configure {
+            it.age = 50
+        }
+        then:
+        fred.present
+        fred.get().age == 50
+        bob.present
+        bob.get().age == 50
+    }
+
+    def "can extract schema from container that mixes register, create and add"() {
+        given:
+        container.registerFactory(Person, { new DefaultPerson(name: it) } as NamedDomainObjectFactory)
+        container.registerFactory(AgeAwarePerson, { new DefaultAgeAwarePerson(name: it) } as NamedDomainObjectFactory)
+
+        def expectedSchema = [
+            mike: "DefaultPolymorphicDomainObjectContainerTest.Person",
+            fred: "DefaultPolymorphicDomainObjectContainerTest.Person",
+            alice: "DefaultPolymorphicDomainObjectContainerTest.Person", // TODO: Should be AgeAwarePerson
+            kate: "DefaultPolymorphicDomainObjectContainerTest.Person",
+            bob: "DefaultPolymorphicDomainObjectContainerTest.Person",
+            mary: "DefaultPolymorphicDomainObjectContainerTest.Person", // TODO should be AgeAwarePerson
+            john: "DefaultPolymorphicDomainObjectContainerTest.Person",
+            janis: "DefaultPolymorphicDomainObjectContainerTest.Person", // TODO could be AgeAwarePerson
+            robert: "DefaultPolymorphicDomainObjectContainerTest.Person" // TODO could be DefaultCtorNamedPerson
+        ]
+
+        when:
+        container.register("mike")
+        container.register("fred", Person)
+        container.register("alice", AgeAwarePerson)
+        container.create("kate")
+        container.create("bob", Person)
+        container.create("mary", AgeAwarePerson)
+        container.add(new DefaultPerson(name: "john"))
+        container.add(new DefaultAgeAwarePerson(name: "janis"))
+        container.add(new DefaultCtorNamedPerson("robert"))
+
+        then:
+        assertSchemaIs(expectedSchema)
+
+        when: "realizing pending elements"
+        container.getByName("mike")
+        container.getByName("fred")
+        container.getByName("alice")
+        then: "schema is the same"
+        assertSchemaIs(expectedSchema)
+    }
+
+    def "can find elements added by rules"() {
+        given:
+        container.registerFactory(Person, { new DefaultPerson(name: it) } as NamedDomainObjectFactory)
+        container.registerFactory(AgeAwarePerson, { new DefaultAgeAwarePerson(name: it) } as NamedDomainObjectFactory)
+
+        container.addRule("adds people") { elementName ->
+            if (elementName == "fred") {
+                container.register("fred", Person)
+            } else if (elementName == "bob") {
+                container.create("bob", AgeAwarePerson)
+            }
+        }
+        when:
+        def fred = container.named("fred")
+        def bob = container.named("bob")
+        bob.configure {
+            it.age = 50
+        }
+        then:
+        fred.present
+        fred.get().name == "fred"
+        bob.present
+        bob.get().age == 50
+    }
+
+    def "can find and configure objects by name and type"() {
+        container.registerFactory(Person, { new DefaultPerson(name: it) } as NamedDomainObjectFactory)
+        container.registerFactory(AgeAwarePerson, { new DefaultAgeAwarePerson(name: it) } as NamedDomainObjectFactory)
+        container.register("fred", Person)
+        container.register("bob", AgeAwarePerson)
+        when:
+        def fred = container.named("fred", Person)
+        def bob = container.named("bob", AgeAwarePerson) {
+            it.age = 50
+        }
+        then:
+        fred.present
+        fred.get().name == "fred"
+        bob.present
+        bob.get().age == 50
+
+        when:
+        container.named("bob") {
+            it.age = 100
+        }
+        then:
+        bob.get().age == 100
+    }
+
+    def "gets useful message if type does not match registered type"() {
+        container.registerFactory(Person, { new DefaultPerson(name: it) } as NamedDomainObjectFactory)
+        container.registerFactory(AgeAwarePerson, { new DefaultAgeAwarePerson(name: it) } as NamedDomainObjectFactory)
+        container.register("fred", Person)
+        container.register("bob", AgeAwarePerson)
+        when:
+        container.named("fred", AgeAwarePerson)
+        then:
+        def e = thrown(InvalidUserDataException)
+        e.message == "The domain object 'fred' (${Person.class.canonicalName}) is not a subclass of the given type (${AgeAwarePerson.class.canonicalName})."
+    }
+
+    protected void assertSchemaIs(Map<String, String> expectedSchema) {
+        def actualSchema = container.collectionSchema
+        Map<String, String> actualSchemaMap = actualSchema.elements.collectEntries { schema ->
+            [ schema.name, schema.publicType.simpleName ]
+        }.sort()
+        def expectedSchemaMap = expectedSchema.sort()
+        assert expectedSchemaMap == actualSchemaMap
     }
 }

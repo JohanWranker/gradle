@@ -16,6 +16,7 @@
 
 package org.gradle.launcher.daemon
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.daemon.DaemonClientFixture
 import org.gradle.integtests.fixtures.daemon.DaemonIntegrationSpec
 import org.gradle.launcher.daemon.logging.DaemonMessages
@@ -46,6 +47,7 @@ class DaemonReuseIntegrationTest extends DaemonIntegrationSpec {
         daemons.daemons.size() == 1
     }
 
+    @ToBeFixedForInstantExecution
     def "canceled daemon is reused when it becomes available"() {
         buildFile << """
             task block {
@@ -57,6 +59,9 @@ class DaemonReuseIntegrationTest extends DaemonIntegrationSpec {
         """
 
         given:
+        executer.beforeExecute {
+            executer.withStackTraceChecksDisabled()
+        }
         expectEvent("started")
         expectEvent("block")
         def client = new DaemonClientFixture(executer.withArgument("--debug").withTasks("block").start())
@@ -79,6 +84,7 @@ class DaemonReuseIntegrationTest extends DaemonIntegrationSpec {
         daemons.daemons.size() == 1
     }
 
+    @ToBeFixedForInstantExecution
     def "does not attempt to reuse a canceled daemon that is not compatible"() {
         buildFile << """
             task block {
@@ -112,6 +118,7 @@ class DaemonReuseIntegrationTest extends DaemonIntegrationSpec {
         !build.standardOutput.contains(DaemonMessages.WAITING_ON_CANCELED)
     }
 
+    @ToBeFixedForInstantExecution
     def "starts a new daemon when daemons with canceled builds do not become available"() {
         buildFile << """
             task block {
@@ -148,6 +155,7 @@ class DaemonReuseIntegrationTest extends DaemonIntegrationSpec {
 
     // GradleHandle.abort() does not work reliably on windows and creates flakiness
     @Requires(TestPrecondition.NOT_WINDOWS)
+    @ToBeFixedForInstantExecution
     def "prefers an idle daemon when daemons with canceled builds are available"() {
         given:
         expectEvent("started1")
@@ -203,6 +211,31 @@ class DaemonReuseIntegrationTest extends DaemonIntegrationSpec {
 
         and:
         !build3.standardOutput.contains(DaemonMessages.WAITING_ON_CANCELED)
+    }
+
+    @ToBeFixedForInstantExecution
+    def "handles two clients that attempt to connect to an idle daemon simultaneously"() {
+        given:
+        succeeds("help")
+        buildFile << """
+            task block {
+                doLast {
+                    new URL("${getUrl('started')}\$buildNum").text
+                }
+            }
+        """
+
+        when:
+        server.expectConcurrent("started1", "started2")
+        def gradle1 = executer.withTasks("block").withArguments("--debug", "-PbuildNum=1").start()
+        def gradle2 = executer.withTasks("block").withArguments("--debug", "-PbuildNum=2").start()
+
+        then:
+        gradle1.waitForFinish()
+        gradle2.waitForFinish()
+
+        and:
+        daemons.daemons.size() == 2
     }
 
     String getUrl(String event) {

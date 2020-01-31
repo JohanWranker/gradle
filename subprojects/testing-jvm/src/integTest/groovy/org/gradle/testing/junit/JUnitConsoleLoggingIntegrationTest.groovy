@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 the original author or authors.
+ * Copyright 2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,19 @@
 
 package org.gradle.testing.junit
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
+import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.testing.fixture.JUnitMultiVersionIntegrationSpec
 import org.junit.Rule
 
-import static org.hamcrest.Matchers.equalTo
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_4_LATEST
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_VINTAGE_JUPITER
+import static org.hamcrest.CoreMatchers.equalTo
 
 // cannot make assumptions about order in which test methods of JUnit4Test get executed
-class JUnitConsoleLoggingIntegrationTest extends AbstractIntegrationSpec {
+@TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE_JUPITER })
+class JUnitConsoleLoggingIntegrationTest extends JUnitMultiVersionIntegrationSpec {
     @Rule TestResources resources = new TestResources(temporaryFolder)
 
     def setup() {
@@ -37,9 +41,9 @@ class JUnitConsoleLoggingIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         outputContains("""
-org.gradle.JUnit4Test > badTest FAILED
+${classNamePrefix}JUnit4Test > badTest FAILED
     java.lang.RuntimeException at JUnit4Test.groovy:44
-        """)
+""")
     }
 
     def "customQuietLogging"() {
@@ -54,11 +58,11 @@ badTest FAILED
     java.lang.RuntimeException: bad
         at org.gradle.JUnit4Test.beBad(JUnit4Test.groovy:44)
         at org.gradle.JUnit4Test.badTest(JUnit4Test.groovy:28)
-        """)
+""")
 
         outputContains("ignoredTest SKIPPED")
 
-        outputContains("org.gradle.JUnit4Test FAILED")
+        outputContains("${classNamePrefix}JUnit4Test FAILED")
     }
 
     def "standardOutputLogging"() {
@@ -68,18 +72,18 @@ badTest FAILED
 
         then:
         outputContains("""
-org.gradle.JUnit4StandardOutputTest > printTest STANDARD_OUT
+${classNamePrefix}JUnit4StandardOutputTest > printTest STANDARD_OUT
     line 1
     line 2
     line 3
-        """)
+""")
     }
 
     def "test logging is included in XML results"() {
         file("build.gradle") << """
             apply plugin: 'java'
                 ${mavenCentralRepository()}
-                dependencies { testCompile 'junit:junit:4.12' }
+                dependencies { testImplementation 'junit:junit:4.12' }
         """
 
         file("src/test/java/EncodingTest.java") << """
@@ -113,4 +117,7 @@ xml entity: &amp;
                 .assertStderr(equalTo("< html allowed, cdata closing token ]]> encoded!\n"))
     }
 
+    private String getClassNamePrefix() {
+        isJUnitPlatform() ? '' : 'org.gradle.'
+    }
 }

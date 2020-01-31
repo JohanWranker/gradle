@@ -16,11 +16,15 @@
 
 package org.gradle.integtests.publish.maven
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.publish.maven.AbstractMavenPublishIntegTest
 
 class MavenWagonPublishIntegrationTest extends AbstractMavenPublishIntegTest {
 
+    @ToBeFixedForInstantExecution
     def "uses provided wagon type to perform publication"() {
+        executer.expectDeprecationWarnings(2)
+
         given:
         buildFile << """
             apply plugin: 'java'
@@ -48,6 +52,6 @@ class MavenWagonPublishIntegrationTest extends AbstractMavenPublishIntegTest {
 
         then:
         failureCauseContains("Reason: java.net.UnknownHostException: iamnotansshserverandidontexistandwontdealwithsftptransfers")
-        errorOutput.contains("org.apache.maven.wagon.providers.ssh.jsch.AbstractJschWagon.openConnectionInternal(AbstractJschWagon.java:")
+        failure.assertHasErrorOutput("Reason: java.net.UnknownHostException: iamnotansshserverandidontexistandwontdealwithsftptransfers")
     }
 }

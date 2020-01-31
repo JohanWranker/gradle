@@ -16,7 +16,7 @@
 
 package org.gradle.language.nativeplatform.internal.incremental
 
-import org.gradle.api.internal.changedetection.state.TestFileSnapshotter
+import org.gradle.api.internal.file.TestFiles
 import org.gradle.internal.serialize.SerializerSpec
 import org.gradle.language.nativeplatform.internal.incremental.sourceparser.IncludeDirectivesSerializer
 import org.gradle.language.nativeplatform.internal.incremental.sourceparser.RegexBackedCSourceParser
@@ -35,10 +35,9 @@ class SourceParseAndResolutionTest extends SerializerSpec {
     def header = includeDir.createFile("hello.h")
     def sourceDir = tmpDir.createDir("src")
     def sourceFile = sourceDir.createFile("src.cpp")
-    def fileSystemSnapshotter = new TestFileSnapshotter()
-    def resolver = new DefaultSourceIncludesResolver([includeDir], fileSystemSnapshotter)
+    def resolver = new DefaultSourceIncludesResolver([includeDir], TestFiles.virtualFileSystem())
     def parser = new RegexBackedCSourceParser()
-    def serializer = new IncludeDirectivesSerializer()
+    def serializer = IncludeDirectivesSerializer.INSTANCE
 
     def "resolves macro with value that is a string constant"() {
         given:

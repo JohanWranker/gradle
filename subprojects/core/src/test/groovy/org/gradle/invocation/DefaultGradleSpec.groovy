@@ -19,7 +19,6 @@ package org.gradle.invocation
 import org.gradle.StartParameter
 import org.gradle.api.Action
 import org.gradle.api.initialization.dsl.ScriptHandler
-import org.gradle.api.internal.AsmBackedClassGenerator
 import org.gradle.api.internal.GradleInternal
 import org.gradle.api.internal.SettingsInternal
 import org.gradle.api.internal.file.FileResolver
@@ -29,35 +28,41 @@ import org.gradle.api.internal.project.CrossProjectConfigurator
 import org.gradle.api.internal.project.DefaultProject
 import org.gradle.api.internal.project.DefaultProjectRegistry
 import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.api.internal.project.ProjectState
 import org.gradle.api.internal.tasks.TaskContainerInternal
-import org.gradle.execution.TaskGraphExecuter
+import org.gradle.configuration.internal.ListenerBuildOperationDecorator
+import org.gradle.configuration.internal.TestListenerBuildOperationDecorator
+import org.gradle.execution.taskgraph.TaskExecutionGraphInternal
 import org.gradle.groovy.scripts.ScriptSource
 import org.gradle.initialization.ClassLoaderScopeRegistry
+import org.gradle.internal.build.DefaultPublicBuildPath
+import org.gradle.internal.build.PublicBuildPath
 import org.gradle.internal.event.DefaultListenerManager
 import org.gradle.internal.event.ListenerManager
 import org.gradle.internal.installation.CurrentGradleInstallation
 import org.gradle.internal.installation.GradleInstallation
+import org.gradle.internal.instantiation.InstantiatorFactory
 import org.gradle.internal.operations.BuildOperationExecutor
 import org.gradle.internal.operations.TestBuildOperationExecutor
-import org.gradle.internal.reflect.Instantiator
 import org.gradle.internal.scan.config.BuildScanConfigInit
 import org.gradle.internal.service.ServiceRegistry
 import org.gradle.internal.service.scopes.ServiceRegistryFactory
 import org.gradle.model.internal.registry.ModelRegistry
 import org.gradle.util.GradleVersion
 import org.gradle.util.Path
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class DefaultGradleSpec extends Specification {
-
-    AsmBackedClassGenerator classGenerator = new AsmBackedClassGenerator()
     ServiceRegistryFactory serviceRegistryFactory = Stub(ServiceRegistryFactory)
     ListenerManager listenerManager = Spy(DefaultListenerManager)
 
     StartParameter parameter = new StartParameter()
     CurrentGradleInstallation currentGradleInstallation = Mock(CurrentGradleInstallation)
     BuildOperationExecutor buildOperationExecutor = new TestBuildOperationExecutor()
+    ListenerBuildOperationDecorator listenerBuildOperationDecorator = new TestListenerBuildOperationDecorator()
     CrossProjectConfigurator crossProjectConfigurator = new BuildOperationCrossProjectConfigurator(buildOperationExecutor)
+    ProjectState projectState = Mock(ProjectState)
 
     GradleInternal gradle
 
@@ -67,17 +72,19 @@ class DefaultGradleSpec extends Specification {
         _ * serviceRegistry.get(ClassLoaderScopeRegistry) >> Mock(ClassLoaderScopeRegistry)
         _ * serviceRegistry.get(FileResolver) >> Mock(FileResolver)
         _ * serviceRegistry.get(ScriptHandler) >> Mock(ScriptHandler)
-        _ * serviceRegistry.get(TaskGraphExecuter) >> Mock(TaskGraphExecuter)
-        _ * serviceRegistry.newInstance(TaskContainerInternal) >> Mock(TaskContainerInternal)
+        _ * serviceRegistry.get(TaskExecutionGraphInternal) >> Mock(TaskExecutionGraphInternal)
+        _ * serviceRegistry.get(TaskContainerInternal) >> Mock(TaskContainerInternal)
         _ * serviceRegistry.get(ModelRegistry) >> Stub(ModelRegistry)
-        _ * serviceRegistry.get(Instantiator) >> Mock(Instantiator)
+        _ * serviceRegistry.get(InstantiatorFactory) >> Mock(InstantiatorFactory)
         _ * serviceRegistry.get(ListenerManager) >> listenerManager
         _ * serviceRegistry.get(CurrentGradleInstallation) >> currentGradleInstallation
         _ * serviceRegistry.get(BuildOperationExecutor) >> buildOperationExecutor
+        _ * serviceRegistry.get(ListenerBuildOperationDecorator) >> listenerBuildOperationDecorator
         _ * serviceRegistry.get(CrossProjectConfigurator) >> crossProjectConfigurator
         _ * serviceRegistry.get(BuildScanConfigInit) >> Mock(BuildScanConfigInit)
+        _ * serviceRegistry.get(PublicBuildPath) >> new DefaultPublicBuildPath(Path.ROOT)
 
-        gradle = classGenerator.newInstance(DefaultGradle.class, null, parameter, serviceRegistryFactory)
+        gradle = TestUtil.instantiatorFactory().decorateLenient().newInstance(DefaultGradle.class, null, parameter, serviceRegistryFactory)
     }
 
     def "uses gradle version"() {
@@ -263,6 +270,20 @@ class DefaultGradleSpec extends Specification {
         1 * action.execute(_)
     }
 
+    def "broadcasts before settings events to actions"() {
+        given:
+        def action = Mock(Action)
+
+        when:
+        gradle.beforeSettings(action)
+
+        and:
+        gradle.buildListenerBroadcaster.beforeSettings(null)
+
+        then:
+        1 * action.execute(_)
+    }
+
     def "broadcasts projects loaded events to actions"() {
         given:
         def action = Mock(Action)
@@ -396,33 +417,20 @@ class DefaultGradleSpec extends Specification {
         gradle.toString() == "build 'rootProject'"
     }
 
-    def "has identity path"() {
-        given:
-        def child1 = classGenerator.newInstance(DefaultGradle, gradle, Stub(StartParameter), serviceRegistryFactory)
-        child1.rootProject = project('child1')
-
-        and:
-        def child2 = classGenerator.newInstance(DefaultGradle, child1, Stub(StartParameter), serviceRegistryFactory)
-        child2.rootProject = project('child2')
-
-        expect:
-        gradle.identityPath == Path.ROOT
-        child1.identityPath == Path.path(":child1")
-        child2.identityPath == Path.path(":child1:child2")
-    }
-
     def projectRegistry = new DefaultProjectRegistry()
 
     private ProjectInternal project(String name) {
         def project = Spy(DefaultProject, constructorArgs: [
             name,
             null, null, null, Stub(ScriptSource),
-            gradle, serviceRegistryFactory,
+            gradle, Stub(ProjectState), serviceRegistryFactory,
             Stub(ClassLoaderScope), Stub(ClassLoaderScope)
         ])
         project.getProjectConfigurator() >> crossProjectConfigurator
         projectRegistry.addProject(project)
         _ * project.getProjectRegistry() >> projectRegistry
+        _ * project.getMutationState() >> projectState
+        _ * projectState.withMutableState(_) >> { Runnable runnable -> runnable.run() }
         return project
     }
 }

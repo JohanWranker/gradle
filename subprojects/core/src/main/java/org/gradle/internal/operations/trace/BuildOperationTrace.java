@@ -17,30 +17,30 @@
 package org.gradle.internal.operations.trace;
 
 import com.google.common.base.Charsets;
+import com.google.common.base.StandardSystemProperty;
 import com.google.common.io.Files;
 import com.google.common.io.LineProcessor;
 import groovy.json.JsonOutput;
 import groovy.json.JsonSlurper;
-import org.gradle.BuildAdapter;
-import org.gradle.BuildResult;
 import org.gradle.StartParameter;
-import org.gradle.api.invocation.Gradle;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.concurrent.Stoppable;
-import org.gradle.internal.progress.BuildOperationDescriptor;
-import org.gradle.internal.progress.BuildOperationListener;
-import org.gradle.internal.progress.BuildOperationListenerManager;
-import org.gradle.internal.progress.OperationFinishEvent;
-import org.gradle.internal.progress.OperationProgressEvent;
-import org.gradle.internal.progress.OperationStartEvent;
+import org.gradle.internal.operations.BuildOperationDescriptor;
+import org.gradle.internal.operations.BuildOperationListener;
+import org.gradle.internal.operations.BuildOperationListenerManager;
+import org.gradle.internal.operations.OperationFinishEvent;
+import org.gradle.internal.operations.OperationIdentifier;
+import org.gradle.internal.operations.OperationProgressEvent;
+import org.gradle.internal.operations.OperationStartEvent;
 import org.gradle.util.GFileUtils;
 
+import javax.annotation.Nonnull;
 import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -53,6 +53,7 @@ import java.util.Map;
 import java.util.Queue;
 
 import static org.gradle.internal.Cast.uncheckedCast;
+import static org.gradle.internal.Cast.uncheckedNonnullCast;
 
 /**
  * Writes files describing the build operation stream for a build.
@@ -83,14 +84,32 @@ public class BuildOperationTrace implements Stoppable {
 
     public static final String SYSPROP = "org.gradle.internal.operations.trace";
 
+    private static final byte[] NEWLINE = "\n".getBytes();
+
     private final String basePath;
     private final OutputStream logOutputStream;
-    private final BuildOperationListenerManager listenerManager;
 
-    private BuildOperationListener buildOperationListener;
+    private final BuildOperationListenerManager buildOperationListenerManager;
+
+    private final BuildOperationListener listener = new BuildOperationListener() {
+        @Override
+        public void started(BuildOperationDescriptor buildOperation, OperationStartEvent startEvent) {
+            write(new SerializedOperationStart(buildOperation, startEvent));
+        }
+
+        @Override
+        public void progress(OperationIdentifier buildOperationId, OperationProgressEvent progressEvent) {
+            write(new SerializedOperationProgress(buildOperationId, progressEvent));
+        }
+
+        @Override
+        public void finished(BuildOperationDescriptor buildOperation, OperationFinishEvent finishEvent) {
+            write(new SerializedOperationFinish(buildOperation, finishEvent));
+        }
+    };
 
     public BuildOperationTrace(StartParameter startParameter, BuildOperationListenerManager buildOperationListenerManager) {
-        this.listenerManager = buildOperationListenerManager;
+        this.buildOperationListenerManager = buildOperationListenerManager;
 
         Map<String, String> sysProps = startParameter.getSystemPropertiesArgs();
         String basePath = sysProps.get(SYSPROP);
@@ -118,20 +137,17 @@ public class BuildOperationTrace implements Stoppable {
             throw UncheckedException.throwAsUncheckedException(e);
         }
 
-        buildOperationListener = new DeferedSerializingBuildOperationListener(new SerializingBuildOperationListener(logOutputStream));
-        buildOperationListenerManager.addListener(buildOperationListener);
-
+        buildOperationListenerManager.addListener(listener);
     }
 
     @Override
     public void stop() {
-        if (buildOperationListener != null) {
-            listenerManager.removeListener(buildOperationListener);
-        }
-
+        buildOperationListenerManager.removeListener(listener);
         if (logOutputStream != null) {
             try {
-                logOutputStream.close();
+                synchronized (logOutputStream) {
+                    logOutputStream.close();
+                }
 
                 final List<BuildOperationRecord> roots = readLogToTreeRoots(logFile(basePath));
                 writeDetailTree(roots);
@@ -142,18 +158,36 @@ public class BuildOperationTrace implements Stoppable {
         }
     }
 
+    private void write(SerializedOperation operation) {
+        String json = JsonOutput.toJson(operation.toMap());
+        try {
+            synchronized (logOutputStream) {
+                logOutputStream.write(json.getBytes(StandardCharsets.UTF_8));
+                logOutputStream.write(NEWLINE);
+                logOutputStream.flush();
+            }
+        } catch (IOException e) {
+            throw UncheckedException.throwAsUncheckedException(e);
+        }
+    }
+
     private void writeDetailTree(List<BuildOperationRecord> roots) throws IOException {
-        String rawJson = JsonOutput.toJson(BuildOperationTree.serialize(roots));
-        String prettyJson = JsonOutput.prettyPrint(rawJson);
-        Files.asCharSink(file(basePath, "-tree.json"), Charsets.UTF_8).write(prettyJson);
+        try {
+            String rawJson = JsonOutput.toJson(BuildOperationTree.serialize(roots));
+            String prettyJson = JsonOutput.prettyPrint(rawJson);
+            Files.asCharSink(file(basePath, "-tree.json"), Charsets.UTF_8).write(prettyJson);
+        } catch (OutOfMemoryError e) {
+            System.err.println("Failed to write build operation trace JSON due to out of memory.");
+        }
     }
 
     private void writeSummaryTree(final List<BuildOperationRecord> roots) throws IOException {
         Files.asCharSink(file(basePath, "-tree.txt"), Charsets.UTF_8).writeLines(new Iterable<String>() {
             @Override
+            @Nonnull
             public Iterator<String> iterator() {
 
-                final Deque<Queue<BuildOperationRecord>> stack = new ArrayDeque<Queue<BuildOperationRecord>>(Collections.singleton(new ArrayDeque<BuildOperationRecord>(roots)));
+                final Deque<Queue<BuildOperationRecord>> stack = new ArrayDeque<>(Collections.singleton(new ArrayDeque<>(roots)));
                 final StringBuilder stringBuilder = new StringBuilder();
 
                 return new Iterator<String>() {
@@ -171,17 +205,19 @@ public class BuildOperationTrace implements Stoppable {
 
                     @Override
                     public String next() {
-                        Queue<BuildOperationRecord> children = stack.peek();
-                        BuildOperationRecord record = children.poll();
+                        Queue<BuildOperationRecord> children = stack.element();
+                        BuildOperationRecord record = children.remove();
 
                         stringBuilder.setLength(0);
 
-                        for (int i = 0; i < stack.size() - 1; ++i) {
+                        int indents = stack.size() - 1;
+
+                        for (int i = 0; i < indents; ++i) {
                             stringBuilder.append("  ");
                         }
 
                         if (!record.children.isEmpty()) {
-                            stack.addFirst(new ArrayDeque<BuildOperationRecord>(record.children));
+                            stack.addFirst(new ArrayDeque<>(record.children));
                         }
 
                         stringBuilder.append(record.displayName);
@@ -204,6 +240,18 @@ public class BuildOperationTrace implements Stoppable {
                         stringBuilder.append(record.id);
                         stringBuilder.append(")");
 
+                        if (!record.progress.isEmpty()) {
+                            for (BuildOperationRecord.Progress progress : record.progress) {
+                                stringBuilder.append(StandardSystemProperty.LINE_SEPARATOR.value());
+                                for (int i = 0; i < indents; ++i) {
+                                    stringBuilder.append("  ");
+                                }
+                                stringBuilder.append("- ")
+                                    .append(progress.details).append(" [")
+                                    .append(progress.time - record.startTime)
+                                    .append("]");
+                            }
+                        }
 
                         return stringBuilder.toString();
                     }
@@ -217,8 +265,9 @@ public class BuildOperationTrace implements Stoppable {
         });
     }
 
-    public static BuildOperationTree read(String basePath) throws FileNotFoundException {
-        List<BuildOperationRecord> roots = readLogToTreeRoots(logFile(basePath));
+    public static BuildOperationTree read(String basePath) {
+        File logFile = logFile(basePath);
+        List<BuildOperationRecord> roots = readLogToTreeRoots(logFile);
         return new BuildOperationTree(roots);
     }
 
@@ -226,22 +275,22 @@ public class BuildOperationTrace implements Stoppable {
         try {
             final JsonSlurper slurper = new JsonSlurper();
 
-            final List<BuildOperationRecord> roots = new ArrayList<BuildOperationRecord>();
-            final Map<Object, PendingOperation> pendings = new HashMap<Object, PendingOperation>();
-            final Map<Object, List<BuildOperationRecord>> childrens = new HashMap<Object, List<BuildOperationRecord>>();
+            final List<BuildOperationRecord> roots = new ArrayList<>();
+            final Map<Object, PendingOperation> pendings = new HashMap<>();
+            final Map<Object, List<BuildOperationRecord>> childrens = new HashMap<>();
 
             Files.asCharSource(logFile, Charsets.UTF_8).readLines(new LineProcessor<Void>() {
                 @Override
-                public boolean processLine(String line) throws IOException {
-                    Map<String, ?> map = uncheckedCast(slurper.parseText(line));
+                public boolean processLine(@SuppressWarnings("NullableProblems") String line) {
+                    Map<String, ?> map = uncheckedNonnullCast(slurper.parseText(line));
                     if (map.containsKey("startTime")) {
                         SerializedOperationStart serialized = new SerializedOperationStart(map);
                         pendings.put(serialized.id, new PendingOperation(serialized));
-                        childrens.put(serialized.id, new LinkedList<BuildOperationRecord>());
+                        childrens.put(serialized.id, new LinkedList<>());
                     } else if (map.containsKey("time")) {
                         SerializedOperationProgress serialized = new SerializedOperationProgress(map);
                         PendingOperation pending = pendings.get(serialized.id);
-                        assert pending != null;
+                        assert pending != null : "did not find owner of progress event with ID " + serialized.id;
                         pending.progress.add(serialized);
                     } else {
                         SerializedOperationFinish finish = new SerializedOperationFinish(map);
@@ -257,7 +306,7 @@ public class BuildOperationTrace implements Stoppable {
                         Map<String, ?> detailsMap = uncheckedCast(start.details);
                         Map<String, ?> resultMap = uncheckedCast(finish.result);
 
-                        List<BuildOperationRecord.Progress> progresses = new ArrayList<BuildOperationRecord.Progress>();
+                        List<BuildOperationRecord.Progress> progresses = new ArrayList<>();
                         for (SerializedOperationProgress progress : pending.progress) {
                             Map<String, ?> progressDetailsMap = uncheckedCast(progress.details);
                             progresses.add(new BuildOperationRecord.Progress(
@@ -320,56 +369,21 @@ public class BuildOperationTrace implements Stoppable {
     static class PendingOperation {
 
         final SerializedOperationStart start;
-        final List<SerializedOperationProgress> progress = new ArrayList<SerializedOperationProgress>();
 
-        public PendingOperation(SerializedOperationStart start) {
+        final List<SerializedOperationProgress> progress = new ArrayList<>();
+
+        PendingOperation(SerializedOperationStart start) {
             this.start = start;
         }
 
     }
 
-    // This is a workaround for https://github.com/gradle/gradle/issues/3873
-    // Several early typed operations have `buildPath` property,
-    // the value of which can only be determined after the settings file for the build has loaded.
-    //
-    // The workaround is to buffer all operation notifications in memory until the root build's settings have loaded.
-    // This works because all possible settings files have been evaluated by the time the root one has been.
-    // This is not guaranteed to hold into the future.
-    // A proper solution would be to change the operation details/results to be
-    // truly immutable and convey values known at the time.
-    private static final class DeferedSerializingBuildOperationListener extends BuildAdapter implements BuildOperationListener {
-        private final SerializingBuildOperationListener delegate;
-
-        public DeferedSerializingBuildOperationListener(SerializingBuildOperationListener delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        public void projectsLoaded(Gradle gradle) {
-            if (gradle.getParent() == null) {
-                delegate.write();
-            }
-        }
-
-        // Build may have failed before getting to projectsLoaded
-        @Override
-        public void buildFinished(BuildResult result) {
-            delegate.write();
-        }
-
-        @Override
-        public void started(BuildOperationDescriptor buildOperation, OperationStartEvent startEvent) {
-            delegate.started(buildOperation, startEvent);
-        }
-
-        @Override
-        public void progress(BuildOperationDescriptor buildOperation, OperationProgressEvent progressEvent) {
-            delegate.progress(buildOperation, progressEvent);
-        }
-
-        @Override
-        public void finished(BuildOperationDescriptor buildOperation, OperationFinishEvent finishEvent) {
-            delegate.finished(buildOperation, finishEvent);
+    public static Object toSerializableModel(Object object) {
+        if (object instanceof CustomOperationTraceSerialization) {
+            return ((CustomOperationTraceSerialization) object).getCustomOperationTraceSerializableModel();
+        } else {
+            return object;
         }
     }
+
 }

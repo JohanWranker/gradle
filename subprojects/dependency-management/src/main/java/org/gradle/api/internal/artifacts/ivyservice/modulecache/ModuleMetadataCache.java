@@ -19,7 +19,7 @@ import org.gradle.api.artifacts.ResolvedModuleVersion;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ModuleComponentRepository;
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata;
-import org.gradle.internal.component.model.ModuleSource;
+import org.gradle.internal.component.model.ModuleSources;
 
 import javax.annotation.Nullable;
 
@@ -33,24 +33,26 @@ public interface ModuleMetadataCache {
     interface CachedMetadata {
         ResolvedModuleVersion getModuleVersion();
 
-        ModuleComponentResolveMetadata getMetaData();
+        ModuleComponentResolveMetadata getMetadata();
 
         long getAgeMillis();
 
         boolean isMissing();
 
-        ModuleSource getModuleSource();
+        ModuleSources getModuleSources();
 
         /**
          * The metadata after being processed by component metadata rules.
          * Will be null the first time an entry is read from the filesystem cache during a build invocation.
+         *
+         * @param key the hash of the rules
          */
         @Nullable
-        ModuleComponentResolveMetadata getProcessedMetadata();
+        ModuleComponentResolveMetadata getProcessedMetadata(int key);
 
         /**
          * Set the processed metadata to be cached in-memory only.
          */
-        void setProcessedMetadata(ModuleComponentResolveMetadata processedMetadata);
+        void putProcessedMetadata(int key, ModuleComponentResolveMetadata processedMetadata);
     }
 }

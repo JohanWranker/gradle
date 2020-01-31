@@ -37,12 +37,12 @@ plugins {
 ${jcenterRepository()}
 
 dependencies {
-    compile "com.google.guava:guava:19.0"
+    implementation "com.google.guava:guava:19.0"
 }
 
 task show {
     doLast {
-        configurations.compile.files.each { println it }
+        configurations.runtimeClasspath.files.each { println it }
     }
 }
 """
@@ -85,9 +85,22 @@ task foo {
 
         when:
         buildFile.text = buildFile.text.replaceAll('Original bar', 'New bar')
-        run 'foo'
+        succeeds 'foo'
 
         then:
-        !result.output.contains('Original bar')
+        outputDoesNotContain('Original bar')
+    }
+
+    def 'buildscript classpath has proper usage attribute'() {
+        buildFile << """
+buildscript {
+    configurations.classpath {
+        def value = attributes.getAttribute(Usage.USAGE_ATTRIBUTE)
+        assert value.name == Usage.JAVA_RUNTIME
+    }
+}
+"""
+        expect:
+        succeeds()
     }
 }

@@ -19,7 +19,7 @@ package org.gradle.ide.visualstudio.tasks;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
 import org.gradle.api.XmlProvider;
-import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.Nested;
 import org.gradle.ide.visualstudio.VisualStudioProject;
 import org.gradle.ide.visualstudio.internal.DefaultVisualStudioProject;
 import org.gradle.ide.visualstudio.tasks.internal.RelativeFileNameTransformer;
@@ -29,17 +29,22 @@ import org.gradle.plugins.ide.api.XmlGeneratorTask;
 import java.io.File;
 
 /**
- * Task for generating a filters file.
+ * Task for generating a Visual Studio filters file (e.g. {@code foo.vcxproj.filters}).
  */
 @Incubating
 public class GenerateFiltersFileTask extends XmlGeneratorTask<VisualStudioFiltersFile> {
     private DefaultVisualStudioProject visualStudioProject;
 
+    @Override
+    protected boolean getIncremental() {
+        return true;
+    }
+
     public void setVisualStudioProject(VisualStudioProject vsProject) {
         this.visualStudioProject = (DefaultVisualStudioProject) vsProject;
     }
 
-    @Internal
+    @Nested
     public VisualStudioProject getVisualStudioProject() {
         return visualStudioProject;
     }

@@ -16,7 +16,9 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph;
 
+import org.gradle.api.artifacts.result.ResolvedVariantResult;
 import org.gradle.api.internal.artifacts.ResolvedConfigurationIdentifier;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.ComponentResolutionState;
 import org.gradle.internal.component.local.model.LocalFileDependencyMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 
@@ -49,4 +51,10 @@ public interface DependencyGraphNode {
     Set<? extends LocalFileDependencyMetadata> getOutgoingFileEdges();
 
     ConfigurationMetadata getMetadata();
+
+    boolean isSelected();
+
+    ComponentResolutionState getComponent();
+
+    ResolvedVariantResult getResolvedVariant();
 }

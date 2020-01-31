@@ -42,6 +42,7 @@ public class EstablishBuildEnvironment extends BuildCommandOnly {
         this.processEnvironment = processEnvironment;
     }
 
+    @Override
     protected void doBuild(DaemonCommandExecution execution, Build build) {
         Properties originalSystemProperties = new Properties();
         originalSystemProperties.putAll(System.getProperties());
@@ -49,14 +50,13 @@ public class EstablishBuildEnvironment extends BuildCommandOnly {
         File originalProcessDir = FileUtils.canonicalize(new File("."));
 
         for (Map.Entry<String, String> entry : build.getParameters().getSystemProperties().entrySet()) {
-            if (SystemProperties.getInstance().getStandardProperties().contains(entry.getKey())) {
+            if (SystemProperties.getInstance().isStandardProperty(entry.getKey())) {
                 continue;
             }
-            if (SystemProperties.getInstance().getNonStandardImportantProperties().contains(entry.getKey())) {
+            if (SystemProperties.getInstance().isNonStandardImportantProperty(entry.getKey())) {
                 continue;
             }
-            if (entry.getKey().startsWith("sun.") || entry.getKey().startsWith("awt.")
-                    || entry.getKey().contains(".awt.")) {
+            if (entry.getKey().startsWith("sun.") || entry.getKey().startsWith("awt.") || entry.getKey().contains(".awt.")) {
                 continue;
             }
             System.setProperty(entry.getKey(), entry.getValue());

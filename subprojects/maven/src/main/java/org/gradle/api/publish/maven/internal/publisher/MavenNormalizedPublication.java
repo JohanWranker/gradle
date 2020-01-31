@@ -16,50 +16,86 @@
 
 package org.gradle.api.publish.maven.internal.publisher;
 
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier;
+import org.gradle.api.publish.internal.PublicationArtifactInternal;
 import org.gradle.api.publish.maven.MavenArtifact;
+import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier;
 
 import java.io.File;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class MavenNormalizedPublication {
 
     private final String name;
-    private final File pomFile;
-    private final File metadataFile;
-    private final MavenProjectIdentity projectIdentity;
-    private final Set<MavenArtifact> artifacts;
+    private final ModuleComponentIdentifier coordinates;
+    private final String packaging;
+    private final MavenArtifact pomArtifact;
     private final MavenArtifact mainArtifact;
+    private final Set<MavenArtifact> allArtifacts;
 
-    public MavenNormalizedPublication(String name, File pomFile, File gradleMetadataFile, MavenProjectIdentity projectIdentity, Set<MavenArtifact> artifacts, MavenArtifact mainArtifact) {
+    public MavenNormalizedPublication(String name, MavenProjectIdentity projectIdentity, String packaging, MavenArtifact pomArtifact, MavenArtifact mainArtifact, Set<MavenArtifact> allArtifacts) {
         this.name = name;
-        this.pomFile = pomFile;
-        this.metadataFile = gradleMetadataFile;
-        this.projectIdentity = projectIdentity;
-        this.artifacts = artifacts;
+        this.coordinates = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId(projectIdentity.getGroupId().get(), projectIdentity.getArtifactId().get()), projectIdentity.getVersion().get());
+        this.packaging = packaging;
+        this.pomArtifact = pomArtifact;
         this.mainArtifact = mainArtifact;
+        this.allArtifacts = allArtifacts;
     }
 
     public String getName() {
         return name;
     }
 
+    public ModuleComponentIdentifier getProjectIdentity() {
+        return coordinates;
+    }
+
+    public String getGroupId() {
+        return coordinates.getGroup();
+    }
+
+    public String getArtifactId() {
+        return coordinates.getModule();
+    }
+
+    public String getVersion() {
+        return coordinates.getVersion();
+    }
+
+    public String getPackaging() {
+        return packaging;
+    }
+
+    /**
+     * @deprecated Kept to not break third-party plugins
+     * Sadly this is still used by org.jfrog.buildinfo:build-info-extractor-gradle
+     * See https://github.com/jfrog/build-info/issues/249
+     */
+    @Deprecated
     public File getPomFile() {
-        return pomFile;
+        return pomArtifact.getFile();
     }
 
-    public File getMetadataFile() {
-        return metadataFile;
-    }
-
-    public Set<MavenArtifact> getArtifacts() {
-        return artifacts;
-    }
-
-    public MavenProjectIdentity getProjectIdentity() {
-        return projectIdentity;
+    public MavenArtifact getPomArtifact() {
+        return pomArtifact;
     }
 
     public MavenArtifact getMainArtifact() {
+        if (mainArtifact != null && !((PublicationArtifactInternal) mainArtifact).shouldBePublished()) {
+            throw new IllegalStateException("Artifact " + mainArtifact.getFile().getName() + " wasn't produced by this build.");
+        }
         return mainArtifact;
+    }
+
+    public Set<MavenArtifact> getAdditionalArtifacts() {
+        return allArtifacts.stream()
+                .filter(artifact -> artifact != pomArtifact && artifact != mainArtifact)
+                .collect(Collectors.toSet());
+    }
+
+    public Set<MavenArtifact> getAllArtifacts() {
+        return allArtifacts;
     }
 }

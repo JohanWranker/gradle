@@ -15,7 +15,9 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.modulecache;
 
-import org.gradle.api.Action;
+import com.google.common.base.Joiner;
+import com.google.common.collect.Interner;
+import com.google.common.collect.Maps;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.internal.UncheckedException;
@@ -26,30 +28,35 @@ import org.gradle.internal.resource.local.PathKeyFileStore;
 import org.gradle.internal.serialize.kryo.KryoBackedDecoder;
 import org.gradle.internal.serialize.kryo.KryoBackedEncoder;
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 
 public class ModuleMetadataStore {
 
+    private static final Joiner PATH_JOINER = Joiner.on("/");
     private final PathKeyFileStore metaDataStore;
     private final ModuleMetadataSerializer moduleMetadataSerializer;
     private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
+    private final Interner<String> stringInterner;
 
-    public ModuleMetadataStore(PathKeyFileStore metaDataStore, ModuleMetadataSerializer moduleMetadataSerializer, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
+    public ModuleMetadataStore(PathKeyFileStore metaDataStore,
+                               ModuleMetadataSerializer moduleMetadataSerializer,
+                               ImmutableModuleIdentifierFactory moduleIdentifierFactory,
+                               Interner<String> stringInterner) {
         this.metaDataStore = metaDataStore;
         this.moduleMetadataSerializer = moduleMetadataSerializer;
         this.moduleIdentifierFactory = moduleIdentifierFactory;
+        this.stringInterner = stringInterner;
     }
 
     public MutableModuleComponentResolveMetadata getModuleDescriptor(ModuleComponentAtRepositoryKey component) {
-        String filePath = getFilePath(component);
-        final LocallyAvailableResource resource = metaDataStore.get(filePath);
+        String[] filePath = getFilePath(component);
+        LocallyAvailableResource resource = metaDataStore.get(filePath);
         if (resource != null) {
             try {
-                KryoBackedDecoder decoder = new KryoBackedDecoder(new FileInputStream(resource.getFile()));
+                StringDeduplicatingDecoder decoder = new StringDeduplicatingDecoder(new KryoBackedDecoder(new FileInputStream(resource.getFile())), stringInterner);
                 try {
-                    return moduleMetadataSerializer.read(decoder, moduleIdentifierFactory);
+                    return moduleMetadataSerializer.read(decoder, moduleIdentifierFactory, Maps.newHashMap());
                 } finally {
                     decoder.close();
                 }
@@ -61,26 +68,30 @@ public class ModuleMetadataStore {
     }
 
     public LocallyAvailableResource putModuleDescriptor(ModuleComponentAtRepositoryKey component, final ModuleComponentResolveMetadata metadata) {
-        String filePath = getFilePath(component);
-        return metaDataStore.add(filePath, new Action<File>() {
-            public void execute(File moduleDescriptorFile) {
+        String[] filePath = getFilePath(component);
+        return metaDataStore.add(PATH_JOINER.join(filePath), moduleDescriptorFile -> {
+            try {
+                KryoBackedEncoder encoder = new KryoBackedEncoder(new FileOutputStream(moduleDescriptorFile));
                 try {
-                    KryoBackedEncoder encoder = new KryoBackedEncoder(new FileOutputStream(moduleDescriptorFile));
-                    try {
-                        moduleMetadataSerializer.write(encoder, metadata);
-                    } finally {
-                        encoder.close();
-                    }
-                } catch (Exception e) {
-                    throw UncheckedException.throwAsUncheckedException(e);
+                    moduleMetadataSerializer.write(encoder, metadata, Maps.newHashMap());
+                } finally {
+                    encoder.close();
                 }
+            } catch (Exception e) {
+                throw UncheckedException.throwAsUncheckedException(e);
             }
         });
     }
 
-    private String getFilePath(ModuleComponentAtRepositoryKey componentId) {
+    private String[] getFilePath(ModuleComponentAtRepositoryKey componentId) {
         ModuleComponentIdentifier moduleComponentIdentifier = componentId.getComponentId();
-        return moduleComponentIdentifier.getGroup() + "/" + moduleComponentIdentifier.getModule() + "/" + moduleComponentIdentifier.getVersion() + "/" + componentId.getRepositoryId() + "/descriptor.bin";
+        return new String[] {
+            moduleComponentIdentifier.getGroup(),
+            moduleComponentIdentifier.getModule(),
+            moduleComponentIdentifier.getVersion(),
+            componentId.getRepositoryId(),
+            "descriptor.bin"
+        };
     }
 
 }

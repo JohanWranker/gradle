@@ -17,12 +17,13 @@
 package org.gradle.testing.testng
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.JUnitXmlTestExecutionResult
 import org.gradle.testing.fixture.TestNGCoverage
 import spock.lang.Issue
 
-import static org.hamcrest.Matchers.containsString
-import static org.hamcrest.Matchers.is
+import static org.hamcrest.CoreMatchers.containsString
+import static org.hamcrest.CoreMatchers.is
 
 class TestNGStaticLoggingIntegrationTest extends AbstractIntegrationSpec {
     def setup() {
@@ -36,9 +37,10 @@ class TestNGStaticLoggingIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("GRADLE-2841")
+    @ToBeFixedForInstantExecution
     def "captures output from logging frameworks"() {
         buildFile << """
-            dependencies { compile "org.slf4j:slf4j-simple:1.7.10", "org.slf4j:slf4j-api:1.7.10" }
+            dependencies { implementation "org.slf4j:slf4j-simple:1.7.10", "org.slf4j:slf4j-api:1.7.10" }
 """
         file("src/test/java/FooTest.java") << """
             import org.testng.annotations.*;
@@ -55,12 +57,12 @@ class TestNGStaticLoggingIntegrationTest extends AbstractIntegrationSpec {
             }
         """
 
-        when: run("test")
+        when: succeeds("test")
 
         then:
-        result.output.contains("Test method foo(FooTest) -> [Test worker] INFO FooTest - slf4j info")
-        result.output.contains("Test method foo(FooTest) -> ${java.util.logging.Level.INFO.getLocalizedName()}: jul info")
-        result.output.contains("Test method foo(FooTest) -> ${java.util.logging.Level.WARNING.getLocalizedName()}: jul warning")
+        outputContains("Test method foo(FooTest) -> [Test worker] INFO FooTest - slf4j info")
+        outputContains("Test method foo(FooTest) -> ${java.util.logging.Level.INFO.getLocalizedName()}: jul info")
+        outputContains("Test method foo(FooTest) -> ${java.util.logging.Level.WARNING.getLocalizedName()}: jul warning")
 
         def testResult = new JUnitXmlTestExecutionResult(testDirectory)
         def classResult = testResult.testClass("FooTest")
@@ -70,6 +72,7 @@ class TestNGStaticLoggingIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("GRADLE-2841")
+    @ToBeFixedForInstantExecution
     def "captures logging from System streams referenced from static initializer"() {
         file("src/test/java/FooTest.java") << """
             import org.testng.annotations.*;
@@ -83,10 +86,10 @@ class TestNGStaticLoggingIntegrationTest extends AbstractIntegrationSpec {
             }
         """
 
-        when: run("test")
+        when: succeeds("test")
         then:
-        result.output.contains("Test method foo(FooTest) -> cool output from test")
-        result.output.contains("Test method foo(FooTest) -> err output from test")
+        outputContains("Test method foo(FooTest) -> cool output from test")
+        outputContains("Test method foo(FooTest) -> err output from test")
         result.output.readLines().find { it.matches "Gradle Test Executor \\d+ -> cool output from initializer" }
 
         def testResult = new JUnitXmlTestExecutionResult(testDirectory)
@@ -94,6 +97,7 @@ class TestNGStaticLoggingIntegrationTest extends AbstractIntegrationSpec {
         testResult.testClass("FooTest").assertTestCaseStderr("foo", is("err output from test\n"))
     }
 
+    @ToBeFixedForInstantExecution
     def "test can generate output from multiple threads"() {
         file("src/test/java/OkTest.java") << """
 import java.util.logging.Logger;
@@ -127,16 +131,16 @@ public class OkTest {
 """
 
         when:
-        run("test")
+        succeeds("test")
 
         then:
         def testResult = new JUnitXmlTestExecutionResult(testDirectory)
         def classResult = testResult.testClass("OkTest")
 
         5.times { n ->
-            assert result.output.contains("Test method ok(OkTest) -> stdout from thread $n")
-            assert result.output.contains("Test method ok(OkTest) -> stderr from thread $n")
-            assert result.output.contains("Test method ok(OkTest) -> ${java.util.logging.Level.INFO.getLocalizedName()}: info from thread $n")
+            outputContains("Test method ok(OkTest) -> stdout from thread $n")
+            outputContains("Test method ok(OkTest) -> stderr from thread $n")
+            outputContains("Test method ok(OkTest) -> ${java.util.logging.Level.INFO.getLocalizedName()}: info from thread $n")
 
             classResult.assertTestCaseStdout("ok", containsString("stdout from thread $n"))
             classResult.assertTestCaseStderr("ok", containsString("stderr from thread $n"))

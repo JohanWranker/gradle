@@ -20,7 +20,8 @@ import com.google.common.collect.Maps
 import com.google.common.collect.Sets
 import org.gradle.api.Action
 import org.gradle.ide.visualstudio.TextProvider
-import org.gradle.internal.component.local.model.LocalComponentArtifactMetadata
+import org.gradle.ide.visualstudio.internal.VisualStudioProjectConfigurationMetadata
+import org.gradle.ide.visualstudio.internal.VisualStudioProjectMetadata
 import org.gradle.plugins.ide.internal.generator.AbstractPersistableConfigurationObject
 import org.gradle.util.TextUtil
 
@@ -29,25 +30,22 @@ import static org.gradle.ide.visualstudio.internal.DefaultVisualStudioProject.ge
 class VisualStudioSolutionFile extends AbstractPersistableConfigurationObject {
     List<Action<? super TextProvider>> actions = new ArrayList<Action<? super TextProvider>>();
     private Map<File, String> projects = Maps.newLinkedHashMap()
-    private Map<File, Set<String>> projectConfigurations = Maps.newLinkedHashMap()
+    private Map<File, Set<VisualStudioProjectConfigurationMetadata>> projectConfigurations = Maps.newLinkedHashMap()
     private baseText
 
     protected String getDefaultResourceName() {
         'default.sln'
     }
 
-    void setProjects(List<LocalComponentArtifactMetadata> projects) {
-        projects.each { LocalComponentArtifactMetadata project ->
-            this.projects[project.file] = project.name.name
-        }
-    }
-
-    void setProjectConfigurations(List<LocalComponentArtifactMetadata> projectConfigurations) {
-        projectConfigurations.each { LocalComponentArtifactMetadata projectConfiguration ->
-            if (!this.projectConfigurations.containsKey(projectConfiguration.file)) {
-                this.projectConfigurations[projectConfiguration.file] = Sets.newHashSet();
+    void setProjects(List<VisualStudioProjectMetadata> projects) {
+        projects.each { VisualStudioProjectMetadata project ->
+            this.projects[project.file] = project.name
+            if (!this.projectConfigurations.containsKey(project.file)) {
+                this.projectConfigurations[project.file] = Sets.newHashSet();
             }
-            this.projectConfigurations[projectConfiguration.file].add(projectConfiguration.name.name)
+            project.configurations.each { configuration ->
+                this.projectConfigurations[project.file].add(configuration)
+            }
         }
     }
 
@@ -76,17 +74,31 @@ EndProject"""
         builder << """
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution"""
-        Set<String> configurationNames = Sets.newLinkedHashSet(projectConfigurations.values().flatten().sort())
+        Set<String> configurationNames = Sets.newLinkedHashSet(projectConfigurations.values().flatten().collect({ it.name }).sort())
         configurationNames.each { String configurationName ->
-            builder << """\n\t\t${configurationName}=${configurationName}"""
+            builder << """\n\t\t${configurationName} = ${configurationName}"""
         }
         builder << """
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution"""
         projects.each { File projectFile, String projectName ->
-            projectConfigurations[projectFile].sort().each { String configurationName ->
-                builder << """\n\t\t${getUUID(projectFile)}.${configurationName}.ActiveCfg = ${configurationName}"""
-                builder << """\n\t\t${getUUID(projectFile)}.${configurationName}.Build.0 = ${configurationName}"""
+            def configurations = configurationNames.collect { String configurationName ->
+                def result = []
+                def configuration = projectConfigurations[projectFile].find({ configurationName == it.name })
+                def lastConfiguration = projectConfigurations[projectFile].sort({ a, b -> a.name <=> b.name }).last()
+                if (configuration == null) {
+                    result.add("${configurationName}.ActiveCfg = ${lastConfiguration.name}")
+                } else {
+                    result.add("${configurationName}.ActiveCfg = ${configuration.name}")
+                    if (configuration.buildable) {
+                        result.add("${configurationName}.Build.0 = ${configuration.name}")
+                    }
+                }
+                return result
+            }
+
+            configurations.flatten().sort().each { String configuration ->
+                builder << "\n\t\t${getUUID(projectFile)}.${configuration}"
             }
         }
 

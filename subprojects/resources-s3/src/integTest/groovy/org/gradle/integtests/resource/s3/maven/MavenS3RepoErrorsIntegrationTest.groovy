@@ -18,6 +18,7 @@
 package org.gradle.integtests.resource.s3.maven
 
 import org.gradle.api.credentials.AwsCredentials
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.resource.s3.AbstractS3DependencyResolutionTest
 import org.gradle.integtests.resource.s3.fixtures.MavenS3Module
 
@@ -46,20 +47,23 @@ task retrieve(type: Sync) {
 """
     }
 
+    @ToBeFixedForInstantExecution
     def "should fail with an AWS S3 authentication error"() {
         setup:
         buildFile << mavenAwsRepoDsl()
         when:
-        module.pom.expectDownloadAuthencicationError()
+        module.pom.expectDownloadAuthenticationError()
         then:
         fails 'retrieve'
         and:
-        failure.assertHasDescription("Could not resolve all files for configuration ':compile'.")
+        failure.assertHasDescription("Execution failed for task ':retrieve'.")
+        failure.assertHasCause("Could not resolve all files for configuration ':compile'.")
                 .assertHasCause('Could not resolve org.gradle:test:1.85')
                 .assertHasCause("Could not get resource '${module.pom.uri}'.")
                 .assertHasCause("The AWS Access Key Id you provided does not exist in our records.")
     }
 
+    @ToBeFixedForInstantExecution
     def "fails when providing PasswordCredentials with decent error"() {
         setup:
         buildFile << """
@@ -78,10 +82,12 @@ repositories {
         fails 'retrieve'
         then:
         //TODO would be good to have a reference of the wrong configured repository in the error message
-        failure.assertHasDescription("Could not resolve all dependencies for configuration ':compile'.")
+        failure.assertHasDescription("Execution failed for task ':retrieve'.")
+        failure.assertHasCause("Could not resolve all dependencies for configuration ':compile'.")
                 .assertHasCause("Credentials must be an instance of '${AwsCredentials.class.getName()}'.")
     }
 
+    @ToBeFixedForInstantExecution
     def "fails when no credentials provided"() {
         setup:
         buildFile << """
@@ -95,31 +101,34 @@ repositories {
         when:
         fails 'retrieve'
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for configuration ':compile'.")
+        failure.assertHasDescription("Execution failed for task ':retrieve'.")
+        failure.assertHasCause("Could not resolve all dependencies for configuration ':compile'.")
                 .assertHasCause("S3 resource should either specify AwsImAuthentication or provide some AwsCredentials.")
 
     }
 
+    @ToBeFixedForInstantExecution
     def "should include resource uri when file not found"() {
         setup:
         buildFile << mavenAwsRepoDsl()
         when:
         module.pom.expectDownloadMissing()
-        module.artifact.expectMetadataRetrieveMissing()
         then:
         fails 'retrieve'
 
         and:
-        failure.assertHasDescription("Could not resolve all files for configuration ':compile'.")
+        failure.assertHasDescription("Execution failed for task ':retrieve'.")
+        failure.assertHasCause("Could not resolve all files for configuration ':compile'.")
         failure.assertHasCause(
                 """Could not find org.gradle:test:1.85.
 Searched in the following locations:
-    ${module.pom.uri}
-    ${module.artifact.uri}
+  - ${module.pom.uri}
+If the artifact you are trying to retrieve can be found in the repository but without metadata in 'Maven POM' format, you need to adjust the 'metadataSources { ... }' of the repository declaration.
 Required by:
 """)
     }
 
+    @ToBeFixedForInstantExecution
     def "cannot add invalid authentication types for s3 repo"() {
         given:
         module.publish()
@@ -139,6 +148,8 @@ Required by:
         expect:
         fails 'retrieve'
         and:
+        failure.assertHasDescription("Execution failed for task ':retrieve'.")
+        failure.assertHasCause("Could not resolve all dependencies for configuration ':compile'.")
         failure.assertHasCause("Authentication scheme 'auth'(BasicAuthentication) is not supported by protocol 's3'")
     }
 }

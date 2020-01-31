@@ -17,7 +17,6 @@
 package org.gradle.swiftpm.plugins;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
@@ -33,10 +32,10 @@ import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionP
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionRangeSelector;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelector;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelectorScheme;
+import org.gradle.api.internal.artifacts.ivyservice.projectmodule.ProjectDependencyPublicationResolver;
 import org.gradle.api.provider.Provider;
 import org.gradle.internal.component.external.model.DefaultModuleComponentSelector;
 import org.gradle.language.cpp.CppApplication;
-import org.gradle.language.cpp.CppComponent;
 import org.gradle.language.cpp.CppLibrary;
 import org.gradle.language.swift.SwiftApplication;
 import org.gradle.language.swift.SwiftLibrary;
@@ -50,6 +49,7 @@ import org.gradle.swiftpm.internal.DefaultLibraryProduct;
 import org.gradle.swiftpm.internal.DefaultPackage;
 import org.gradle.swiftpm.internal.DefaultTarget;
 import org.gradle.swiftpm.internal.Dependency;
+import org.gradle.swiftpm.internal.SwiftPmTarget;
 import org.gradle.swiftpm.internal.VersionDependency;
 import org.gradle.swiftpm.tasks.GenerateSwiftPackageManagerManifest;
 import org.gradle.vcs.VersionControlSpec;
@@ -72,15 +72,18 @@ import java.util.concurrent.Callable;
  *
  * @since 4.6
  */
-@Incubating
 public class SwiftPackageManagerExportPlugin implements Plugin<Project> {
     private final VcsResolver vcsResolver;
     private final VersionSelectorScheme versionSelectorScheme;
+    private final ProjectDependencyPublicationResolver publicationResolver;
+    private final VersionParser versionParser;
 
     @Inject
-    public SwiftPackageManagerExportPlugin(VcsResolver vcsResolver, VersionSelectorScheme versionSelectorScheme) {
+    public SwiftPackageManagerExportPlugin(VcsResolver vcsResolver, VersionSelectorScheme versionSelectorScheme, ProjectDependencyPublicationResolver publicationResolver, VersionParser versionParser) {
         this.vcsResolver = vcsResolver;
         this.versionSelectorScheme = versionSelectorScheme;
+        this.publicationResolver = publicationResolver;
+        this.versionParser = versionParser;
     }
 
     @Override
@@ -195,16 +198,11 @@ public class SwiftPackageManagerExportPlugin implements Plugin<Project> {
         }
 
         private void collectDependencies(Configuration configuration, Collection<Dependency> dependencies, DefaultTarget target) {
-            // TODO - should use publication service to do this lookup, deal with ambiguous reference and caching of the mappings
             for (org.gradle.api.artifacts.Dependency dependency : configuration.getAllDependencies()) {
                 if (dependency instanceof ProjectDependency) {
                     ProjectDependency projectDependency = (ProjectDependency) dependency;
-                    for (SwiftLibrary library : projectDependency.getDependencyProject().getComponents().withType(SwiftLibrary.class)) {
-                        target.getRequiredTargets().add(library.getModule().get());
-                    }
-                    for (CppLibrary library : projectDependency.getDependencyProject().getComponents().withType(CppComponent.class).withType(CppLibrary.class)) {
-                        target.getRequiredTargets().add(library.getBaseName().get());
-                    }
+                    SwiftPmTarget identifier = publicationResolver.resolve(SwiftPmTarget.class, projectDependency);
+                    target.getRequiredTargets().add(identifier.getTargetName());
                 } else if (dependency instanceof ExternalModuleDependency) {
                     ExternalModuleDependency externalDependency = (ExternalModuleDependency) dependency;
                     ModuleComponentSelector depSelector = DefaultModuleComponentSelector.newSelector(externalDependency);
@@ -213,21 +211,22 @@ public class SwiftPackageManagerExportPlugin implements Plugin<Project> {
                         throw new InvalidUserDataException(String.format("Cannot determine the Git URL for dependency on %s:%s.", dependency.getGroup(), dependency.getName()));
                     }
                     GitVersionControlSpec gitSpec = (GitVersionControlSpec) vcsSpec;
-
-                    if (externalDependency.getVersionConstraint().getBranch() != null) {
-                        dependencies.add(new BranchDependency(gitSpec.getUrl(), externalDependency.getVersionConstraint().getBranch()));
-                        if (externalDependency.getVersion() != null) {
-                            throw new InvalidUserDataException(String.format("Cannot map a dependency on %s:%s that defines both a branch (%s) and a version constraint (%s).", externalDependency.getGroup(), externalDependency.getName(), externalDependency.getVersionConstraint().getBranch(), externalDependency.getVersion()));
-                        }
-                    } else {
-                        dependencies.add(toSwiftPmDependency(externalDependency, gitSpec));
-                    }
+                    dependencies.add(toSwiftPmDependency(externalDependency, gitSpec));
                     target.getRequiredProducts().add(externalDependency.getName());
+                } else {
+                    throw new InvalidUserDataException(String.format("Cannot map a dependency of type %s (%s)", dependency.getClass().getSimpleName(), dependency));
                 }
             }
         }
 
         private Dependency toSwiftPmDependency(ExternalModuleDependency externalDependency, GitVersionControlSpec gitSpec) {
+            if (externalDependency.getVersionConstraint().getBranch() != null) {
+                if (externalDependency.getVersion() != null) {
+                    throw new InvalidUserDataException(String.format("Cannot map a dependency on %s:%s that defines both a branch (%s) and a version constraint (%s).", externalDependency.getGroup(), externalDependency.getName(), externalDependency.getVersionConstraint().getBranch(), externalDependency.getVersion()));
+                }
+                return new BranchDependency(gitSpec.getUrl(), externalDependency.getVersionConstraint().getBranch());
+            }
+
             String versionSelectorString = externalDependency.getVersion();
             VersionSelector versionSelector = versionSelectorScheme.parseSelector(versionSelectorString);
             if (versionSelector instanceof LatestVersionSelector) {
@@ -248,7 +247,7 @@ public class SwiftPackageManagerExportPlugin implements Plugin<Project> {
                 // TODO - take care of this in the selector parser
                 if (prefix.endsWith(".")) {
                     String versionString = prefix.substring(0, prefix.length() - 1);
-                    Version version = VersionParser.INSTANCE.transform(versionString);
+                    Version version = versionParser.transform(versionString);
                     if (version.getNumericParts().length == 1) {
                         Long part1 = version.getNumericParts()[0];
                         return new VersionDependency(gitSpec.getUrl(), part1 + ".0.0");
@@ -256,7 +255,7 @@ public class SwiftPackageManagerExportPlugin implements Plugin<Project> {
                     if (version.getNumericParts().length == 2) {
                         Long part1 = version.getNumericParts()[0];
                         Long part2 = version.getNumericParts()[1];
-                        return new VersionDependency(gitSpec.getUrl(), part1 + "." + part2 + ".0", part1 + "." + (part2+1) + ".0", false);
+                        return new VersionDependency(gitSpec.getUrl(), part1 + "." + part2 + ".0", part1 + "." + (part2 + 1) + ".0", false);
                     }
                 }
             }

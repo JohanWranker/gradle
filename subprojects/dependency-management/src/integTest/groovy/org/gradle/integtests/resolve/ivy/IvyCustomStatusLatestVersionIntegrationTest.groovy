@@ -16,6 +16,7 @@
 package org.gradle.integtests.resolve.ivy
 
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Issue
 
 class IvyCustomStatusLatestVersionIntegrationTest extends AbstractHttpDependencyResolutionTest {
@@ -27,13 +28,18 @@ repositories {
         url "${ivyRepo.uri}"
     }
 }
+
+class StatusRule implements ComponentMetadataRule {
+    public void execute(ComponentMetadataContext context) {
+        context.details.statusScheme = ["bronze", "silver", "gold", "platin"]
+    }
+}
+
 configurations { compile }
 dependencies {
     compile 'org.test:projectA:latest.$status'
     components {
-        all { ComponentMetadataDetails details ->
-            details.statusScheme = ["bronze", "silver", "gold", "platin"]
-        }
+        all(StatusRule)
     }
 }
 
@@ -61,6 +67,7 @@ task retrieve(type: Sync) {
         "platin" | "1.0"
     }
 
+    @ToBeFixedForInstantExecution
     def "uses status provided by component metadata rule for latest.xyz"() {
         given:
         buildFile << """
@@ -70,14 +77,29 @@ repositories {
     }
 }
 configurations { compile }
+
+class StatusRule implements ComponentMetadataRule {
+
+    String releaseVersion
+    
+    @javax.inject.Inject
+    public StatusRule(String releaseVersion) {
+        this.releaseVersion = releaseVersion
+    }
+
+    public void execute(ComponentMetadataContext context) {
+            if (context.details.id.version == releaseVersion) {
+                context.details.status = 'release'
+            }
+    }
+}
+
 dependencies {
     compile 'org.test:projectA:latest.release'
     components {
-        all { ComponentMetadataDetails details ->
-            if (details.id.version == project.properties['releaseVersion']) {
-                details.status = 'release'
-            }
-        }
+        all(StatusRule, {
+            params(project.properties['releaseVersion'] == null ? '' : project.properties['releaseVersion'])
+        })
     }
 }
 
@@ -107,6 +129,7 @@ task retrieve(type: Sync) {
     }
 
     @Issue("https://issues.gradle.org/browse/GRADLE-3216")
+    @ToBeFixedForInstantExecution
     def "uses changing provided by component metadata rule for latest.xyz"() {
         given:
         buildFile << """
@@ -115,17 +138,22 @@ repositories {
         url "${ivyHttpRepo.uri}"
     }
 }
+class StatusRule implements ComponentMetadataRule {
+    public void execute(ComponentMetadataContext context) {
+        def details = context.details
+        if (details.status == 'snapshot') {
+            details.changing = true
+        }
+
+        details.statusScheme = ['snapshot', 'release']
+    }
+}
+
 configurations { compile }
 dependencies {
     compile 'org.test:projectA:latest.release'
     components {
-        all { ComponentMetadataDetails details ->
-            if (details.status == 'snapshot') {
-                details.changing = true
-            }
-
-            details.statusScheme = ['snapshot', 'release']
-        }
+        all(StatusRule)
     }
 }
 
@@ -187,6 +215,7 @@ task retrieve(type: Sync) {
     }
 
     @Issue("https://issues.gradle.org/browse/GRADLE-3216")
+    @ToBeFixedForInstantExecution
     def "handles changing module with latest.release"() {
         given:
         buildFile << """

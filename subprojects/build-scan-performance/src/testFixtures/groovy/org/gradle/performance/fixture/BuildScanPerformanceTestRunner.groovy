@@ -21,15 +21,18 @@ import org.gradle.internal.jvm.Jvm
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.performance.results.CrossBuildPerformanceResults
 import org.gradle.performance.results.DataReporter
+import org.gradle.performance.results.ResultsStore
 import org.gradle.performance.util.Git
 import org.gradle.util.GradleVersion
 
-class BuildScanPerformanceTestRunner extends CrossBuildPerformanceTestRunner {
+class BuildScanPerformanceTestRunner extends CrossBuildGradleInternalPerformanceTestRunner {
     private final String pluginCommitSha
 
-    public BuildScanPerformanceTestRunner(BuildExperimentRunner experimentRunner, DataReporter<CrossBuildPerformanceResults> dataReporter, String pluginCommitSha, IntegrationTestBuildContext buildContext) {
-        super(experimentRunner, dataReporter, buildContext)
+    BuildScanPerformanceTestRunner(GradleInternalBuildExperimentRunner experimentRunner, ResultsStore resultsStore, DataReporter<CrossBuildPerformanceResults> dataReporter, String pluginCommitSha, IntegrationTestBuildContext buildContext) {
+        super(experimentRunner, resultsStore, dataReporter, buildContext)
         this.pluginCommitSha = pluginCommitSha
+        this.testGroup = "build scan plugin"
+
     }
 
     @Override
@@ -44,7 +47,8 @@ class BuildScanPerformanceTestRunner extends CrossBuildPerformanceTestRunner {
             vcsBranch: Git.current().branchName,
             vcsCommits: [Git.current().commitId, pluginCommitSha],
             startTime: clock.getCurrentTime(),
-            channel: determineChannel()
+            channel: determineChannel(),
+            teamCityBuildId: determineTeamCityBuildId()
         )
     }
 

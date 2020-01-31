@@ -16,17 +16,24 @@
 
 package org.gradle.cache.internal.locklistener;
 
+import org.gradle.api.Action;
+import org.gradle.cache.FileLockReleasedSignal;
+
 public class NoOpFileLockContentionHandler implements FileLockContentionHandler {
 
-    public void start(long lockId, Runnable whenContended) {}
+    @Override
+    public void start(long lockId, Action<FileLockReleasedSignal> whenContended) {}
 
+    @Override
     public void stop(long lockId) {}
 
+    @Override
     public int reservePort() {
         return -1;
     }
 
-    public boolean maybePingOwner(int port, long lockId, String displayName, long timeElapsed) {
+    @Override
+    public boolean maybePingOwner(int port, long lockId, String displayName, long timeElapsed, FileLockReleasedSignal signal) {
         return false;
     }
 }

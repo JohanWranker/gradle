@@ -17,18 +17,20 @@
 package org.gradle.nativeplatform.toolchain.internal;
 
 import org.gradle.api.GradleException;
-import org.gradle.internal.text.TreeFormatter;
+import org.gradle.internal.logging.text.DiagnosticsVisitor;
+import org.gradle.internal.logging.text.TreeFormatter;
 import org.gradle.language.base.internal.compile.CompileSpec;
 import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.nativeplatform.platform.internal.OperatingSystemInternal;
 import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetadata;
-import org.gradle.platform.base.internal.toolchain.ToolChainAvailability;
+import org.gradle.nativeplatform.toolchain.internal.tools.CommandLineToolSearchResult;
 import org.gradle.platform.base.internal.toolchain.ToolSearchResult;
-import org.gradle.util.TreeVisitor;
+
+import java.io.File;
 
 import static org.gradle.internal.FileUtils.withExtension;
 
-public class UnavailablePlatformToolProvider implements PlatformToolProvider {
+public class UnavailablePlatformToolProvider implements PlatformToolProvider, CommandLineToolSearchResult {
     private final ToolSearchResult failure;
     private final OperatingSystemInternal targetOperatingSystem;
 
@@ -37,20 +39,18 @@ public class UnavailablePlatformToolProvider implements PlatformToolProvider {
         this.failure = failure;
     }
 
-    public UnavailablePlatformToolProvider(OperatingSystemInternal targetOperatingSystem, String failure) {
-        this.targetOperatingSystem = targetOperatingSystem;
-        ToolChainAvailability result = new ToolChainAvailability();
-        result.unavailable(failure);
-        this.failure = result;
-    }
-
     @Override
     public boolean isAvailable() {
         return false;
     }
 
     @Override
-    public void explain(TreeVisitor<? super String> visitor) {
+    public boolean isSupported() {
+        return true;
+    }
+
+    @Override
+    public void explain(DiagnosticsVisitor visitor) {
         failure.explain(visitor);
     }
 
@@ -123,12 +123,22 @@ public class UnavailablePlatformToolProvider implements PlatformToolProvider {
     }
 
     @Override
-    public ToolSearchResult isToolAvailable(ToolType toolType) {
+    public CommandLineToolSearchResult locateTool(ToolType compilerType) {
         return this;
     }
 
     @Override
-    public CompilerMetadata getCompilerMetadata() {
+    public File getTool() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SystemLibraries getSystemLibraries(ToolType compilerType) {
+        return new EmptySystemLibraries();
+    }
+
+    @Override
+    public CompilerMetadata getCompilerMetadata(ToolType compilerType) {
         throw failure();
     }
 }

@@ -16,12 +16,9 @@
 
 package org.gradle.api.logging.configuration;
 
-import org.gradle.api.Incubating;
-
 /**
  * Specifies how to treat color and dynamic console output.
  */
-@Incubating
 public enum ConsoleOutput {
     /**
      * Disable all color and rich output. Generate plain text only.

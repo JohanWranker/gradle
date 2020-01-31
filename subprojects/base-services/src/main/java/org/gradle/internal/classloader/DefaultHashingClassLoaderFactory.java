@@ -35,8 +35,8 @@ public class DefaultHashingClassLoaderFactory extends DefaultClassLoaderFactory 
     }
 
     @Override
-    protected ClassLoader doCreateClassLoader(ClassLoader parent, ClassPath classPath) {
-        ClassLoader classLoader = super.doCreateClassLoader(parent, classPath);
+    protected ClassLoader doCreateClassLoader(String name, ClassLoader parent, ClassPath classPath) {
+        ClassLoader classLoader = super.doCreateClassLoader(name, parent, classPath);
         hashCodes.put(classLoader, calculateClassLoaderHash(classPath));
         return classLoader;
     }
@@ -49,17 +49,17 @@ public class DefaultHashingClassLoaderFactory extends DefaultClassLoaderFactory 
     }
 
     @Override
-    public ClassLoader createChildClassLoader(ClassLoader parent, ClassPath classPath, HashCode implementationHash) {
+    public ClassLoader createChildClassLoader(String name, ClassLoader parent, ClassPath classPath, HashCode implementationHash) {
         HashCode hashCode = implementationHash != null
             ? implementationHash
             : calculateClassLoaderHash(classPath);
-        ClassLoader classLoader = super.doCreateClassLoader(parent, classPath);
+        ClassLoader classLoader = super.doCreateClassLoader(name, parent, classPath);
         hashCodes.put(classLoader, hashCode);
         return classLoader;
     }
 
     @Override
-    public HashCode getHash(ClassLoader classLoader) {
+    public HashCode getClassLoaderClasspathHash(ClassLoader classLoader) {
         if (classLoader instanceof ImplementationHashAware) {
             ImplementationHashAware loader = (ImplementationHashAware) classLoader;
             return loader.getImplementationHash();
@@ -72,7 +72,7 @@ public class DefaultHashingClassLoaderFactory extends DefaultClassLoaderFactory 
     }
 
     private static HashCode calculateFilterSpecHash(FilteringClassLoader.Spec spec) {
-        Hasher hasher = Hashing.md5().newHasher();
+        Hasher hasher = Hashing.newHasher();
         addToHash(hasher, spec.getClassNames());
         addToHash(hasher, spec.getPackageNames());
         addToHash(hasher, spec.getPackagePrefixes());
@@ -92,7 +92,6 @@ public class DefaultHashingClassLoaderFactory extends DefaultClassLoaderFactory 
         String[] sortedItems = items.toArray(new String[count]);
         Arrays.sort(sortedItems);
         for (String item : sortedItems) {
-            hasher.putInt(0);
             hasher.putString(item);
         }
     }

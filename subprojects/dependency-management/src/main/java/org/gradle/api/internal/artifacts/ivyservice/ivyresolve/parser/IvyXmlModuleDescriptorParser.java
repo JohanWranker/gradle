@@ -42,9 +42,9 @@ import org.apache.ivy.plugins.namespace.Namespace;
 import org.apache.ivy.plugins.parser.xml.XmlModuleDescriptorParser;
 import org.apache.ivy.util.extendable.DefaultExtendableItem;
 import org.apache.ivy.util.url.URLHandlerRegistry;
-import org.gradle.api.Action;
-import org.gradle.api.Transformer;
+import org.gradle.api.GradleException;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ivyservice.IvyUtil;
 import org.gradle.api.internal.artifacts.ivyservice.NamespaceId;
@@ -55,7 +55,7 @@ import org.gradle.api.resources.MissingResourceException;
 import org.gradle.internal.classloader.ClassLoaderUtils;
 import org.gradle.internal.component.external.descriptor.Artifact;
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier;
-import org.gradle.internal.component.external.model.MutableIvyModuleResolveMetadata;
+import org.gradle.internal.component.external.model.ivy.MutableIvyModuleResolveMetadata;
 import org.gradle.internal.component.model.DefaultIvyArtifactName;
 import org.gradle.internal.component.model.IvyArtifactName;
 import org.gradle.internal.resource.ExternalResource;
@@ -70,6 +70,7 @@ import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
+import org.xml.sax.ext.LexicalHandler;
 import org.xml.sax.helpers.DefaultHandler;
 
 import javax.xml.parsers.ParserConfigurationException;
@@ -118,7 +119,8 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         this.metadataFactory = metadataFactory;
     }
 
-    protected MutableIvyModuleResolveMetadata doParseDescriptor(DescriptorParseContext parseContext, LocallyAvailableExternalResource resource, boolean validate) throws IOException, ParseException {
+    @Override
+    protected ParseResult<MutableIvyModuleResolveMetadata> doParseDescriptor(DescriptorParseContext parseContext, LocallyAvailableExternalResource resource, boolean validate) throws IOException, ParseException {
         Parser parser = createParser(parseContext, resource, populateProperties());
         parser.setValidate(validate);
         parser.parse();
@@ -126,7 +128,7 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         DefaultModuleDescriptor moduleDescriptor = parser.getModuleDescriptor();
         postProcess(moduleDescriptor);
 
-        return parser.getMetaData();
+        return ParseResult.of(parser.getMetaData(), parser.hasGradleMetadataRedirect);
     }
 
     protected Parser createParser(DescriptorParseContext parseContext, LocallyAvailableExternalResource resource, Map<String, String> properties) throws MalformedURLException {
@@ -147,11 +149,7 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         properties.put("ivy.default.settings.dir", baseDir);
         properties.put("ivy.basedir", baseDir);
 
-        Set<String> propertyNames = CollectionUtils.collect(System.getProperties().entrySet(), new Transformer<String, Map.Entry<Object, Object>>() {
-            public String transform(Map.Entry<Object, Object> entry) {
-                return entry.getKey().toString();
-            }
-        });
+        Set<String> propertyNames = CollectionUtils.collect(System.getProperties().entrySet(), entry -> entry.getKey().toString());
 
         for (String property : propertyNames) {
             properties.put(property, System.getProperty(property));
@@ -186,6 +184,9 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
             if (!errors.isEmpty()) {
                 throw new ParseException(Joiner.on(TextUtil.getPlatformLineSeparator()).join(errors), 0);
             }
+            if (getMd().getModuleRevisionId() == null) {
+                throw new MetaDataParseException("Ivy file", getResource(), new GradleException("Not a valid Ivy file"));
+            }
         }
 
         protected ExternalResource getResource() {
@@ -205,33 +206,33 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         }
 
         protected void parseDepsConfs(String confs, DefaultDependencyDescriptor dd,
-                boolean useDefaultMappingToGuessRightOperande) {
-            parseDepsConfs(confs, dd, useDefaultMappingToGuessRightOperande, true);
+                boolean useDefaultMappingToGuessRightOperand) {
+            parseDepsConfs(confs, dd, useDefaultMappingToGuessRightOperand, true);
         }
 
         protected void parseDepsConfs(String confs, DefaultDependencyDescriptor dd,
-                boolean useDefaultMappingToGuessRightOperande, boolean evaluateConditions) {
+                boolean useDefaultMappingToGuessRightOperand, boolean evaluateConditions) {
             if (confs == null) {
                 return;
             }
 
             String[] conf = confs.split(";");
-            parseDepsConfs(conf, dd, useDefaultMappingToGuessRightOperande, evaluateConditions);
+            parseDepsConfs(conf, dd, useDefaultMappingToGuessRightOperand, evaluateConditions);
         }
 
         protected void parseDepsConfs(String[] conf, DefaultDependencyDescriptor dd,
-                boolean useDefaultMappingToGuessRightOperande) {
-            parseDepsConfs(conf, dd, useDefaultMappingToGuessRightOperande, true);
+                boolean useDefaultMappingToGuessRightOperand) {
+            parseDepsConfs(conf, dd, useDefaultMappingToGuessRightOperand, true);
         }
 
         protected void parseDepsConfs(String[] conf, DefaultDependencyDescriptor dd,
-                boolean useDefaultMappingToGuessRightOperande, boolean evaluateConditions) {
+                boolean useDefaultMappingToGuessRightOperand, boolean evaluateConditions) {
             replaceConfigurationWildcards(md);
             for (int i = 0; i < conf.length; i++) {
                 String[] ops = conf[i].split("->");
                 if (ops.length == 1) {
                     String[] modConfs = ops[0].split(",");
-                    if (!useDefaultMappingToGuessRightOperande) {
+                    if (!useDefaultMappingToGuessRightOperand) {
                         for (int j = 0; j < modConfs.length; j++) {
                             dd.addDependencyConfiguration(modConfs[j].trim(), modConfs[j].trim());
                         }
@@ -275,14 +276,14 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
             }
 
             if (md.isMappingOverride()) {
-                addExtendingConfigurations(conf, dd, useDefaultMappingToGuessRightOperande);
+                addExtendingConfigurations(conf, dd, useDefaultMappingToGuessRightOperand);
             }
         }
 
         /**
          * Evaluate the optional condition in the given configuration, like "[org=MYORG]confX". If
          * the condition evaluates to true, the configuration is returned, if the condition
-         * evaluatate to false, null is returned. If there are no conditions, the configuration
+         * evaluate to false, null is returned. If there are no conditions, the configuration
          * itself is returned.
          *
          * @param conf
@@ -343,14 +344,14 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         }
 
         private void addExtendingConfigurations(String[] confs, DefaultDependencyDescriptor dd,
-                boolean useDefaultMappingToGuessRightOperande) {
+                boolean useDefaultMappingToGuessRightOperand) {
             for (int i = 0; i < confs.length; i++) {
-                addExtendingConfigurations(confs[i], dd, useDefaultMappingToGuessRightOperande);
+                addExtendingConfigurations(confs[i], dd, useDefaultMappingToGuessRightOperand);
             }
         }
 
         private void addExtendingConfigurations(String conf, DefaultDependencyDescriptor dd,
-                boolean useDefaultMappingToGuessRightOperande) {
+                boolean useDefaultMappingToGuessRightOperand) {
             Set configsToAdd = new HashSet();
             Configuration[] configs = md.getConfigurations();
             for (int i = 0; i < configs.length; i++) {
@@ -360,13 +361,13 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
                         String configName = configs[i].getName();
                         configsToAdd.add(configName);
                         addExtendingConfigurations(configName, dd,
-                            useDefaultMappingToGuessRightOperande);
+                            useDefaultMappingToGuessRightOperand);
                     }
                 }
             }
 
             String[] confs = (String[]) configsToAdd.toArray(new String[0]);
-            parseDepsConfs(confs, dd, useDefaultMappingToGuessRightOperande);
+            parseDepsConfs(confs, dd, useDefaultMappingToGuessRightOperand);
         }
 
         protected DependencyDescriptor getDefaultConfMappingDescriptor() {
@@ -381,14 +382,17 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
             errors.add(msg + " in " + res.getDisplayName());
         }
 
+        @Override
         public void warning(SAXParseException ex) {
             LOGGER.warn("xml parsing: {}: {}", getLocationString(ex), ex.getMessage());
         }
 
+        @Override
         public void error(SAXParseException ex) {
             addError("xml parsing: " + getLocationString(ex) + ": " + ex.getMessage());
         }
 
+        @Override
         public void fatalError(SAXParseException ex) throws SAXException {
             addError("[Fatal Error] " + getLocationString(ex) + ": " + ex.getMessage());
         }
@@ -446,7 +450,7 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         }
     }
 
-    public static class Parser extends AbstractParser {
+    public static class Parser extends AbstractParser implements LexicalHandler {
         public enum State {
             NONE,
             INFO,
@@ -486,6 +490,7 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         private StringBuffer buffer;
         private String descriptorVersion;
         private String[] publicationsDefaultConf;
+        private boolean hasGradleMetadataRedirect;
         final Map<String, String> properties;
 
         public Parser(DescriptorParseContext parseContext, IvyModuleDescriptorConverter moduleDescriptorConverter, ExternalResource res, URL descriptorURL, ImmutableModuleIdentifierFactory moduleIdentifierFactory, IvyMutableModuleMetadataFactory metadataFactory, Map<String, String> properties) {
@@ -517,16 +522,14 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         }
 
         public void parse() throws ParseException {
-            getResource().withContent(new Action<InputStream>() {
-                public void execute(InputStream inputStream) {
-                    URL schemaURL = validate ? getSchemaURL() : null;
-                    InputSource inSrc = new InputSource(inputStream);
-                    inSrc.setSystemId(descriptorURL.toExternalForm());
-                    try {
-                        ParserHelper.parse(inSrc, schemaURL, Parser.this);
-                    } catch (Exception e) {
-                        throw new MetaDataParseException("Ivy file", getResource(), e);
-                    }
+            getResource().withContent(inputStream -> {
+                URL schemaURL = validate ? getSchemaURL() : null;
+                InputSource inSrc = new InputSource(inputStream);
+                inSrc.setSystemId(descriptorURL.toExternalForm());
+                try {
+                    ParserHelper.parse(inSrc, schemaURL, Parser.this);
+                } catch (Exception e) {
+                    throw new MetaDataParseException("Ivy file", getResource(), e);
                 }
             });
             checkErrors();
@@ -577,6 +580,7 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
             }
         }
 
+        @Override
         public void startElement(String uri, String localName, String qName, Attributes attributes)
                 throws SAXException {
             try {
@@ -794,7 +798,7 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         }
 
         protected ModuleDescriptor parseOtherIvyFile(String parentOrganisation, String parentModule, String parentRevision) throws IOException, ParseException, SAXException {
-            ModuleComponentIdentifier importedId = DefaultModuleComponentIdentifier.newId(parentOrganisation, parentModule, parentRevision);
+            ModuleComponentIdentifier importedId = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId(parentOrganisation, parentModule), parentRevision);
             LocallyAvailableExternalResource externalResource = parseContext.getMetaDataArtifact(importedId, ArtifactType.IVY_DESCRIPTOR);
 
             return parseModuleDescriptor(externalResource, externalResource.getFile().toURI().toURL());
@@ -1162,12 +1166,14 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
             return matcher;
         }
 
+        @Override
         public void characters(char[] ch, int start, int length) throws SAXException {
             if (buffer != null) {
                 buffer.append(ch, start, length);
             }
         }
 
+        @Override
         public void endElement(String uri, String localName, String qName) throws SAXException {
             if (state == State.PUB && "artifact".equals(qName)) {
                 if (artifact.getConfigurations().isEmpty()) {
@@ -1276,6 +1282,46 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
         private PatternMatcher getMatcher(String matcherName) {
             return PatternMatchers.getInstance().getMatcher(matcherName);
         }
+
+        // Handler to detect Gradle metadata redirects
+
+        @Override
+        public void startDTD(String name, String publicId, String systemId) throws SAXException {
+
+        }
+
+        @Override
+        public void endDTD() throws SAXException {
+
+        }
+
+        @Override
+        public void startEntity(String name) throws SAXException {
+
+        }
+
+        @Override
+        public void endEntity(String name) throws SAXException {
+
+        }
+
+        @Override
+        public void startCDATA() throws SAXException {
+
+        }
+
+        @Override
+        public void endCDATA() throws SAXException {
+
+        }
+
+        @Override
+        public void comment(char[] ch, int start, int length) throws SAXException {
+            String comment = new String(ch, start, length);
+            if (comment.contains(MetaDataParser.GRADLE_6_METADATA_MARKER) || comment.contains(MetaDataParser.GRADLE_METADATA_MARKER)) {
+                hasGradleMetadataRedirect = true;
+            }
+        }
     }
 
     public static class ParserHelper {
@@ -1344,6 +1390,7 @@ public class IvyXmlModuleDescriptorParser extends AbstractModuleDescriptorParser
                 Thread.currentThread().setContextClassLoader(ClassLoaderUtils.getPlatformClassLoader());
                 try {
                     SAXParser parser = newSAXParser(schema, schemaStream);
+                    parser.setProperty("http://xml.org/sax/properties/lexical-handler", handler);
                     parser.parse(xmlStream, handler);
                 } finally {
                     Thread.currentThread().setContextClassLoader(original);

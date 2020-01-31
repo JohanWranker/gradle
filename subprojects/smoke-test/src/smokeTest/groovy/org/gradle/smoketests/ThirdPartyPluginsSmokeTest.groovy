@@ -16,6 +16,11 @@
 
 package org.gradle.smoketests
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.util.GradleVersion
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
+import org.gradle.util.VersionNumber
 import org.gradle.util.ports.ReleasingPortAllocator
 import org.gradle.vcs.fixtures.GitFileRepository
 import org.junit.Rule
@@ -23,13 +28,16 @@ import spock.lang.Issue
 import spock.lang.Unroll
 
 import static org.gradle.testkit.runner.TaskOutcome.SUCCESS
+import static org.gradle.testkit.runner.TaskOutcome.UP_TO_DATE
 
 class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
 
-    @Rule final ReleasingPortAllocator portAllocator = new ReleasingPortAllocator()
+    @Rule
+    final ReleasingPortAllocator portAllocator = new ReleasingPortAllocator()
 
     @Unroll
     @Issue('https://plugins.gradle.org/plugin/com.github.johnrengelman.shadow')
+    @ToBeFixedForInstantExecution
     def 'shadow plugin #version'() {
         given:
         buildFile << """
@@ -61,18 +69,26 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
         then:
         result.task(':shadowJar').outcome == SUCCESS
 
+        if (version == TestedVersions.shadow.latest()) {
+            expectDeprecationWarnings(result,
+                "Property 'transformers.\$0.serviceEntries' is not annotated with an input or output annotation. " +
+                    "This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                    "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details."
+            )
+        }
+
         where:
-        version << ["1.2.4", "2.0.2"]
+        version << TestedVersions.shadow
     }
 
     @Issue('https://github.com/asciidoctor/asciidoctor-gradle-plugin/releases')
-    def 'asciidoctor plugin'() {
+    def 'asciidoctor legacy plugin'() {
         given:
         buildFile << """
             buildscript {
                 ${jcenterRepository()}
                 dependencies {
-                    classpath "org.asciidoctor:asciidoctor-gradle-plugin:1.5.7"
+                    classpath "org.asciidoctor:asciidoctor-gradle-plugin:1.5.11"
                 }
             }
 
@@ -88,10 +104,73 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
             """.stripIndent()
 
         when:
-        runner('asciidoc').build()
+        def result = runner('asciidoc').build()
 
         then:
         file('build/asciidoc').isDirectory()
+
+        expectDeprecationWarnings(result,
+            "Type 'AsciidoctorTask': non-property method 'asGemPath()' should not be annotated with: @Optional, @InputDirectory. " +
+                "This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'logDocuments' has redundant getters: 'getLogDocuments()' and 'isLogDocuments()'. " +
+                "This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'separateOutputDirs' has redundant getters: 'getSeparateOutputDirs()' and 'isSeparateOutputDirs()'. " +
+                "This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+        )
+    }
+
+    @Issue('https://github.com/asciidoctor/asciidoctor-gradle-plugin/releases')
+    @Unroll
+    def 'asciidoctor plugin #version'() {
+        given:
+        def version3 = VersionNumber.parse("3.0.0")
+        final pluginId
+        // asciidoctor changed plugin ids after 3.0
+        if (VersionNumber.parse(version) >= version3) {
+            pluginId = "org.asciidoctor.jvm.convert"
+        } else {
+            pluginId = "org.asciidoctor.convert"
+        }
+        buildFile << """
+            plugins {
+                id '${pluginId}' version '${version}'
+            }
+            
+            repositories {
+                ${jcenterRepository()}
+            }
+        """
+
+        file('src/docs/asciidoc/test.adoc') << """
+            = Line Break Doc Title
+            :hardbreaks:
+
+            Rubies are red,
+            Topazes are blue.
+            """.stripIndent()
+
+        when:
+        def result = runner('asciidoc').build()
+
+        then:
+        if (VersionNumber.parse(version) >= version3) {
+            file('build/docs/asciidoc').isDirectory()
+        } else {
+            file('build/asciidoc').isDirectory()
+            expectDeprecationWarnings(result,
+                    "You are using one or more deprecated Asciidoctor task or plugins. These will be removed in a future release. To help you migrate we have compiled some tips for you based upon your current usage:",
+                    "  - 'org.asciidoctor.convert' is deprecated. When you have time please switch over to 'org.asciidoctor.jvm.convert'.",
+                    "Property 'logDocuments' is annotated with @Optional that is not allowed for @Console properties. " +
+                            "This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                            "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            )
+        }
+
+        where:
+        version << TestedVersions.asciidoctor
     }
 
     @Issue('https://plugins.gradle.org/plugin/com.bmuschko.docker-java-application')
@@ -101,7 +180,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
             plugins {
                 id 'java'
                 id 'application'
-                id "com.bmuschko.docker-java-application" version "3.2.3"
+                id "com.bmuschko.docker-java-application" version "${TestedVersions.docker}"
             }
 
             mainClassName = 'org.gradle.JettyMain'
@@ -109,26 +188,29 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
             docker {
                 javaApplication {
                     baseImage = 'dockerfile/java:openjdk-7-jre'
-                    port = 9090
-                    tag = 'jettyapp:1.115'
+                    ports = [9090]
+                    images = ['jettyapp:1.115']
                 }
             }
             """.stripIndent()
 
         when:
-        def result = runner(':dockerCopyDistResources').build()
+        def result = runner('assemble').forwardOutput().build()
 
         then:
-        result.task(':dockerCopyDistResources').outcome == SUCCESS
+        result.task(':assemble').outcome == SUCCESS
+
+        expectNoDeprecationWarnings(result)
     }
 
     @Issue('https://plugins.gradle.org/plugin/io.spring.dependency-management')
+    @ToBeFixedForInstantExecution
     def 'spring dependency management plugin'() {
         given:
         buildFile << """
             plugins {
                 id 'java'
-                id 'io.spring.dependency-management' version '1.0.4.RELEASE'
+                id 'io.spring.dependency-management' version '${TestedVersions.springDependencyManagement}'
             }
 
             ${mavenCentralRepository()}
@@ -141,29 +223,26 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
             }
 
             dependencies {
-                compile 'org.springframework:spring-core'
+                implementation 'org.springframework:spring-core'
             }
             """.stripIndent()
 
         when:
-        def result = runner("dependencies", "--configuration", "compile").build()
+        def result = runner("dependencies", "--configuration", "compileClasspath").build()
 
         then:
         result.output.contains('org.springframework:spring-core -> 4.0.3.RELEASE')
+
+        expectNoDeprecationWarnings(result)
     }
 
-    @Issue('https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-gradle-plugin/1.5.7.RELEASE')
+    @Issue('https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-gradle-plugin')
     def 'spring boot plugin'() {
         given:
         buildFile << """
-            buildscript {
-                ${mavenCentralRepository()}
-                dependencies {
-                    classpath('org.springframework.boot:spring-boot-gradle-plugin:1.5.9.RELEASE')
-                }
+            plugins {
+                id "org.springframework.boot" version "${TestedVersions.springBoot}"
             }
-
-            apply plugin: 'spring-boot'
         """.stripIndent()
 
         file('src/main/java/example/Application.java') << """
@@ -176,49 +255,12 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
 
         when:
         def result = runner('build').build()
+        println(result.output)
 
         then:
-        result.task(':findMainClass').outcome == SUCCESS
-        result.task(':bootRepackage').outcome == SUCCESS
-    }
+        result.task(':buildEnvironment').outcome == SUCCESS
 
-    @Issue(["gradle/gradle#2480", "https://plugins.gradle.org/plugin/io.spring.dependency-management"])
-    def "spring dependency management plugin and BOM"() {
-        given:
-        buildFile << """
-            buildscript {    
-                ${mavenCentralRepository()}
-            }
-            
-            plugins { 
-                id 'java'
-                id 'io.spring.dependency-management' version '1.0.4.RELEASE' 
-            }
-            
-            ${mavenCentralRepository()}
-            
-            dependencies {
-                compile('org.springframework.boot:spring-boot-starter')
-                testCompile('org.springframework.boot:spring-boot-starter-test')
-            }
-            
-            dependencyManagement {
-                imports { mavenBom("org.springframework.boot:spring-boot-dependencies:1.5.2.RELEASE") }
-            }
-            
-            task resolveDependencies {
-                doLast {
-                    configurations.compile.files
-                    configurations.testCompile.files
-                }
-            }
-        """
-
-        when:
-        runner('resolveDependencies').build()
-
-        then:
-        noExceptionThrown()
+        expectNoDeprecationWarnings(result)
     }
 
     @Issue('https://plugins.gradle.org/plugin/com.bmuschko.tomcat')
@@ -229,7 +271,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
         def stopPort = portAllocator.assignPort()
         buildFile << """
             plugins {
-                id "com.bmuschko.tomcat" version "2.4.2"
+                id "com.bmuschko.tomcat" version "${TestedVersions.tomcat}"
             }
 
             ${mavenCentralRepository()}
@@ -273,79 +315,26 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
             }
             """.stripIndent()
 
-        expect:
-        runner('integrationTest').build()
-    }
-
-    def 'gosu plugin'() { // Requires JDK 8 or later
-        given:
-        buildFile << """
-            plugins {
-                id 'org.gosu-lang.gosu' version '0.3.5'
-            }
-
-            ${mavenCentralRepository()}
-
-            dependencies {
-                compile group: 'org.gosu-lang.gosu', name: 'gosu-core-api', version: '1.14.6'
-            }
-            """.stripIndent()
-
-        file('src/main/gosu/example/Foo.gs') << """
-            package example
-
-            public class Foo {
-
-              function doSomething(arg : String) : String {
-                return "Hello, got the argument '\${arg}'"
-              }
-            }
-            """.stripIndent()
-
-
         when:
-        def result = runner('build').build()
+        def result = runner('integrationTest').build()
 
         then:
-        result.task(':compileGosu').outcome == SUCCESS
+        expectDeprecationWarnings(result,
+            "Property 'classesJarScanningRequired' is private and annotated with @Internal. " +
+                "This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "The AbstractArchiveTask.baseName property has been deprecated. This is scheduled to be removed in Gradle 7.0. Please use the archiveBaseName property instead. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/dsl/org.gradle.api.tasks.bundling.AbstractArchiveTask.html#org.gradle.api.tasks.bundling.AbstractArchiveTask:baseName for more details."
+        )
     }
 
-    @Issue('https://plugins.gradle.org/plugin/org.xtext.xtend')
-    def 'xtend plugin'() {
-        given:
-        buildFile << """
-            plugins {
-                id "org.xtext.xtend" version "1.0.21"
-            }
-
-            ${mavenCentralRepository()}
-
-            dependencies {
-                compile 'org.eclipse.xtend:org.eclipse.xtend.lib:2.11.0'
-            }
-            """.stripIndent()
-
-        file('src/main/java/HelloWorld.xtend') << """
-            class HelloWorld {
-                def static void main(String[] args) {
-                    println("Hello World")
-                }
-            }
-            """
-
-        when:
-        def result = runner('build').build()
-
-        then:
-        result.task(':generateXtext').outcome == SUCCESS
-    }
-
+    @Issue('https://plugins.gradle.org/plugin/org.ajoberstar.grgit')
     def 'org.ajoberstar.grgit plugin'() {
         given:
         GitFileRepository.init(testProjectDir.root)
         buildFile << """
             plugins {
-                id "org.ajoberstar.grgit" version "2.1.0"
+                id "org.ajoberstar.grgit" version "${TestedVersions.grgit}"
             }
 
             def sourceFile = file("sourceFile")
@@ -399,5 +388,235 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
         result.task(':commit').outcome == SUCCESS
         result.task(':tag').outcome == SUCCESS
         result.task(':checkout').outcome == SUCCESS
+
+        expectNoDeprecationWarnings(result)
+    }
+
+    @Issue('https://plugins.gradle.org/plugin/com.github.spotbugs')
+    @Requires(TestPrecondition.JDK11_OR_EARLIER)
+    @ToBeFixedForInstantExecution
+    def 'spotbugs plugin'() {
+        given:
+        buildFile << """
+            plugins {
+                id 'java'
+                id 'com.github.spotbugs' version '${TestedVersions.spotbugs}'
+            }
+
+            ${jcenterRepository()}
+
+            """.stripIndent()
+
+        file('src/main/java/example/Application.java') << """
+            package example;
+
+            public class Application {
+                public static void main(String[] args) {}
+            }
+        """.stripIndent()
+
+
+        when:
+        def result = runner('check').build()
+
+        then:
+        file('build/reports/spotbugs').isDirectory()
+
+        expectNoDeprecationWarnings(result)
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/9897")
+    def 'errorprone plugin'() {
+        given:
+        buildFile << """
+            plugins {
+                id('java')
+                id("net.ltgt.errorprone") version "${TestedVersions.errorProne}"
+            }
+
+            ${mavenCentralRepository()}
+
+            if (JavaVersion.current().java8) {
+                dependencies {
+                    errorproneJavac("com.google.errorprone:javac:9+181-r4173-1")
+                }
+            }
+
+            dependencies {
+                errorprone("com.google.errorprone:error_prone_core:2.3.3")
+            }
+
+            tasks.withType(JavaCompile).configureEach {
+                options.fork = true
+                options.errorprone {
+                    check("DoubleBraceInitialization", net.ltgt.gradle.errorprone.CheckSeverity.ERROR)
+                }
+            }
+        """
+        file("src/main/java/Test.java") << """
+            import java.util.HashSet;
+            import java.util.Set;
+
+            public class Test {
+
+                public static void main(String[] args) {
+                }
+
+            }
+        """
+        when:
+        def result = runner('compileJava').forwardOutput().build()
+
+        then:
+        expectNoDeprecationWarnings(result)
+    }
+
+    @Issue("https://plugins.gradle.org/plugin/com.google.protobuf")
+    @ToBeFixedForInstantExecution
+    def "protobuf plugin"() {
+        given:
+        buildFile << """
+            plugins {
+                id('java')
+                id("com.google.protobuf") version "${TestedVersions.protobufPlugin}"
+            }
+
+            ${mavenCentralRepository()}
+
+            protobuf {
+                protoc {
+                    artifact = "com.google.protobuf:protoc:${TestedVersions.protobufTools}"
+                }
+            }
+            dependencies {
+                implementation "com.google.protobuf:protobuf-java:${TestedVersions.protobufTools}"
+            }
+        """
+
+        and:
+        file("src/main/proto/sample.proto") << """
+            syntax = "proto3";
+            option java_package = "my.proto";
+            option java_multiple_files = true;
+            message Msg {
+                string text = 1;
+            }
+        """
+        file("src/main/java/my/Sample.java") << """
+            package my;
+            import my.proto.Msg;
+            public class Sample {}
+        """
+
+        when:
+        def result = runner('compileJava').forwardOutput().build()
+
+        then:
+        result.task(":generateProto").outcome == SUCCESS
+        result.task(":compileJava").outcome == SUCCESS
+
+        and:
+        expectDeprecationWarnings(
+            result,
+            "Property 'destDir' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'isTest' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "The compile configuration has been deprecated for resolution. This will fail with an error in Gradle 7.0. " +
+                "Please resolve the compileClasspath configuration instead. " +
+                "Consult the upgrading guide for further information: https://docs.gradle.org/${GradleVersion.current().version}/userguide/upgrading_version_5.html#dependencies_should_no_longer_be_declared_using_the_compile_and_runtime_configurations",
+            "Property 'buildType' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'builtins' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'descriptorPath' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'descriptorSetOptions' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'fileResolver' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'flavors' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'generateDescriptorSet' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'isTestVariant' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'outputSourceDirectorySet' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'plugins' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'sourceFiles' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'sourceSet' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details.",
+            "Property 'variant' is not annotated with an input or output annotation. This behaviour has been deprecated and is scheduled to be removed in Gradle 7.0. " +
+                "See https://docs.gradle.org/${GradleVersion.current().version}/userguide/more_about_tasks.html#sec:up_to_date_checks for more details."
+        )
+
+        when:
+        result = runner('compileJava').forwardOutput().build()
+
+        then:
+        result.task(":generateProto").outcome == UP_TO_DATE
+        result.task(":compileJava").outcome == UP_TO_DATE
+    }
+
+    @Issue('https://plugins.gradle.org/plugin/io.freefair.aspectj')
+    def 'freefair aspectj plugin'() {
+        given:
+        buildFile << """
+            plugins {
+                id "java-library"
+                id "io.freefair.aspectj" version "${TestedVersions.aspectj}"
+            }
+
+            ${mavenCentralRepository()}
+
+            aspectj {
+                version = "1.9.5"
+            }
+
+            dependencies {
+                inpath "org.apache.httpcomponents:httpcore-nio:4.4.11"
+                implementation "org.aspectj:aspectjrt:1.9.5"
+
+                testImplementation "junit:junit:4.12"
+            }
+        """
+        file("src/main/aspectj/StupidAspect.aj") << """
+            import org.aspectj.lang.ProceedingJoinPoint;
+            import org.aspectj.lang.annotation.Around;
+            import org.aspectj.lang.annotation.Aspect;
+
+            @Aspect
+            public class StupidAspect {
+                @Around("execution(* org.apache.http.util.Args.*(..))")
+                public Object stupidAdvice(ProceedingJoinPoint joinPoint) {
+                    throw new RuntimeException("Doing stupid things");
+                }
+            }
+        """
+        file("src/test/java/StupidAspectTest.aj") << """
+            import org.junit.Test;
+            import static org.junit.Assert.*;
+
+            public class StupidAspectTest {
+                @Test
+                public void stupidAdvice() {
+                    try {
+                        org.apache.http.util.Args.check(true, "foo");
+                        fail();
+                    } catch (Exception e) {
+                        assertTrue(e.getMessage().contains("stupid"));
+                    }
+                }
+            }
+        """
+
+        when:
+        def result = runner('check').forwardOutput().build()
+
+        then:
+        expectNoDeprecationWarnings(result)
     }
 }

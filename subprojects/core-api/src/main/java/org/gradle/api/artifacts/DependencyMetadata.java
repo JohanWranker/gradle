@@ -17,7 +17,7 @@
 package org.gradle.api.artifacts;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
+import org.gradle.api.attributes.AttributeContainer;
 
 import javax.annotation.Nullable;
 
@@ -63,7 +63,6 @@ public interface DependencyMetadata<SELF extends DependencyMetadata> {
      *
      * @since 4.6
      */
-    @Incubating
     @Nullable
     String getReason();
 
@@ -74,6 +73,31 @@ public interface DependencyMetadata<SELF extends DependencyMetadata> {
      *
      * @since 4.6
      */
-    @Incubating
     SELF because(String reason);
+
+    /**
+     * Returns the attributes of this dependency.
+     *
+     * @return the attributes of this dependency
+     *
+     * @since 4.8
+     */
+    AttributeContainer getAttributes();
+
+    /**
+     * Adjust the attributes of this dependency
+     *
+     * @since 4.8
+     */
+    SELF attributes(Action<? super AttributeContainer> configureAction);
+
+    /**
+     * The module identifier of the component. Returns the same information
+     * as {@link #getGroup()} and {@link #getName()}.
+     *
+     * @return the module identifier
+     *
+     * @since 4.9
+     */
+    ModuleIdentifier getModule();
 }

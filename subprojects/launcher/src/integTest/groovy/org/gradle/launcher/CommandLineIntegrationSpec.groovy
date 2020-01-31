@@ -18,7 +18,7 @@ package org.gradle.launcher
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
-import org.gradle.launcher.debug.JDWPUtil
+import org.gradle.integtests.fixtures.jvm.JDWPUtil
 import org.gradle.test.fixtures.ConcurrentTestUtil
 import org.junit.Rule
 import spock.lang.IgnoreIf
@@ -41,7 +41,7 @@ class CommandLineIntegrationSpec extends AbstractIntegrationSpec {
         fails "help"
 
         and:
-        errorOutput.trim().readLines()[0] == "Argument value '$value' given for --max-workers option is invalid (must be a positive, non-zero, integer)"
+        failure.assertHasErrorOutput "Argument value '$value' given for --max-workers option is invalid (must be a positive, non-zero, integer)"
 
         where:
         value << ["-1", "0", "foo", " 1"]

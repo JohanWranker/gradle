@@ -15,15 +15,19 @@
  */
 package org.gradle.testing
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.TargetCoverage
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
+import org.gradle.testing.fixture.JUnitMultiVersionIntegrationSpec
 import org.junit.Rule
-import spock.lang.Timeout
 import spock.lang.Unroll
 
-@Timeout(240)
-class ParallelTestExecutionIntegrationTest extends AbstractIntegrationSpec {
+import static org.gradle.testing.fixture.JUnitCoverage.*
+
+@IntegrationTestTimeout(240)
+@TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE })
+class ParallelTestExecutionIntegrationTest extends JUnitMultiVersionIntegrationSpec {
 
     @Rule
     public final BlockingHttpServer blockingServer = new BlockingHttpServer()
@@ -34,8 +38,8 @@ class ParallelTestExecutionIntegrationTest extends AbstractIntegrationSpec {
             plugins { id "java" }
             ${jcenterRepository()}
             dependencies {
-                testCompile localGroovy()
-                testCompile "junit:junit:4.12"
+                testImplementation localGroovy()
+                testImplementation "junit:junit:4.12"
             }
         """.stripIndent()
 
@@ -112,8 +116,8 @@ class ParallelTestExecutionIntegrationTest extends AbstractIntegrationSpec {
                 plugins { id "java" }
                 ${jcenterRepository()}
                 dependencies {
-                    testCompile localGroovy()
-                    testCompile "junit:junit:4.12"
+                    testImplementation localGroovy()
+                    testImplementation "junit:junit:4.12"
                 }
                 test.maxParallelForks = 2
             """

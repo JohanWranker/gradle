@@ -15,15 +15,12 @@
  */
 
 
-
 package org.gradle.plugins.javascript.coffeescript
 
 import org.gradle.integtests.fixtures.WellBehavedPluginTest
-import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
-import spock.lang.IgnoreIf
 
-import static org.gradle.plugins.javascript.base.JavaScriptBasePluginTestFixtures.*
-import static org.gradle.plugins.javascript.coffeescript.CoffeeScriptBasePluginTestFixtures.*
+import static org.gradle.plugins.javascript.base.JavaScriptBasePluginTestFixtures.addGradlePublicJsRepoScript
+import static org.gradle.plugins.javascript.coffeescript.CoffeeScriptBasePluginTestFixtures.addApplyPluginScript
 
 class CoffeeScriptBasePluginIntegrationTest extends WellBehavedPluginTest {
 
@@ -35,6 +32,12 @@ class CoffeeScriptBasePluginIntegrationTest extends WellBehavedPluginTest {
     def setup() {
         addApplyPluginScript(buildFile)
         addGradlePublicJsRepoScript(buildFile)
+        executer.expectDocumentedDeprecationWarning("The org.gradle.coffeescript-base plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_5.html#deprecated_plugins")
+        executer.expectDocumentedDeprecationWarning("The org.gradle.rhino plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_5.html#deprecated_plugins")
+        executer.expectDocumentedDeprecationWarning("The org.gradle.javascript-base plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_5.html#deprecated_plugins")
     }
 
     def "can download coffeescript by default"() {
@@ -55,7 +58,6 @@ class CoffeeScriptBasePluginIntegrationTest extends WellBehavedPluginTest {
         js.text.contains("CoffeeScript Compiler")
     }
 
-    @IgnoreIf({GradleContextualExecuter.parallel})
     def "can compile coffeescript"() {
         given:
         file("src/main/coffeescript/dir1/thing1.coffee") << "number = 1"
@@ -73,7 +75,7 @@ class CoffeeScriptBasePluginIntegrationTest extends WellBehavedPluginTest {
         run "compile"
 
         then:
-        ":compile" in nonSkippedTasks
+        executedAndNotSkipped(":compile")
 
         and:
         def f1 = file("build/compiled/js/dir1/thing1.js")
@@ -85,9 +87,10 @@ class CoffeeScriptBasePluginIntegrationTest extends WellBehavedPluginTest {
         f2.text.startsWith("(function() {")
 
         when:
+        executer.noDeprecationChecks()
         run "compile"
 
         then:
-        ":compile" in skippedTasks
+        skipped(":compile")
     }
 }

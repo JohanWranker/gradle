@@ -17,9 +17,11 @@
 package org.gradle.internal.component.model;
 
 import org.gradle.api.artifacts.component.ComponentSelector;
+import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -37,7 +39,7 @@ public interface DependencyMetadata {
     /**
      * Select the target configurations for this dependency from the given target component.
      */
-    List<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema);
+    List<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema, Collection<? extends Capability> explicitRequestedCapabilities);
 
     /**
      * Returns a view of the excludes filtered for this dependency in this configuration.
@@ -71,7 +73,12 @@ public interface DependencyMetadata {
      * Is this a strong dependency, does it is merely a constraint on the module to select if brought in
      * by another dependency? ("Optional" dependencies are "constraints")
      */
-    boolean isPending();
+    boolean isConstraint();
+
+    /**
+     * Is this a dependency that "pulls up" strict version constraints from the target node?
+     */
+    boolean isEndorsingStrictVersions();
 
     /**
      * An optional human readable reason why this dependency is used.

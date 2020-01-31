@@ -15,7 +15,7 @@
  */
 package org.gradle.api.artifacts.component;
 
-import org.gradle.api.Incubating;
+import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.internal.scan.UsedByScanPlugin;
 
@@ -25,7 +25,6 @@ import org.gradle.internal.scan.UsedByScanPlugin;
  * @since 1.10
  */
 @UsedByScanPlugin
-@Incubating
 public interface ModuleComponentSelector extends ComponentSelector {
     /**
      * The group of the module to select the component from.
@@ -56,6 +55,15 @@ public interface ModuleComponentSelector extends ComponentSelector {
      *
      * @since 4.4
      */
-    @Incubating
     VersionConstraint getVersionConstraint();
+
+    /**
+     * The module identifier of the component. Returns the same information
+     * as {@link #getGroup()} and {@link #getModule()}.
+     *
+     * @return the module identifier
+     *
+     * @since 4.9
+     */
+    ModuleIdentifier getModuleIdentifier();
 }

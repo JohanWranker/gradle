@@ -16,9 +16,9 @@
 
 package org.gradle.integtests.fixtures
 
-import org.gradle.language.scala.internal.toolchain.DefaultScalaToolProvider
+import static org.gradle.language.scala.internal.toolchain.DefaultScalaToolProvider.DEFAULT_ZINC_VERSION
 
 
 class ZincCoverage {
-    public static final List<String> ALL_VERSIONS = [ "0.3.0", "0.3.5.3", DefaultScalaToolProvider.DEFAULT_ZINC_VERSION ]
+    public static final List<String> ALL_VERSIONS = [DEFAULT_ZINC_VERSION, "1.2.0", "1.2.3", "1.2.5"]
 }

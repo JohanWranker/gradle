@@ -17,6 +17,7 @@
 package org.gradle.language.cpp
 
 import org.gradle.integtests.fixtures.DirectoryBuildCacheFixture
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraries
@@ -51,26 +52,37 @@ class CppCachingIntegrationTest extends AbstractInstalledToolChainIntegrationSpe
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def 'compilation can be cached (#buildType)'() {
         setupProject()
 
         when:
-        withBuildCache().run compileTask(buildType)
+        withBuildCache().run tasks.withBuildType(buildType).compile
 
         then:
         compileIsNotCached(buildType)
 
         when:
-        withBuildCache().run 'clean', installTask(buildType)
+        withBuildCache().run 'clean', tasks.withBuildType(buildType).install
 
         then:
         compileIsCached(buildType)
         installation("build/install/main/${buildType.toLowerCase()}").exec().out == app.expectedOutput
 
+        when:
+        file('lib1/src/main/public/greeter.h') << """
+            // changed
+        """
+        withBuildCache().run 'clean', tasks.withBuildType(buildType).install
+
+        then:
+        compileIsNotCached(buildType)
+
         where:
         buildType << [debug, release]
     }
 
+    @ToBeFixedForInstantExecution
     def "compilation task is relocatable for release"() {
 
         def originalLocation = file('original-location')
@@ -80,7 +92,7 @@ class CppCachingIntegrationTest extends AbstractInstalledToolChainIntegrationSpe
 
         when:
         inDirectory(originalLocation)
-        withBuildCache().run compileTask(release)
+        withBuildCache().run tasks.release.compile
 
         def snapshotsInOriginalLocation = snapshotObjects(originalLocation)
 
@@ -91,15 +103,15 @@ class CppCachingIntegrationTest extends AbstractInstalledToolChainIntegrationSpe
         executer.beforeExecute {
             inDirectory(newLocation)
         }
-        run compileTask(release)
+        run tasks.release.compile
 
-            then:
+        then:
         compileIsNotCached(release)
         assertSameSnapshots(release, snapshotsInOriginalLocation, snapshotObjects(newLocation))
 
         when:
         run 'clean'
-        withBuildCache().run compileTask(release), installTask(release)
+        withBuildCache().run tasks.release.compile, tasks.release.install
 
         then:
         compileIsCached(release, newLocation)
@@ -150,7 +162,7 @@ class CppCachingIntegrationTest extends AbstractInstalledToolChainIntegrationSpe
     }
 
     void compileIsCached(String buildType, projectDir = temporaryFolder.testDirectory) {
-        skipped compileTask(buildType)
+        skipped tasks.withBuildType(buildType).compile
         // checking the object file only works in `temporaryFolder.testDirectory` since the base class has a hard coded reference to it
         if (projectDir == temporaryFolder.testDirectory) {
             objectFileFor(projectDir.file('src/main/cpp/main.cpp'), "build/obj/main/${buildType.toLowerCase()}").assertExists()
@@ -158,7 +170,7 @@ class CppCachingIntegrationTest extends AbstractInstalledToolChainIntegrationSpe
     }
 
     void compileIsNotCached(String buildType) {
-        executedAndNotSkipped compileTask(buildType)
+        executedAndNotSkipped tasks.withBuildType(buildType).compile
     }
 
 }

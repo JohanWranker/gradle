@@ -24,7 +24,7 @@ import org.gradle.api.tasks.Optional;
 import org.gradle.language.base.compile.CompilerVersion;
 import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.language.base.internal.compile.VersionAwareCompiler;
-import org.gradle.language.nativeplatform.internal.incremental.sourceparser.IncludeWithSimpleExpression;
+import org.gradle.language.nativeplatform.internal.incremental.sourceparser.RegexBackedCSourceParser;
 import org.gradle.nativeplatform.platform.internal.NativePlatformInternal;
 import org.gradle.nativeplatform.toolchain.internal.NativeCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
@@ -38,7 +38,6 @@ import java.io.File;
 /**
  * Compiles native source files into object files.
  */
-@Incubating
 public abstract class AbstractNativeSourceCompileTask extends AbstractNativeCompileTask {
     private PreCompiledHeader preCompiledHeader;
 
@@ -50,7 +49,7 @@ public abstract class AbstractNativeSourceCompileTask extends AbstractNativeComp
             File pchDir = PCHUtils.generatePCHObjectDirectory(spec.getTempDir(), preCompiledHeader.getPrefixHeaderFile(), pchObjectFile);
             spec.setPrefixHeaderFile(new File(pchDir, preCompiledHeader.getPrefixHeaderFile().getName()));
             spec.setPreCompiledHeaderObjectFile(new File(pchDir, pchObjectFile.getName()));
-            spec.setPreCompiledHeader(IncludeWithSimpleExpression.parse(preCompiledHeader.getIncludeString(), true).getValue());
+            spec.setPreCompiledHeader(RegexBackedCSourceParser.parseExpression(preCompiledHeader.getIncludeString()).getValue());
         }
     }
 
@@ -74,12 +73,14 @@ public abstract class AbstractNativeSourceCompileTask extends AbstractNativeComp
     /**
      * Returns the pre-compiled header to be used during compilation
      */
-    @Nested @Optional
+    @Nullable @Optional @Nested
+    @Incubating
     public PreCompiledHeader getPreCompiledHeader() {
         return preCompiledHeader;
     }
 
-    public void setPreCompiledHeader(PreCompiledHeader preCompiledHeader) {
+    @Incubating
+    public void setPreCompiledHeader(@Nullable PreCompiledHeader preCompiledHeader) {
         this.preCompiledHeader = preCompiledHeader;
     }
 
@@ -88,12 +89,12 @@ public abstract class AbstractNativeSourceCompileTask extends AbstractNativeComp
      *
      * @since 4.4
      */
-    @Nested
-    @Optional
     @Nullable
+    @Optional
+    @Nested
     protected CompilerVersion getCompilerVersion() {
-        NativeToolChainInternal toolChain = (NativeToolChainInternal) getToolChain();
-        NativePlatformInternal targetPlatform = (NativePlatformInternal) getTargetPlatform();
+        NativeToolChainInternal toolChain = (NativeToolChainInternal) getToolChain().get();
+        NativePlatformInternal targetPlatform = (NativePlatformInternal) getTargetPlatform().get();
         PlatformToolProvider toolProvider = toolChain.select(targetPlatform);
         Compiler<? extends NativeCompileSpec> compiler = toolProvider.newCompiler(createCompileSpec().getClass());
         if (!(compiler instanceof VersionAwareCompiler)) {

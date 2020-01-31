@@ -19,24 +19,24 @@ package org.gradle.api.internal.tasks.compile.incremental.deps
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import it.unimi.dsi.fastutil.ints.IntSet
 import it.unimi.dsi.fastutil.ints.IntSets
+import org.gradle.api.internal.cache.StringInterner
 import org.gradle.internal.serialize.InputStreamBackedDecoder
 import org.gradle.internal.serialize.OutputStreamBackedEncoder
 import spock.lang.Specification
 import spock.lang.Subject
 
-import static org.gradle.api.internal.tasks.compile.incremental.deps.DefaultDependentsSet.dependents
+import static org.gradle.api.internal.tasks.compile.incremental.deps.DependentsSet.dependencyToAll
+import static org.gradle.api.internal.tasks.compile.incremental.deps.DependentsSet.dependentClasses
 
 class ClassSetAnalysisDataSerializerTest extends Specification {
 
-    @Subject serializer = new ClassSetAnalysisData.Serializer()
+    @Subject serializer = new ClassSetAnalysisData.Serializer(new StringInterner())
 
     def "serializes"() {
-        def data = new ClassSetAnalysisData(
-            ["A.class": "A", "B.class": "B"],
-            ["A": dependents("B", "C"), "B": new DefaultDependentsSet(["C"] as Set), "C": dependents(), "D": new DependencyToAll(),],
+        def data = new ClassSetAnalysisData(["A", "B", "C", "D"] as Set,
+            ["A": dependentClasses(["B", "C"] as Set, [] as Set), "B": dependentClasses(["C"] as Set, [] as Set), "C": dependentClasses([] as Set, [] as Set), "D": dependencyToAll(),],
             [C: new IntOpenHashSet([1, 2]) as IntSet, D: IntSets.EMPTY_SET]
-            ,
-            ['A': ['SA'] as Set, B: ['SB1', 'SB2'] as Set]
+            ,"Because"
         )
         def os = new ByteArrayOutputStream()
         def e = new OutputStreamBackedEncoder(os)
@@ -49,13 +49,13 @@ class ClassSetAnalysisDataSerializerTest extends Specification {
         read.dependents.keySet() == data.dependents.keySet()
 
         ["A", "B", "C"].each {
-            assert read.dependents[it].dependentClasses == data.dependents[it].dependentClasses
+            assert read.dependents[it].privateDependentClasses == data.dependents[it].privateDependentClasses
+            assert read.dependents[it].accessibleDependentClasses == data.dependents[it].accessibleDependentClasses
             assert read.dependents[it].dependencyToAll == data.dependents[it].dependencyToAll
         }
 
-        read.dependents["D"] instanceof DependencyToAll
-        read.filePathToClassName == ["A.class": "A", "B.class": "B"]
+        read.dependents["D"].dependencyToAll
         read.classesToConstants == [C: [1,2] as Set, D: [] as Set]
-        read.classesToChildren == ['A': ['SA'] as Set, B: ['SB1', 'SB2'] as Set]
+        read.fullRebuildCause == "Because"
     }
 }

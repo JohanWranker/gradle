@@ -18,7 +18,7 @@ package org.gradle.internal.nativeintegration.filesystem.jdk7;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.file.FileMetadataSnapshot;
 import org.gradle.internal.file.FileType;
-import org.gradle.internal.nativeintegration.filesystem.DefaultFileMetadata;
+import org.gradle.internal.file.impl.DefaultFileMetadata;
 import org.gradle.internal.nativeintegration.filesystem.FileMetadataAccessor;
 
 import java.io.File;
@@ -27,7 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 
-@SuppressWarnings("Since15")
 public class Jdk7FileMetadataAccessor implements FileMetadataAccessor {
     @Override
     public FileMetadataSnapshot stat(File f) {

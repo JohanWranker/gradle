@@ -16,11 +16,52 @@
 
 package org.gradle.language.c
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.language.AbstractNativePreCompiledHeaderIntegrationTest
 import org.gradle.nativeplatform.fixtures.app.CHelloWorldApp
 import org.gradle.nativeplatform.fixtures.app.IncrementalHelloWorldApp
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 
 class CPreCompiledHeaderSourcesIntegrationTest extends AbstractNativePreCompiledHeaderIntegrationTest {
+    @Requires(TestPrecondition.MAC_OS_X)
+    @ToBeFixedForInstantExecution
+    def "can compile and link C code with precompiled headers using standard macOS framework" () {
+        given:
+        writeStandardSourceFiles()
+
+        and:
+        file(commonHeader.withPath("src/hello")) << """
+            #include <CoreFoundation/CoreFoundation.h>
+        """
+
+        and:
+        file("src/hello/c/includeFramework.c") << """
+            #include "common.h"
+            void sayHelloFoundation() {
+                CFShow(CFSTR("Hello"));
+            }
+        """
+
+        and:
+        buildFile << preCompiledHeaderComponent()
+        buildFile << """
+            model {
+                components {
+                    hello {
+                        binaries.withType(SharedLibraryBinarySpec) {
+                            linker.args "-framework", "CoreFoundation"
+                        }
+                    }
+                }
+            }
+        """
+
+        expect:
+        succeeds "helloSharedLibrary"
+        libAndPCHTasksExecuted()
+    }
+
     @Override
     IncrementalHelloWorldApp getApp() {
         return new CHelloWorldApp()

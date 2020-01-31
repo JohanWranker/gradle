@@ -23,7 +23,41 @@ import java.util.Set;
  * Represents the artifacts which will be deployed to a Maven repository. You can use this interface to modify the set
  * of artifacts.
  */
+@Deprecated
 public interface MavenDeployment {
+
+    /**
+     * Returns the packaging for this deployment.
+     *
+     * @return The packaging. Never null.
+     * @since 4.8
+     */
+    String getPackaging();
+
+    /**
+     * Returns the group ID for this deployment.
+     *
+     * @return The group ID. Never null.
+     * @since 4.8
+     */
+    String getGroupId();
+
+    /**
+     * Returns the artifact ID for this deployment.
+     *
+     * @return The artifact ID. Never null.
+     * @since 4.8
+     */
+    String getArtifactId();
+
+    /**
+     * Returns the version for this deployment.
+     *
+     * @return The version. Never null.
+     * @since 4.8
+     */
+    String getVersion();
+
     /**
      * Returns the POM for this deployment.
      *

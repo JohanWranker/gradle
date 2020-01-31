@@ -17,25 +17,25 @@ package org.gradle.api.internal.artifacts.ivyservice.ivyresolve;
 
 import org.gradle.internal.component.model.ModuleSource;
 
-class RepositoryChainModuleSource implements ModuleSource {
+public class RepositoryChainModuleSource implements ModuleSource {
     private final String repositoryId;
-    private final ModuleSource delegate;
+    private final String repositoryName;
 
-    public RepositoryChainModuleSource(String repositoryId, ModuleSource delegate) {
-        this.repositoryId = repositoryId;
-        this.delegate = delegate;
+    public RepositoryChainModuleSource(ModuleComponentRepository repository) {
+        this.repositoryId = repository.getId();
+        this.repositoryName = repository.getName();
     }
 
     @Override
     public String toString() {
-        return "{repo: " + repositoryId + ", source: " + delegate + "}";
+        return "{repo: " + repositoryId + "}";
     }
 
     public String getRepositoryId() {
         return repositoryId;
     }
 
-    public ModuleSource getDelegate() {
-        return delegate;
+    public String getRepositoryName() {
+        return repositoryName;
     }
 }

@@ -15,60 +15,73 @@
  */
 package org.gradle.api.internal.tasks
 
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.TaskInternal
 import org.gradle.api.internal.TaskOutputsInternal
-import org.gradle.api.internal.file.FileResolver
-import org.gradle.api.internal.file.FileTreeInternal
-import org.gradle.api.internal.project.ProjectInternal
-import org.gradle.api.internal.tasks.properties.DefaultPropertyMetadataStore
+import org.gradle.api.internal.file.TestFiles
 import org.gradle.api.internal.tasks.properties.DefaultPropertyWalker
+import org.gradle.api.internal.tasks.properties.DefaultTypeMetadataStore
 import org.gradle.api.internal.tasks.properties.GetInputFilesVisitor
 import org.gradle.api.internal.tasks.properties.GetInputPropertiesVisitor
+import org.gradle.api.internal.tasks.properties.InputFilePropertyType
+import org.gradle.api.internal.tasks.properties.PropertyValue
 import org.gradle.api.internal.tasks.properties.PropertyVisitor
-import org.gradle.util.UsesNativeServices
+import org.gradle.api.internal.tasks.properties.annotations.NoOpPropertyAnnotationHandler
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.FileNormalizer
+import org.gradle.api.tasks.Internal
+import org.gradle.cache.internal.TestCrossBuildInMemoryCacheFactory
+import org.gradle.internal.reflect.annotations.impl.DefaultTypeAnnotationMetadataStore
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.junit.Rule
 import spock.lang.Issue
 import spock.lang.Specification
 import spock.lang.Unroll
 
+import javax.annotation.Nullable
 import java.util.concurrent.Callable
 
-@UsesNativeServices
 class DefaultTaskInputsTest extends Specification {
-    private final File treeFile = new File('tree')
-    private final tree = [getFiles: { [treeFile] as Set}] as FileTreeInternal
-    private final FileResolver resolver = [
-            resolve: { new File((String) it) },
-            resolveFilesAsTree: {tree}
-    ] as FileResolver
+    @Rule
+    final TestNameTestDirectoryProvider temporaryFolder = new TestNameTestDirectoryProvider()
+
+    private final fileCollectionFactory = TestFiles.fileCollectionFactory(temporaryFolder.testDirectory)
 
     private def taskStatusNagger = Stub(TaskMutator) {
-        mutate(_, _) >> { String method, Object action ->
-            if (action instanceof Runnable) {
-                action.run()
-            } else if (action instanceof Callable) {
-                return action.call()
-            }
+        mutate(_ as String, _ as Runnable) >> { String method, Runnable action ->
+            action.run()
         }
-    }
-    def project = Stub(ProjectInternal) {
-        getFileFileResolver() >> resolver
+        mutate(_ as String, _ as Callable) >> { String method, Callable<?> action ->
+            return action.call()
+        }
     }
     def task = Mock(TaskInternal) {
         getName() >> "task"
         toString() >> "task 'task'"
-        getProject() >> project
         getInputs() >> { inputs }
         getOutputs() >> Stub(TaskOutputsInternal)
         getDestroyables() >> Stub(TaskDestroyablesInternal)
         getLocalState() >> Stub(TaskLocalStateInternal)
     }
-    def walker = new DefaultPropertyWalker(new DefaultPropertyMetadataStore([]))
-    private final DefaultTaskInputs inputs = new DefaultTaskInputs(task, taskStatusNagger, walker, new DefaultPropertySpecFactory(task, resolver))
+    def cacheFactory = new TestCrossBuildInMemoryCacheFactory()
+    def typeAnnotationMetadataStore = new DefaultTypeAnnotationMetadataStore(
+        [],
+        [:],
+        ["java", "groovy"],
+        [],
+        [Object, GroovyObject],
+        [ConfigurableFileCollection, Property],
+        [Internal],
+        { false },
+        cacheFactory
+    )
+    def walker = new DefaultPropertyWalker(new DefaultTypeMetadataStore([], [new NoOpPropertyAnnotationHandler(Internal)], [], typeAnnotationMetadataStore, cacheFactory))
+    private final DefaultTaskInputs inputs = new DefaultTaskInputs(task, taskStatusNagger, walker, fileCollectionFactory)
 
     def "default values"() {
         expect:
-        inputFiles().empty
         inputProperties().isEmpty()
         !inputs.hasInputs
         !inputs.hasSourceFiles
@@ -78,56 +91,59 @@ class DefaultTaskInputsTest extends Specification {
     def "can register input file"() {
         when: inputs.file("a")
         then:
-        inputFiles() == [new File('a')]
-        inputFileProperties().propertyName == ['$1']
-        inputFileProperties().propertyFiles*.files.flatten() == [new File("a")]
+        inputFileProperties() == ['$1': "a"]
+        inputs.files.files == files("a")
     }
 
     def "can register input file with property name"() {
         when: inputs.file("a").withPropertyName("prop")
         then:
-        inputFiles() == [new File('a')]
-        inputFileProperties().propertyName == ['prop']
-        inputFileProperties().propertyFiles*.files.flatten() == [new File("a")]
+        inputFileProperties() == ['prop': "a"]
+        inputs.files.files == files("a")
     }
 
     def "can register input files"() {
-        when: inputs.files("a", "b")
+        when:
+        inputs.files("a", "b")
         then:
-        inputFiles() == [new File("a"), new File("b")]
-        inputFileProperties().propertyName == ['$1']
-        inputFileProperties().propertyFiles*.files.flatten() == [new File("a"), new File("b")]
+        inputFileProperties() == ['$1': ["a", "b"]]
+        inputs.files.files == files("a", "b")
     }
 
     def "can register input files with property name"() {
         when: inputs.files("a", "b").withPropertyName("prop")
         then:
-        inputFiles() == [new File("a"), new File("b")]
-        inputFileProperties().propertyName == ['prop']
-        inputFileProperties().propertyFiles*.files.flatten() == [new File("a"), new File("b")]
+        inputFileProperties() == ['prop': ["a", "b"]]
+        inputs.files.files == files("a", "b")
     }
 
     def "can register input dir"() {
-        when: inputs.dir("a")
+        def inputFilePath = "a/input.txt"
+        when:
+        file(inputFilePath).createFile()
+        inputs.dir("a")
         then:
-        inputFiles() == [treeFile]
-        inputFileProperties().propertyName == ['$1']
-        inputFileProperties().propertyFiles*.files.flatten() == [treeFile]
+        inputFileProperties() == ['$1': "a"]
+        inputs.files.files == files(inputFilePath)
     }
 
     def "can register input dir with property name"() {
-        when: inputs.dir("a").withPropertyName("prop")
+        def inputFilePath = "a/input.txt"
+        when:
+        file(inputFilePath).createFile()
+        inputs.dir("a").withPropertyName("prop")
         then:
-        inputFiles() == [treeFile]
-        inputFileProperties().propertyName == ['prop']
-        inputFileProperties().propertyFiles*.files.flatten() == [treeFile]
+        inputFileProperties() == ['prop': "a"]
+        inputs.files.files == files(inputFilePath)
     }
 
     def "cannot register input file with same property name"() {
         inputs.file("a").withPropertyName("alma")
         inputs.file("b").withPropertyName("alma")
+        def visitor = new GetInputFilesVisitor(task.toString(), fileCollectionFactory)
         when:
-        inputFileProperties()
+        TaskPropertyUtils.visitProperties(walker, task, visitor)
+        visitor.getFileProperties()
         then:
         def ex = thrown IllegalArgumentException
         ex.message == "Multiple input file properties with name 'alma'"
@@ -201,10 +217,8 @@ class DefaultTaskInputsTest extends Specification {
         when: inputs.files(["s1", "s2"]).skipWhenEmpty()
         then:
         inputs.hasSourceFiles
-        inputFiles() == [new File("a"), new File("b"), new File("s1"), new File("s2")]
-        inputs.sourceFiles.files.toList() == [new File("s1"), new File("s2")]
-        inputFileProperties().propertyName == ['$1', 'prop']
-        inputFileProperties().propertyFiles*.toList() == [[new File("s1"), new File("s2")], [new File("a"), new File("b")]]
+        inputs.sourceFiles.files == files("s1", "s2")
+        inputFileProperties() == ['prop': ["a", "b"], '$1': ["s1", "s2"]]
     }
 
     def canRegisterSourceFile() {
@@ -212,7 +226,7 @@ class DefaultTaskInputsTest extends Specification {
         inputs.file('file').skipWhenEmpty()
 
         then:
-        inputs.sourceFiles.files == ([new File('file')] as Set)
+        inputs.sourceFiles.files == files('file')
     }
 
     def canRegisterSourceFiles() {
@@ -220,15 +234,18 @@ class DefaultTaskInputsTest extends Specification {
         inputs.files('file', 'file2').skipWhenEmpty()
 
         then:
-        inputs.sourceFiles.files == ([new File('file'), new File('file2')] as Set)
+        inputs.sourceFiles.files == files('file', 'file2')
     }
 
     def canRegisterSourceDir() {
+        def sourceFile = 'dir/source.txt'
         when:
+        file(sourceFile).createFile()
         inputs.dir('dir').skipWhenEmpty()
 
         then:
-        inputs.sourceFiles.files == [treeFile] as Set
+        inputs.hasSourceFiles
+        inputs.sourceFiles.files == files(sourceFile)
     }
 
     def sourceFilesAreAlsoInputFiles() {
@@ -236,8 +253,8 @@ class DefaultTaskInputsTest extends Specification {
         inputs.file('file').skipWhenEmpty()
 
         then:
-        inputs.sourceFiles.files == ([new File('file')] as Set)
-        inputFiles() == [new File('file')]
+        inputs.sourceFiles.files == files('file')
+        inputFileProperties() == ['$1': 'file']
     }
 
     def hasInputsWhenEmptyInputFilesRegistered() {
@@ -297,8 +314,8 @@ class DefaultTaskInputsTest extends Specification {
         when:
         inputs.visitRegisteredProperties(new PropertyVisitor.Adapter() {
             @Override
-            void visitInputFileProperty(TaskInputFilePropertySpec property) {
-                names += property.propertyName
+            void visitInputFileProperty(String propertyName, boolean optional, boolean skipWhenEmpty, boolean incremental, @Nullable Class<? extends FileNormalizer> fileNormalizer, PropertyValue value, InputFilePropertyType filePropertyType) {
+                names += propertyName
             }
         })
         then:
@@ -308,19 +325,28 @@ class DefaultTaskInputsTest extends Specification {
         method << ["file", "dir", "files"]
     }
 
+    TestFile file(Object path) {
+        temporaryFolder.file(path)
+    }
+
+    Set<File> files(Object... paths) {
+        paths.collect { file(it) } as Set
+    }
+
     def inputProperties() {
         def visitor = new GetInputPropertiesVisitor("test")
         TaskPropertyUtils.visitProperties(walker, task, visitor)
-        return visitor.propertyValuesFactory.create()
+        return visitor.propertyValuesSupplier.get()
     }
 
     def inputFileProperties() {
-        GetInputFilesVisitor visitor = new GetInputFilesVisitor()
-        TaskPropertyUtils.visitProperties(walker, task, visitor)
-        return visitor.getFileProperties()
-    }
-
-    def inputFiles() {
-        inputFileProperties()*.propertyFiles*.files.flatten().toList().sort()
+        def inputFiles = [:]
+        TaskPropertyUtils.visitProperties(walker, task, new PropertyVisitor.Adapter() {
+            @Override
+            void visitInputFileProperty(String propertyName, boolean optional, boolean skipWhenEmpty, boolean incremental, @Nullable Class<? extends FileNormalizer> fileNormalizer, PropertyValue value, InputFilePropertyType filePropertyType) {
+                inputFiles[propertyName] = value.call()
+            }
+        })
+        return inputFiles
     }
 }

@@ -17,16 +17,91 @@
 package org.gradle.ide.xcode
 
 import org.gradle.ide.xcode.fixtures.AbstractXcodeIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.app.SwiftAppWithLibrary
 
 class XcodeMultipleProjectIntegrationTest extends AbstractXcodeIntegrationSpec {
     def setup() {
         settingsFile << """
+            rootProject.name = 'root'
             include 'app', 'greeter'
         """
         requireSwiftToolChain()
     }
 
+    @Override
+    protected String getRootProjectName() {
+        return "root"
+    }
+
+    @ToBeFixedForInstantExecution
+    def "create xcode workspace when no language plugins are applied"() {
+        given:
+        buildFile << """
+            allprojects { 
+                apply plugin: 'xcode'
+            }
+        """
+
+        when:
+        succeeds(":xcode")
+
+        then:
+        result.assertTasksExecuted(":xcodeProject", ":xcodeProjectWorkspaceSettings",
+            ":app:xcodeProjectWorkspaceSettings", ":app:xcodeProject",
+            ":greeter:xcodeProjectWorkspaceSettings", ":greeter:xcodeProject",
+            ":xcodeWorkspaceWorkspaceSettings", ":xcodeWorkspace", ":xcode")
+
+        def workspace = rootXcodeWorkspace
+        workspace.contentFile.assertHasProjects("root.xcodeproj", "app/app.xcodeproj", "greeter/greeter.xcodeproj")
+
+        def project = rootXcodeProject.projectFile
+        project.mainGroup.assertHasChildren(['build.gradle'])
+        project.assertNoTargets()
+    }
+
+    @ToBeFixedForInstantExecution
+    def "creates workspace with Xcode project for each project"() {
+        given:
+        settingsFile << """
+            include 'empty'
+        """
+
+        buildFile << """
+            allprojects {
+                apply plugin: 'xcode'
+            }
+            apply plugin: 'swift-application' 
+            project(':app') {
+                apply plugin: 'swift-application'
+                dependencies {
+                    implementation project(':greeter')
+                }
+            }
+            project(':greeter') {
+                apply plugin: 'swift-library'
+            }
+"""
+
+        when:
+        succeeds(":xcode")
+
+        then:
+        result.assertTasksExecuted(":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme",
+            ":app:xcodeProjectWorkspaceSettings", ":app:xcodeProject", ":app:xcodeScheme",
+            ":greeter:xcodeProjectWorkspaceSettings", ":greeter:xcodeProject", ":greeter:xcodeScheme",
+            ":empty:xcodeProjectWorkspaceSettings", ":empty:xcodeProject",
+            ":xcodeWorkspaceWorkspaceSettings", ":xcodeWorkspace", ":xcode")
+
+        rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj", 'app/app.xcodeproj', 'greeter/greeter.xcodeproj', 'empty/empty.xcodeproj')
+
+        xcodeProject("${rootProjectName}.xcodeproj")
+        xcodeProject("app/app.xcodeproj")
+        xcodeProject("greeter/greeter.xcodeproj")
+        xcodeProject("empty/empty.xcodeproj")
+    }
+
+    @ToBeFixedForInstantExecution
     def "Gradle project with added xcode plugin are included in the workspace"() {
         given:
         file('greeter/build.gradle') << """
@@ -50,10 +125,12 @@ class XcodeMultipleProjectIntegrationTest extends AbstractXcodeIntegrationSpec {
                 apply plugin: 'xcode'
             }
         """
-        succeeds("xcode")
+        succeeds(":xcode")
 
         then:
-        executedAndNotSkipped(":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme", ":app:xcode",
+        result.assertTasksExecuted(":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme",
+            ":greeter:compileDebugSwift",
+            ":xcodeProjectWorkspaceSettings", ":xcodeProject",
             ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj", 'app/app.xcodeproj')
 
@@ -63,15 +140,17 @@ class XcodeMultipleProjectIntegrationTest extends AbstractXcodeIntegrationSpec {
                 apply plugin: 'xcode'
             }
         """
-        succeeds("xcode")
+        succeeds(":xcode")
 
         then:
-        executedAndNotSkipped(":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme", ":app:xcode",
-            ":greeter:xcodeProject", ":greeter:xcodeProjectWorkspaceSettings", ":greeter:xcodeScheme", ":greeter:xcode",
+        result.assertTasksExecuted(":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme",
+            ":greeter:xcodeProject", ":greeter:xcodeProjectWorkspaceSettings", ":greeter:xcodeScheme",
+            ":xcodeProjectWorkspaceSettings", ":xcodeProject",
             ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj", 'app/app.xcodeproj', 'greeter/greeter.xcodeproj')
     }
 
+    @ToBeFixedForInstantExecution
     def "Gradle project with removed xcode plugin are not included in the workspace"() {
         given:
         file('greeter/build.gradle') << """
@@ -94,11 +173,12 @@ class XcodeMultipleProjectIntegrationTest extends AbstractXcodeIntegrationSpec {
                 apply plugin: 'xcode'
             }
         """
-        succeeds("xcode")
+        succeeds(":xcode")
 
         then:
-        executedAndNotSkipped(":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme", ":app:xcode",
-            ":greeter:xcodeProject", ":greeter:xcodeProjectWorkspaceSettings", ":greeter:xcodeScheme", ":greeter:xcode",
+        result.assertTasksExecuted(":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme",
+            ":greeter:xcodeProject", ":greeter:xcodeProjectWorkspaceSettings", ":greeter:xcodeScheme",
+            ":xcodeProjectWorkspaceSettings", ":xcodeProject",
             ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj", 'app/app.xcodeproj', 'greeter/greeter.xcodeproj')
 
@@ -109,10 +189,12 @@ class XcodeMultipleProjectIntegrationTest extends AbstractXcodeIntegrationSpec {
                 apply plugin: 'xcode'
             }
         """
-        succeeds("xcode")
+        succeeds(":xcode")
 
         then:
-        executedAndNotSkipped(":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme", ":app:xcode",
+        result.assertTasksExecuted(":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme",
+            ":greeter:compileDebugSwift",
+            ":xcodeProjectWorkspaceSettings", ":xcodeProject",
             ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj", 'app/app.xcodeproj')
     }

@@ -17,13 +17,11 @@ package org.gradle.api.file;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.Transformer;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.util.PatternFilterable;
 import org.gradle.internal.HasInternalProtocol;
 
-import javax.annotation.Nullable;
 import java.io.FilterReader;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -126,15 +124,13 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      * @return the strategy to use for files included by this copy spec.
      * @see DuplicatesStrategy
      */
-    @Incubating
     DuplicatesStrategy getDuplicatesStrategy();
 
     /**
-     * The strategy to use when trying to copy more than one file to the same destination. Set to {@code null} to use the default strategy, which is inherited
-     * from the parent copy spec, if any, or {@link DuplicatesStrategy#INCLUDE} if this copy spec has no parent.
+     * The strategy to use when trying to copy more than one file to the same destination. Set to {@link DuplicatesStrategy#INHERIT}, the default strategy, to use
+     * the strategy inherited from the parent copy spec, if any, or {@link DuplicatesStrategy#INCLUDE} if this copy spec has no parent.
      */
-    @Incubating
-    void setDuplicatesStrategy(@Nullable DuplicatesStrategy strategy);
+    void setDuplicatesStrategy(DuplicatesStrategy strategy);
 
     /**
      * Configure the {@link org.gradle.api.file.FileCopyDetails} for each file whose path matches the specified Ant-style pattern.
@@ -144,7 +140,6 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      * @param action action called for the FileCopyDetails of each file matching pattern
      * @return this
      */
-    @Incubating
     CopySpec filesMatching(String pattern, Action<? super FileCopyDetails> action);
 
     /**
@@ -155,7 +150,6 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      * @param action action called for the FileCopyDetails of each file matching pattern
      * @return this
      */
-    @Incubating
     CopySpec filesMatching(Iterable<String> patterns, Action<? super FileCopyDetails> action);
 
     /**
@@ -167,7 +161,6 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      * @param action action called for the FileCopyDetails of each file that does not match pattern
      * @return this
      */
-    @Incubating
     CopySpec filesNotMatching(String pattern, Action<? super FileCopyDetails> action);
 
     /**
@@ -179,7 +172,6 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      * @param action action called for the FileCopyDetails of each file that does not match any pattern
      * @return this
      */
-    @Incubating
     CopySpec filesNotMatching(Iterable<String> patterns, Action<? super FileCopyDetails> action);
 
     /**
@@ -208,16 +200,19 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec from(Object... sourcePaths);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec from(Object sourcePath, Closure c);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec from(Object sourcePath, Action<? super CopySpec> configureAction);
 
     // PatternFilterable overrides to broaden return type
@@ -227,6 +222,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec setIncludes(Iterable<String> includes);
 
     /**
@@ -234,6 +230,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec setExcludes(Iterable<String> excludes);
 
     /**
@@ -241,6 +238,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec include(String... includes);
 
     /**
@@ -248,6 +246,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec include(Iterable<String> includes);
 
     /**
@@ -255,6 +254,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec include(Spec<FileTreeElement> includeSpec);
 
     /**
@@ -262,6 +262,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec include(Closure includeSpec);
 
     /**
@@ -269,6 +270,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec exclude(String... excludes);
 
     /**
@@ -276,6 +278,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec exclude(Iterable<String> excludes);
 
     /**
@@ -283,6 +286,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec exclude(Spec<FileTreeElement> excludeSpec);
 
     /**
@@ -290,6 +294,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      *
      * @see org.gradle.api.tasks.util.PatternFilterable Pattern Format
      */
+    @Override
     CopySpec exclude(Closure excludeSpec);
 
     // CopyProcessingSpec overrides to broaden return type
@@ -297,6 +302,7 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec into(Object destPath);
 
     /**
@@ -322,56 +328,67 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec rename(Closure closure);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec rename(Transformer<String, String> renamer);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec rename(String sourceRegEx, String replaceWith);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopyProcessingSpec rename(Pattern sourceRegEx, String replaceWith);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec filter(Map<String, ?> properties, Class<? extends FilterReader> filterType);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec filter(Class<? extends FilterReader> filterType);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec filter(Closure closure);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec filter(Transformer<String, String> transformer);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec expand(Map<String, ?> properties);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec eachFile(Action<? super FileCopyDetails> action);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     CopySpec eachFile(Closure closure);
 
     /**
@@ -381,7 +398,6 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      * @return the charset used to read and write files when filtering
      * @since 2.14
      */
-    @Incubating
     String getFilteringCharset();
 
     /**
@@ -390,6 +406,5 @@ public interface CopySpec extends CopySourceSpec, CopyProcessingSpec, PatternFil
      * @param charset the name of the charset to use when filtering files
      * @since 2.14
      */
-    @Incubating
     void setFilteringCharset(String charset);
 }

@@ -18,16 +18,28 @@ package org.gradle.api.tasks.compile
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.AvailableJavaHomes
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.internal.jvm.Jvm
 import org.gradle.util.Requires
 import org.gradle.util.TextUtil
 
-import static org.gradle.api.JavaVersion.VERSION_1_7
 import static org.gradle.api.JavaVersion.VERSION_1_8
+import static org.gradle.api.JavaVersion.VERSION_1_9
 
-@Requires(adhoc = { AvailableJavaHomes.getJdk(VERSION_1_7) && AvailableJavaHomes.getJdk(VERSION_1_8) })
+@Requires(adhoc = { AvailableJavaHomes.getJdk(VERSION_1_8) && AvailableJavaHomes.getJdk(VERSION_1_9) })
 class JavaCompileJavaVersionIntegrationTest extends AbstractIntegrationSpec {
 
+    /**
+     * When running in embedded mode, core tasks are loaded from the runtime classloader.
+     * When running in the daemon, they are loaded from the plugins classloader.
+     * This difference leads to different up-to-date messages, which is why we force
+     * a consistent execution mode.
+     */
+    def setup() {
+        executer.requireDaemon().requireIsolatedDaemons()
+    }
+
+    @ToBeFixedForInstantExecution
     def "not up-to-date when default Java version changes"() {
         given:
         buildFile << """
@@ -44,32 +56,33 @@ class JavaCompileJavaVersionIntegrationTest extends AbstractIntegrationSpec {
         """
 
         when:
-        executer.withJavaHome AvailableJavaHomes.getJdk(VERSION_1_7).javaHome
+        executer.withJavaHome AvailableJavaHomes.getJdk(VERSION_1_8).javaHome
         succeeds "compileJava"
         then:
-        nonSkippedTasks.contains ":compileJava"
-
-        when:
-        executer.withJavaHome AvailableJavaHomes.getJdk(VERSION_1_7).javaHome
-        succeeds "compileJava"
-        then:
-        skippedTasks.contains ":compileJava"
+        executedAndNotSkipped ":compileJava"
 
         when:
         executer.withJavaHome AvailableJavaHomes.getJdk(VERSION_1_8).javaHome
+        succeeds "compileJava"
+        then:
+        skipped ":compileJava"
+
+        when:
+        executer.withJavaHome AvailableJavaHomes.getJdk(VERSION_1_9).javaHome
         succeeds "compileJava", "--info"
         then:
-        nonSkippedTasks.contains ":compileJava"
+        executedAndNotSkipped ":compileJava"
         output.contains "Value of input property 'toolChain.version' has changed for task ':compileJava'"
     }
 
+    @ToBeFixedForInstantExecution
     def "not up-to-date when java version for forking changes"() {
         given:
-        def jdk7 = AvailableJavaHomes.getJdk(VERSION_1_7)
         def jdk8 = AvailableJavaHomes.getJdk(VERSION_1_8)
+        def jdk9 = AvailableJavaHomes.getJdk(VERSION_1_9)
 
 
-        buildFile << forkedJavaCompilation(jdk7)
+        buildFile << forkedJavaCompilation(jdk8)
 
         and:
         file("src/main/java/org/gradle/Person.java") << """
@@ -78,23 +91,23 @@ class JavaCompileJavaVersionIntegrationTest extends AbstractIntegrationSpec {
         """
 
         when:
+        executer.withJavaHome jdk9.javaHome
+        succeeds "compileJava"
+        then:
+        executedAndNotSkipped ":compileJava"
+
+        when:
         executer.withJavaHome jdk8.javaHome
         succeeds "compileJava"
         then:
-        nonSkippedTasks.contains ":compileJava"
+        skipped ":compileJava"
 
         when:
-        executer.withJavaHome jdk7.javaHome
-        succeeds "compileJava"
-        then:
-        skippedTasks.contains ":compileJava"
-
-        when:
-        executer.withJavaHome jdk7.javaHome
-        buildFile.text = forkedJavaCompilation(jdk8)
+        executer.withJavaHome jdk8.javaHome
+        buildFile.text = forkedJavaCompilation(jdk9)
         succeeds "compileJava", "--info"
         then:
-        nonSkippedTasks.contains ":compileJava"
+        executedAndNotSkipped ":compileJava"
         output.contains "Value of input property 'toolChain.version' has changed for task ':compileJava'"
     }
 

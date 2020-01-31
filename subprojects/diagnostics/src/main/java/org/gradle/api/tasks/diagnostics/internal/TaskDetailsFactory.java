@@ -39,10 +39,16 @@ public class TaskDetailsFactory {
             path = task.getPath();
         }
         return new TaskDetails() {
+            private Path cachedPath;
+            @Override
             public Path getPath() {
-                return Path.path(path);
+                if (cachedPath == null) {
+                    cachedPath = Path.path(path);
+                }
+                return cachedPath;
             }
 
+            @Override
             public String getDescription() {
                 return task.getDescription();
             }

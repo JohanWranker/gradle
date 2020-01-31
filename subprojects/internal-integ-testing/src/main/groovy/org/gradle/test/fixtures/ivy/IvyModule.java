@@ -25,6 +25,7 @@ import java.util.Map;
 
 public interface IvyModule extends Module {
     String getOrganisation();
+    @Override
     String getModule();
     String getRevision();
 
@@ -55,6 +56,12 @@ public interface IvyModule extends Module {
     IvyModule dependsOn(String organisation, String module, String revision);
 
     IvyModule extendsFrom(Map<String, ?> attributes);
+
+    IvyModule withoutGradleMetadataRedirection();
+
+    IvyModule withoutExtraChecksums();
+
+    IvyModule withExtraChecksums();
 
     /**
      * Attributes:
@@ -109,12 +116,14 @@ public interface IvyModule extends Module {
     /**
      * Publishes ivy.xml plus all artifacts with different content (and size) to previous publication.
      */
+    @Override
     IvyModule publishWithChangedContent();
 
     /**
      * Publishes ivy.xml plus all artifacts. Publishes only those artifacts whose content has changed since the
      * last call to {@code #publish()}.
      */
+    @Override
     IvyModule publish();
 
     IvyDescriptor getParsedIvy();

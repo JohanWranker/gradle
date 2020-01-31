@@ -16,23 +16,26 @@
 
 package org.gradle.tooling.internal.provider.runner
 
-import org.gradle.api.execution.internal.ExecuteTaskBuildOperationDetails
+import org.gradle.api.internal.tasks.execution.ExecuteTaskBuildOperationDetails
 import org.gradle.api.internal.TaskInternal
-import org.gradle.api.internal.tasks.testing.TestCompleteEvent
 import org.gradle.api.internal.tasks.testing.TestDescriptorInternal
+import org.gradle.api.internal.tasks.testing.operations.ExecuteTestBuildOperationType
 import org.gradle.api.tasks.testing.TestExecutionException
 import org.gradle.api.tasks.testing.TestResult
-import org.gradle.internal.progress.BuildOperationDescriptor
-import org.gradle.internal.progress.BuildOperationCategory
-import org.gradle.internal.progress.OperationStartEvent
+import org.gradle.execution.plan.LocalTaskNode
+import org.gradle.internal.operations.BuildOperationDescriptor
+import org.gradle.internal.operations.OperationFinishEvent
+import org.gradle.internal.operations.OperationIdentifier
+import org.gradle.internal.operations.OperationStartEvent
 import org.gradle.tooling.internal.protocol.test.InternalJvmTestRequest
 import org.gradle.tooling.internal.provider.TestExecutionRequestAction
-import org.gradle.tooling.internal.provider.events.DefaultTestDescriptor
+import org.gradle.internal.build.event.types.DefaultTestDescriptor
 import spock.lang.Specification
 
 import static org.gradle.util.TextUtil.normaliseLineSeparators
 
 class TestExecutionResultEvaluatorTest extends Specification {
+
     def "evaluate throws exception if no results tracked"() {
         given:
         def testExecutionRequest = Mock(TestExecutionRequestAction)
@@ -57,9 +60,22 @@ class TestExecutionResultEvaluatorTest extends Specification {
         1 * testMethodRequest2.getMethodName() >> "bazMethod"
 
 
+        def details = Mock(ExecuteTestBuildOperationType.Details) {
+            getTestDescriptor() >> testDescriptorInternal
+        }
+
+        def result = Mock(ExecuteTestBuildOperationType.Result) {
+            getResult() >> testResult
+        }
+
+        def descriptor = BuildOperationDescriptor.displayName("foo")
+            .details(details)
+            .build()
+
         when:
-        evaluator.completed(testDescriptorInternal, testResult, Mock(TestCompleteEvent))
-        evaluator.evaluate();
+        evaluator.finished(descriptor, new OperationFinishEvent(0, 1, null, result))
+        evaluator.evaluate()
+
         then:
         def e = thrown(TestExecutionException)
         normaliseLineSeparators(e.message) == """No matching tests found in any candidate test task.
@@ -70,7 +86,7 @@ class TestExecutionResultEvaluatorTest extends Specification {
         Test method org.acme.SomeBazTest.bazMethod()"""
 
         and:
-        1 * testExecutionRequest.getTestExecutionDescriptors()>> [defaultTestDescriptor]
+        1 * testExecutionRequest.getTestExecutionDescriptors() >> [defaultTestDescriptor]
         1 * testExecutionRequest.getInternalJvmTestRequests() >> [testClassRequest, testMethodRequest, testMethodRequest2]
     }
 
@@ -83,7 +99,7 @@ class TestExecutionResultEvaluatorTest extends Specification {
 
         testDescriptorInternal.getName() >> "someTest"
         testDescriptorInternal.getClassName() >> "acme.SomeTestClass"
-        testDescriptorInternal.getOwnerBuildOperationId() >> 1
+        testDescriptorInternal.getOwnerBuildOperationId() >> new OperationIdentifier(1)
 
         def testResult = Mock(TestResult)
         1 * testResult.getTestCount() >> 1
@@ -91,11 +107,27 @@ class TestExecutionResultEvaluatorTest extends Specification {
 
         def testTask = Mock(TaskInternal)
         1 * testTask.getPath() >> ":someproject:someTestTask"
-        def buildOperation = new BuildOperationDescriptor(1, 2, "<task>", "<task>",  "<task>", new ExecuteTaskBuildOperationDetails(testTask), BuildOperationCategory.TASK)
+        def taskBuildOperation = BuildOperationDescriptor.displayName("task")
+            .details(new ExecuteTaskBuildOperationDetails(Stub(LocalTaskNode) {
+                getTask() >> testTask
+            }))
+            .build(new OperationIdentifier(1), null)
+
+        def details = Mock(ExecuteTestBuildOperationType.Details) {
+            getTestDescriptor() >> testDescriptorInternal
+        }
+
+        def result = Mock(ExecuteTestBuildOperationType.Result) {
+            getResult() >> testResult
+        }
+
+        def testBuildOperation = BuildOperationDescriptor.displayName("foo")
+            .details(details)
+            .build()
 
         when:
-        evaluator.started(buildOperation, new OperationStartEvent(0))
-        evaluator.completed(testDescriptorInternal, testResult, Mock(TestCompleteEvent))
+        evaluator.started(taskBuildOperation, new OperationStartEvent(0))
+        evaluator.finished(testBuildOperation, new OperationFinishEvent(0, 0, null, result))
         evaluator.evaluate()
 
         then:
@@ -104,4 +136,5 @@ class TestExecutionResultEvaluatorTest extends Specification {
     Failed tests:
         Test acme.SomeTestClass#someTest (Task: :someproject:someTestTask)"""
     }
+
 }

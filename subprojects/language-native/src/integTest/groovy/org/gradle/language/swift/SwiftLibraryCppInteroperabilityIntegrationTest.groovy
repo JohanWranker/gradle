@@ -16,6 +16,7 @@
 
 package org.gradle.language.swift
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.NativeBinaryFixture
 import org.gradle.nativeplatform.fixtures.app.CppGreeterFunction
 import org.gradle.nativeplatform.fixtures.app.CppGreeterFunctionUsesLogger
@@ -26,6 +27,7 @@ import spock.lang.Unroll
 class SwiftLibraryCppInteroperabilityIntegrationTest extends AbstractSwiftMixedLanguageIntegrationTest {
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can compile and link against a #linkage.toLowerCase() c++ library"() {
         settingsFile << "include 'hello', 'cppGreeter'"
         def cppGreeter = new CppGreeterFunction()
@@ -39,9 +41,9 @@ class SwiftLibraryCppInteroperabilityIntegrationTest extends AbstractSwiftMixedL
                     api project(':cppGreeter')
                 }
                 library.binaries.configureEach {
-                    if (targetPlatform.operatingSystem.macOsX) {
+                    if (targetMachine.operatingSystemFamily.macOs) {
                         linkTask.get().linkerArgs.add("-lc++")
-                    } else if (targetPlatform.operatingSystem.linux) {
+                    } else if (targetMachine.operatingSystemFamily.linux) {
                         linkTask.get().linkerArgs.add("-lstdc++")
                     }
                 }
@@ -74,6 +76,7 @@ class SwiftLibraryCppInteroperabilityIntegrationTest extends AbstractSwiftMixedL
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can compile and link against a c++ library with a dependency on a #linkage.toLowerCase() c++ library"() {
         settingsFile << "include 'hello', 'cppGreeter', 'logger'"
         def cppGreeter = new CppGreeterFunctionUsesLogger()

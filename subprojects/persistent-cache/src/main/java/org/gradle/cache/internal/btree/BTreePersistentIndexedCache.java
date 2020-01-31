@@ -17,6 +17,7 @@ package org.gradle.cache.internal.btree;
 
 import com.google.common.collect.ImmutableSet;
 import org.gradle.api.UncheckedIOException;
+import org.gradle.internal.UncheckedException;
 import org.gradle.internal.io.StreamByteBuffer;
 import org.gradle.internal.serialize.Serializer;
 import org.gradle.internal.serialize.kryo.KryoBackedDecoder;
@@ -92,6 +93,7 @@ public class BTreePersistentIndexedCache<K, V> {
 
     private void doOpen() throws Exception {
         BlockStore.Factory factory = new BlockStore.Factory() {
+            @Override
             public Object create(Class<? extends BlockPayload> type) {
                 if (type == HeaderBlock.class) {
                     return new HeaderBlock();
@@ -106,6 +108,7 @@ public class BTreePersistentIndexedCache<K, V> {
             }
         };
         Runnable initAction = new Runnable() {
+            @Override
             public void run() {
                 header = new HeaderBlock();
                 store.write(header);
@@ -205,11 +208,14 @@ public class BTreePersistentIndexedCache<K, V> {
         return store.isOpen();
     }
 
-    private void rebuild() throws Exception {
+    private void rebuild() {
         LOGGER.warn("{} is corrupt. Discarding.", this);
-        store.clear();
-        close();
-        doOpen();
+        try {
+            clear();
+        } catch (Exception e) {
+            LOGGER.warn("{} couldn't be rebuilt. Closing.", this);
+            close();
+        }
     }
 
     public void verify() {
@@ -229,6 +235,7 @@ public class BTreePersistentIndexedCache<K, V> {
         verifyTree(header.getRoot(), "", blocks, Long.MAX_VALUE, true);
 
         Collections.sort(blocks, new Comparator<BlockPayload>() {
+            @Override
             public int compare(BlockPayload block, BlockPayload block1) {
                 return block.getPos().compareTo(block1.getPos());
             }
@@ -280,6 +287,16 @@ public class BTreePersistentIndexedCache<K, V> {
         if (!current.tailPos.isNull()) {
             IndexBlock tail = store.read(current.tailPos, IndexBlock.class);
             verifyTree(tail, "   " + prefix, blocks, maxValue, loadData);
+        }
+    }
+
+    public void clear() {
+        store.clear();
+        close();
+        try {
+            doOpen();
+        } catch (Exception e) {
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -364,6 +381,7 @@ public class BTreePersistentIndexedCache<K, V> {
             return Block.INT_SIZE + Block.LONG_SIZE + (3 * Block.LONG_SIZE) * maxChildIndexEntries;
         }
 
+        @Override
         public void read(DataInputStream instr) throws IOException {
             int count = instr.readInt();
             entries.clear();
@@ -377,6 +395,7 @@ public class BTreePersistentIndexedCache<K, V> {
             tailPos = BlockPointer.pos(instr.readLong());
         }
 
+        @Override
         public void write(DataOutputStream outstr) throws IOException {
             outstr.writeInt(entries.size());
             for (IndexEntry entry : entries) {
@@ -613,6 +632,7 @@ public class BTreePersistentIndexedCache<K, V> {
             this.hashCode = hashCode;
         }
 
+        @Override
         public int compareTo(IndexEntry indexEntry) {
             if (hashCode > indexEntry.hashCode) {
                 return 1;
@@ -679,12 +699,14 @@ public class BTreePersistentIndexedCache<K, V> {
             return 2 * Block.INT_SIZE + size;
         }
 
+        @Override
         public void read(DataInputStream instr) throws Exception {
             size = instr.readInt();
             int bytes = instr.readInt();
             buffer = StreamByteBuffer.of(instr, bytes);
         }
 
+        @Override
         public void write(DataOutputStream outstr) throws Exception {
             outstr.writeInt(size);
             outstr.writeInt(buffer.totalBytesUnread());

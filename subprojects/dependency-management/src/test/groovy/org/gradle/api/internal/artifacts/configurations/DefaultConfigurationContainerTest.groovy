@@ -18,22 +18,28 @@ package org.gradle.api.internal.artifacts.configurations
 
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.UnknownConfigurationException
+import org.gradle.api.internal.DocumentationRegistry
+import org.gradle.api.internal.CollectionCallbackActionDecorator
 import org.gradle.api.internal.artifacts.ComponentSelectorConverter
 import org.gradle.api.internal.artifacts.ConfigurationResolver
 import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory
+import org.gradle.api.internal.artifacts.dsl.dependencies.DependencyLockingProvider
 import org.gradle.api.internal.artifacts.dsl.dependencies.ProjectFinder
 import org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution.DependencySubstitutionRules
 import org.gradle.api.internal.artifacts.ivyservice.moduleconverter.LocalComponentMetadataBuilder
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.api.internal.initialization.RootScriptDomainObjectContext
+import org.gradle.api.internal.project.ProjectStateRegistry
 import org.gradle.api.internal.tasks.TaskResolver
+import org.gradle.configuration.internal.UserCodeApplicationContext
 import org.gradle.initialization.ProjectAccessListener
 import org.gradle.internal.event.ListenerManager
 import org.gradle.internal.operations.BuildOperationExecutor
 import org.gradle.internal.reflect.Instantiator
+import org.gradle.util.AttributeTestUtil
 import org.gradle.util.TestUtil
 import org.gradle.vcs.internal.VcsMappingsStore
 import spock.lang.Specification
@@ -51,9 +57,14 @@ class DefaultConfigurationContainerTest extends Specification {
     private VcsMappingsStore vcsMappingsInternal = Mock(VcsMappingsStore)
     private BuildOperationExecutor buildOperationExecutor = Mock(BuildOperationExecutor)
     private TaskResolver taskResolver = Mock(TaskResolver)
+    private DependencyLockingProvider lockingProvider = Mock(DependencyLockingProvider)
+    private ProjectStateRegistry projectStateRegistry = Mock(ProjectStateRegistry)
+    private DocumentationRegistry documentationRegistry = Mock(DocumentationRegistry)
+    private CollectionCallbackActionDecorator callbackActionDecorator = Mock()
+    private UserCodeApplicationContext userCodeApplicationContext = Mock()
 
-    private Instantiator instantiator = TestUtil.instantiatorFactory().decorate()
-    private ImmutableAttributesFactory immutableAttributesFactory = TestUtil.attributesFactory()
+    private Instantiator instantiator = TestUtil.instantiatorFactory().decorateLenient()
+    private ImmutableAttributesFactory immutableAttributesFactory = AttributeTestUtil.attributesFactory()
     private ImmutableModuleIdentifierFactory moduleIdentifierFactory = Mock() {
         module(_, _) >> { args ->
             DefaultModuleIdentifier.newId(*args)
@@ -64,7 +75,8 @@ class DefaultConfigurationContainerTest extends Specification {
             resolver, instantiator, new RootScriptDomainObjectContext(),
             listenerManager, metaDataProvider, projectAccessListener, projectFinder, metaDataBuilder, TestFiles.fileCollectionFactory(),
             globalSubstitutionRules, vcsMappingsInternal, componentIdentifierFactory, buildOperationExecutor, taskResolver,
-            immutableAttributesFactory, moduleIdentifierFactory, componentSelectorConverter)
+            immutableAttributesFactory, moduleIdentifierFactory, componentSelectorConverter, lockingProvider, projectStateRegistry,
+            documentationRegistry, callbackActionDecorator, userCodeApplicationContext, TestUtil.domainObjectCollectionFactory())
 
     def addsNewConfigurationWhenConfiguringSelf() {
         when:

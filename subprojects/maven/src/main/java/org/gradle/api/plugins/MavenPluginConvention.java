@@ -32,6 +32,7 @@ import java.util.Collections;
 /**
  * Properties and methods added by the {@link org.gradle.api.plugins.MavenPlugin}.
  */
+@Deprecated
 public class MavenPluginConvention implements MavenPomMetaInfoProvider {
     private final ProjectInternal project;
     private final MavenFactory mavenFactory;
@@ -61,6 +62,7 @@ public class MavenPluginConvention implements MavenPomMetaInfoProvider {
     /**
      * Returns the directory to generate Maven POMs into.
      */
+    @Override
     public File getMavenPomDir() {
         if (pomDir == null) {
             return new File(project.getBuildDir(), "poms");

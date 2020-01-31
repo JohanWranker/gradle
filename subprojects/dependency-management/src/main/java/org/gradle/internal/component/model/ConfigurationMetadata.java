@@ -17,12 +17,13 @@
 package org.gradle.internal.component.model;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import org.gradle.api.capabilities.CapabilitiesMetadata;
 import org.gradle.api.attributes.HasAttributes;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.DisplayName;
-import org.gradle.internal.component.external.model.MavenDependencyDescriptor;
+import org.gradle.internal.component.external.model.maven.MavenDependencyDescriptor;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -34,7 +35,7 @@ public interface ConfigurationMetadata extends HasAttributes {
      * for this information. However it _is_ currently used by {@link MavenDependencyDescriptor#selectLegacyConfigurations}
      * to determine if the target 'runtime' configuration includes the target 'compile' configuration.
      */
-    Collection<String> getHierarchy();
+    ImmutableSet<String> getHierarchy();
 
     String getName();
 
@@ -57,7 +58,7 @@ public interface ConfigurationMetadata extends HasAttributes {
     /**
      * Returns the artifacts associated with this configuration, if known.
      */
-    List<? extends ComponentArtifactMetadata> getArtifacts();
+    ImmutableList<? extends ComponentArtifactMetadata> getArtifacts();
 
     /**
      * Returns the variants of this configuration. Should include at least one value. Exactly one variant must be selected and the artifacts of that variant used.
@@ -77,6 +78,8 @@ public interface ConfigurationMetadata extends HasAttributes {
 
     boolean isCanBeConsumed();
 
+    List<String> getConsumptionAlternatives();
+
     boolean isCanBeResolved();
 
     /**
@@ -87,4 +90,12 @@ public interface ConfigurationMetadata extends HasAttributes {
      * (For external module components, we just instantiate a new artifact metadata).
      */
     ComponentArtifactMetadata artifact(IvyArtifactName artifact);
+
+    CapabilitiesMetadata getCapabilities();
+
+    /**
+     * Was this variant derived from pom metadata and requires the maven mechanism of discovering artifacts
+     * that may not be directly defined in the metadata (e.g. the default 'jar' artifact).
+     */
+    boolean requiresMavenArtifactDiscovery();
 }

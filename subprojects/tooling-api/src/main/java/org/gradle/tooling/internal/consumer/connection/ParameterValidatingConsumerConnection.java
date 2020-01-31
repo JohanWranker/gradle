@@ -16,10 +16,13 @@
 package org.gradle.tooling.internal.consumer.connection;
 
 import org.gradle.tooling.BuildAction;
+import org.gradle.tooling.internal.consumer.PhasedBuildAction;
 import org.gradle.tooling.internal.consumer.TestExecutionRequest;
 import org.gradle.tooling.internal.consumer.parameters.ConsumerOperationParameters;
 import org.gradle.tooling.internal.consumer.versioning.VersionDetails;
 import org.gradle.tooling.model.internal.Exceptions;
+
+import java.util.List;
 
 public class ParameterValidatingConsumerConnection implements ConsumerConnection {
     private final VersionDetails targetVersionDetails;
@@ -54,9 +57,20 @@ public class ParameterValidatingConsumerConnection implements ConsumerConnection
     }
 
     @Override
+    public void run(PhasedBuildAction phasedBuildAction, ConsumerOperationParameters operationParameters) {
+        validateParameters(operationParameters);
+        delegate.run(phasedBuildAction, operationParameters);
+    }
+
+    @Override
     public void runTests(TestExecutionRequest testExecutionRequest, ConsumerOperationParameters operationParameters) {
         validateParameters(operationParameters);
         delegate.runTests(testExecutionRequest, operationParameters);
+    }
+
+    @Override
+    public void notifyDaemonsAboutChangedPaths(List<String> changedPaths, ConsumerOperationParameters operationParameters) {
+        delegate.notifyDaemonsAboutChangedPaths(changedPaths, operationParameters);
     }
 
     private void validateParameters(ConsumerOperationParameters operationParameters) {

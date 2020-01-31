@@ -28,6 +28,7 @@ import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.copy.CopySpecInternal;
 import org.gradle.api.internal.project.ProjectIdentifier;
 import org.gradle.api.plugins.ExtensionContainer;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.jvm.internal.JvmAssembly;
 import org.gradle.jvm.tasks.Jar;
@@ -81,12 +82,17 @@ import java.util.Date;
  * Plugin for Play Framework component support. Registers the {@link org.gradle.play.PlayApplicationSpec} component type for the components container.
  */
 @Incubating
+@Deprecated
 public class PlayApplicationPlugin implements Plugin<Project> {
     public static final int DEFAULT_HTTP_PORT = 9000;
     public static final String RUN_GROUP = "Run";
 
     @Override
     public void apply(Project project) {
+        DeprecationLogger.deprecatePlugin("Play Application")
+            .replaceWithExternalPlugin("org.gradle.playframework-application")
+            .withUserManual("play_plugin")
+            .nagUser();
         project.getPluginManager().apply(JavaLanguagePlugin.class);
         project.getPluginManager().apply(ScalaLanguagePlugin.class);
         project.getPluginManager().apply(PlayTwirlPlugin.class);
@@ -176,6 +182,7 @@ public class PlayApplicationPlugin implements Plugin<Project> {
                             @Path("buildDir") final File buildDir, final ProjectIdentifier projectIdentifier) {
 
             binaries.create("binary", new Action<PlayApplicationBinarySpec>() {
+                @Override
                 public void execute(PlayApplicationBinarySpec playBinary) {
                     PlayApplicationBinarySpecInternal playBinaryInternal = (PlayApplicationBinarySpecInternal) playBinary;
                     final File binaryBuildDir = new File(buildDir, playBinaryInternal.getProjectScopedName());
@@ -266,10 +273,11 @@ public class PlayApplicationPlugin implements Plugin<Project> {
         void createJarTasks(ModelMap<Task> tasks, final PlayApplicationBinarySpecInternal binary) {
             String jarTaskName = binary.getTasks().taskName("create", "Jar");
             tasks.create(jarTaskName, Jar.class, new Action<Jar>() {
+                @Override
                 public void execute(Jar jar) {
                     jar.setDescription("Assembles the application jar for the " + binary.getDisplayName() + ".");
-                    jar.setDestinationDir(binary.getJarFile().getParentFile());
-                    jar.setArchiveName(binary.getJarFile().getName());
+                    jar.getDestinationDirectory().set(binary.getJarFile().getParentFile());
+                    jar.getArchiveFileName().set(binary.getJarFile().getName());
                     jar.from(binary.getAssembly().getClassDirectories());
                     jar.from(binary.getAssembly().getResourceDirectories());
                     jar.dependsOn(binary.getAssembly());
@@ -278,11 +286,12 @@ public class PlayApplicationPlugin implements Plugin<Project> {
 
             String assetsJarTaskName = binary.getTasks().taskName("create", "assetsJar");
             tasks.create(assetsJarTaskName, Jar.class, new Action<Jar>() {
+                @Override
                 public void execute(Jar jar) {
                     jar.setDescription("Assembles the assets jar for the " + binary.getDisplayName() + ".");
-                    jar.setDestinationDir(binary.getAssetsJarFile().getParentFile());
-                    jar.setArchiveName(binary.getAssetsJarFile().getName());
-                    jar.setClassifier("assets");
+                    jar.getDestinationDirectory().set(binary.getAssetsJarFile().getParentFile());
+                    jar.getArchiveFileName().set(binary.getAssetsJarFile().getName());
+                    jar.getArchiveClassifier().set("assets");
                     CopySpecInternal newSpec = jar.getRootSpec().addChild();
                     newSpec.from(binary.getAssets().getAssetDirs());
                     newSpec.into("public");
@@ -298,6 +307,7 @@ public class PlayApplicationPlugin implements Plugin<Project> {
                 String runTaskName = binary.getTasks().taskName("run");
 
                 tasks.create(runTaskName, PlayRun.class, new Action<PlayRun>() {
+                    @Override
                     public void execute(PlayRun playRun) {
                         playRun.setDescription("Runs the Play application for local development.");
                         playRun.setGroup(RUN_GROUP);

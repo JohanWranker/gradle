@@ -16,7 +16,13 @@
 
 package org.gradle.play.plugins;
 
-import org.gradle.api.*;
+import org.gradle.api.Action;
+import org.gradle.api.DefaultTask;
+import org.gradle.api.Incubating;
+import org.gradle.api.Plugin;
+import org.gradle.api.Project;
+import org.gradle.api.Task;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.language.base.LanguageSourceSet;
 import org.gradle.language.base.internal.SourceTransformTaskConfig;
@@ -46,9 +52,11 @@ import java.util.Map;
  */
 @SuppressWarnings("UnusedDeclaration")
 @Incubating
+@Deprecated
 public class PlayJavaScriptPlugin implements Plugin<Project> {
     @Override
     public void apply(Project project) {
+        DeprecationLogger.deprecatePlugin("Play JavaScript").replaceWithExternalPlugin("org.gradle.playframework-javascript").withUserManual("play_plugin").nagUser();
         project.getPluginManager().apply(ComponentModelBasePlugin.class);
     }
 
@@ -99,14 +107,17 @@ public class PlayJavaScriptPlugin implements Plugin<Project> {
         @Override
         public SourceTransformTaskConfig getTransformTask() {
             return new SourceTransformTaskConfig() {
+                @Override
                 public String getTaskPrefix() {
                     return "minify";
                 }
 
+                @Override
                 public Class<? extends DefaultTask> getTaskType() {
                     return JavaScriptMinify.class;
                 }
 
+                @Override
                 public void configureTask(Task task, BinarySpec binarySpec, LanguageSourceSet sourceSet, ServiceRegistry serviceRegistry) {
                     PlayApplicationBinarySpecInternal binary = (PlayApplicationBinarySpecInternal) binarySpec;
                     JavaScriptSourceSet javaScriptSourceSet = (JavaScriptSourceSet) sourceSet;

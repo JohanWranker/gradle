@@ -21,7 +21,7 @@ import org.gradle.api.logging.configuration.ConsoleOutput;
 import org.gradle.api.logging.configuration.ShowStacktrace;
 import org.gradle.cli.CommandLineArgumentException;
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
-import org.hamcrest.Matchers;
+import org.hamcrest.CoreMatchers;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -93,7 +93,7 @@ public class DefaultCommandLineConverterTest extends CommandLineConverterTestSup
 
         checkConversion("-c", "somesettings");
 
-        Assert.assertThat(actualStartParameter.getSettingsFile(), Matchers.equalTo((File) expectedSettingsFile));
+        Assert.assertThat(actualStartParameter.getSettingsFile(), CoreMatchers.equalTo((File) expectedSettingsFile));
     }
 
     @Test
@@ -159,12 +159,6 @@ public class DefaultCommandLineConverterTest extends CommandLineConverterTestSup
     }
 
     @Test
-    public void withSearchUpwardsFlagSet() {
-        expectedSearchUpwards = false;
-        checkConversion("-u");
-    }
-
-    @Test
     public void withShowFullStacktrace() {
         expectedShowStackTrace = ShowStacktrace.ALWAYS_FULL;
         checkConversion("-S");
@@ -205,11 +199,6 @@ public class DefaultCommandLineConverterTest extends CommandLineConverterTestSup
         checkConversion("-x", "excluded");
         expectedExcludedTasks.add("excluded2");
         checkConversion("-x", "excluded", "-x", "excluded2");
-    }
-
-    @Test(expected = CommandLineArgumentException.class)
-    public void withEmbeddedScriptAndConflictingNoSearchUpwardsOption() {
-        checkConversion("-e", "someScript", "-u", "clean");
     }
 
     @Test(expected = CommandLineArgumentException.class)
@@ -315,12 +304,6 @@ public class DefaultCommandLineConverterTest extends CommandLineConverterTestSup
         expectedRefreshDependencies = true;
         checkConversion("--refresh-dependencies");
         checkConversion("-refresh-dependencies");
-    }
-
-    @Test
-    public void withRecompileScripts() {
-        expectedRecompileScripts = true;
-        checkConversion("--recompile-scripts");
     }
 
     @Test(expected = CommandLineArgumentException.class)

@@ -16,9 +16,7 @@
 
 package org.gradle.api.initialization;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.tasks.TaskReference;
-import org.gradle.internal.HasInternalProtocol;
 
 import java.io.File;
 
@@ -27,8 +25,6 @@ import java.io.File;
  *
  * @since 3.1
  */
-@Incubating
-@HasInternalProtocol
 public interface IncludedBuild {
     /**
      * The name of the included build.

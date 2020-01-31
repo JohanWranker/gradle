@@ -18,12 +18,14 @@ package org.gradle.integtests.fixtures.executer;
 import com.google.common.base.Joiner;
 import org.gradle.api.Action;
 import org.gradle.api.UncheckedIOException;
+import org.gradle.api.internal.artifacts.ivyservice.ArtifactCachesProvider;
 import org.gradle.internal.Factory;
 import org.gradle.internal.io.NullOutputStream;
 import org.gradle.process.ExecResult;
 import org.gradle.process.internal.AbstractExecHandleBuilder;
 import org.gradle.process.internal.ExecHandle;
 import org.gradle.process.internal.ExecHandleState;
+import org.gradle.test.fixtures.file.TestFile;
 
 import java.io.IOException;
 import java.io.PipedOutputStream;
@@ -66,10 +68,12 @@ class ForkingGradleHandle extends OutputScrapingGradleHandle {
         return stdinPipe;
     }
 
+    @Override
     public String getStandardOutput() {
         return standardOutputCapturer.getOutputAsString();
     }
 
+    @Override
     public String getErrorOutput() {
         return errorOutputCapturer.getOutputAsString();
     }
@@ -80,6 +84,7 @@ class ForkingGradleHandle extends OutputScrapingGradleHandle {
             throw new IllegalStateException("you have already called start() on this handle");
         }
 
+        checkDistributionExists();
         printExecHandleSettings();
 
         execHandle.start();
@@ -87,6 +92,11 @@ class ForkingGradleHandle extends OutputScrapingGradleHandle {
             durationMeasurement.start();
         }
         return this;
+    }
+
+    private void checkDistributionExists() {
+        String hintForMissingDistribution = String.format("This integration test can not run embedded and the Gradle distribution is missing: run 'gradle %s:intTestImage'.", IntegrationTestBuildContext.INSTANCE.getCurrentSubprojectName());
+        new TestFile(getExecHandle().getCommand()).getParentFile().assertIsDir(hintForMissingDistribution);
     }
 
     private ExecHandle buildExecHandle() {
@@ -108,6 +118,10 @@ class ForkingGradleHandle extends OutputScrapingGradleHandle {
         println(format("    GRADLE_USER_HOME: %s", environment.get("GRADLE_USER_HOME")));
         println(format("    JAVA_OPTS: %s", environment.get("JAVA_OPTS")));
         println(format("    GRADLE_OPTS: %s", environment.get("GRADLE_OPTS")));
+        String roCache = environment.get(ArtifactCachesProvider.READONLY_CACHE_ENV_VAR);
+        if (roCache != null) {
+            println(format("    %s: %s", ArtifactCachesProvider.READONLY_CACHE_ENV_VAR, roCache));
+        }
     }
 
     private static void println(String s) {
@@ -151,11 +165,13 @@ class ForkingGradleHandle extends OutputScrapingGradleHandle {
         }
     }
 
+    @Override
     public GradleHandle abort() {
         getExecHandle().abort();
         return this;
     }
 
+    @Override
     public boolean isRunning() {
         ExecHandle execHandle = this.execHandleRef.get();
         return execHandle != null && execHandle.getState() == ExecHandleState.STARTED;
@@ -169,10 +185,12 @@ class ForkingGradleHandle extends OutputScrapingGradleHandle {
         return handle;
     }
 
+    @Override
     public ExecutionResult waitForFinish() {
         return waitForStop(false);
     }
 
+    @Override
     public ExecutionFailure waitForFailure() {
         return (ExecutionFailure) waitForStop(true);
     }
@@ -191,10 +209,10 @@ class ForkingGradleHandle extends OutputScrapingGradleHandle {
 
         String output = getStandardOutput();
         String error = getErrorOutput();
-        
+
         // Exit value is unreliable for determination of process failure.
         // On rare occasions, exitValue == 0 when the process is expected to fail, and the error output indicates failure.
-        boolean buildFailed = execResult.getExitValue() != 0 || OutputScrapingExecutionFailure.hasFailure(error);
+        boolean buildFailed = execResult.getExitValue() != 0 || OutputScrapingExecutionFailure.hasFailure(output);
         ExecutionResult executionResult = buildFailed ? toExecutionFailure(output, error) : toExecutionResult(output, error);
 
         if (expectFailure && !buildFailed) {
@@ -219,9 +237,6 @@ class ForkingGradleHandle extends OutputScrapingGradleHandle {
                     + "Error:%n%s%n"
                     + "-----%n",
                 status, execHandle.getDirectory(), execHandle.getCommand(), execHandle.getArguments(), execResult.toString(), output, error);
-        Exception exception = executionResult instanceof OutputScrapingExecutionFailure ? ((OutputScrapingExecutionFailure) executionResult).getException() : null;
-        return exception != null
-            ? new UnexpectedBuildFailure(message, exception)
-            : new UnexpectedBuildFailure(message);
+        return new UnexpectedBuildFailure(message);
     }
 }

@@ -25,18 +25,24 @@ class VariantMetadataSpec {
     List<DependencySpec> dependencies = []
     List<DependencyConstraintSpec> dependencyConstraints = []
     List<FileSpec> artifacts = []
+    List<CapabilitySpec> capabilities = []
+    AvailableAtSpec availableAt
+    boolean useDefaultArtifacts = true
+    boolean noArtifacts = false
 
     VariantMetadataSpec(String name, Map<String, String> attributes = [:]) {
         this.name = name
         this.attributes = attributes
     }
 
-    VariantMetadataSpec(String name, Map<String, String> attributes, List<DependencySpec> dependencies, List<DependencyConstraintSpec> dependencyConstraints, List<FileSpec> artifacts) {
+    VariantMetadataSpec(String name, Map<String, String> attributes, List<DependencySpec> dependencies, List<DependencyConstraintSpec> dependencyConstraints, List<FileSpec> artifacts, List<CapabilitySpec> capabilities, AvailableAtSpec availableAt) {
         this.name = name
         this.attributes = attributes
         this.dependencies = dependencies
         this.dependencyConstraints = dependencyConstraints
         this.artifacts = artifacts
+        this.capabilities = capabilities
+        this.availableAt = availableAt
     }
 
     void attribute(String name, String value) {
@@ -46,7 +52,54 @@ class VariantMetadataSpec {
         attributes[name] = value
     }
 
-    void dependsOn(String group, String module, String version, String reason = null) {
-        dependencies += new DependencySpec(group, module, version, null, null, reason)
+    void dependsOn(String group, String module, String version, String reason = null, Map<String, ?> attributes = [:]) {
+        dependencies << new DependencySpec(group, module, version, null, null, null, null, null, reason, attributes, null, null)
+    }
+
+    void dependsOn(String group, String module, String version, @DelegatesTo(value=DependencySpec, strategy=Closure.DELEGATE_FIRST) Closure<?> config) {
+        def spec = new DependencySpec(group, module, version, null, null, null, null, null, null, [:], null, null)
+        config.delegate = spec
+        config.resolveStrategy = Closure.DELEGATE_FIRST
+        config()
+        dependencies += spec
+    }
+
+    void dependsOn(String notation) {
+        def gav = notation.split(':')
+        dependsOn(gav[0], gav[1], gav[2])
+    }
+
+    void dependsOn(String notation, @DelegatesTo(value=DependencySpec, strategy=Closure.DELEGATE_FIRST) Closure<?> config) {
+        def gav = notation.split(':')
+        dependsOn(gav[0], gav[1], gav[2], config)
+    }
+
+    void constraint(String group, String module, String version, String reason = null, Map<String, ?> attributes = [:]) {
+        dependencyConstraints << new DependencyConstraintSpec(group, module, version, null, null, null, reason, attributes)
+    }
+
+    void constraint(String notation) {
+        def gav = notation.split(':')
+        constraint(gav[0], gav[1], gav[2])
+    }
+
+    void artifact(String name) {
+        artifacts << new FileSpec(name)
+    }
+
+    void artifact(String name, String url) {
+        artifacts << new FileSpec(name, url)
+    }
+
+    void capability(String group, String name, String version = '1.0') {
+        capabilities << new CapabilitySpec(group, name, version)
+    }
+
+    void capability(String name) {
+        capabilities << new CapabilitySpec('org.test', name, '1.0')
+    }
+
+    void availableAt(String url, String group, String name, String version) {
+        availableAt = new AvailableAtSpec(url, group, name, version)
     }
 }

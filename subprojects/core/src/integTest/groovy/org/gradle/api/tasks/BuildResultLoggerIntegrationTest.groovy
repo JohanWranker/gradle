@@ -18,14 +18,10 @@ package org.gradle.api.tasks
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.DirectoryBuildCacheFixture
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class BuildResultLoggerIntegrationTest extends AbstractIntegrationSpec implements DirectoryBuildCacheFixture {
     def setup() {
-        // Force a forking executer
-        // This is necessary since for the embedded executer
-        // the Task statistics are not part of the output
-        // returned by "this.output"
-        executer.requireGradleDistribution()
 
         file("input.txt") << "data"
         buildFile << """
@@ -64,6 +60,7 @@ class BuildResultLoggerIntegrationTest extends AbstractIntegrationSpec implement
         output.contains "2 actionable tasks: 1 executed, 1 up-to-date"
     }
 
+    @ToBeFixedForInstantExecution
     def "cached task outcome statistics are reported"() {
         when:
         withBuildCache().run "adHocTask", "executedTask"

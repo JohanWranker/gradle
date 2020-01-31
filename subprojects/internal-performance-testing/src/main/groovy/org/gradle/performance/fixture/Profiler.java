@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 the original author or authors.
+ * Copyright 2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,44 @@
 
 package org.gradle.performance.fixture;
 
+import org.gradle.internal.jvm.Jvm;
+
+import java.io.File;
 import java.util.List;
-import java.util.Map;
 
-public interface Profiler {
-    void addProfilerDefaults(GradleInvocationSpec.InvocationBuilder invocation);
+public abstract class Profiler {
+    private static final String TARGET_DIR_KEY = "org.gradle.performance.flameGraphTargetDir";
 
-    List<String> profilerArguments(Map<String, Object> yourkitOptions);
+    public static Profiler create() {
+        String targetDir = getJfrProfileTargetDir();
+        if (targetDir != null && !Jvm.current().isIbmJvm()) {
+            return new JfrProfiler(new File(targetDir));
+        } else {
+            return new NoopProfiler();
+        }
+    }
+
+    public static String getJfrProfileTargetDir() {
+        return System.getProperty(TARGET_DIR_KEY);
+    }
+
+    public abstract List<String> getAdditionalJvmOpts(BuildExperimentSpec spec);
+
+    /**
+     * The {@literal ;} separated list of jvm arguments to start a recording.
+     *
+     * This can be passed to the {@link org.gradle.performance.generator.JavaTestProject}s to enable recordings for the compiler daemon via:
+     * <pre>
+     * runner.args += ["-PjavaCompileJvmArgs=${Profiler.create().getJvmOptsForUseInBuild("compiler-daemon")}"]
+     * </pre>
+     * @param recordingsDirectoryRelativePath The directory where the profiler recordings will be generated.
+     *                                        Relative to the base path where all the recordings are stored.
+     */
+    public abstract String getJvmOptsForUseInBuild(String recordingsDirectoryRelativePath);
+
+    public abstract List<String> getAdditionalGradleArgs(BuildExperimentSpec spec);
+
+    public abstract void start(BuildExperimentSpec spec);
+
+    public abstract void stop(BuildExperimentSpec spec);
 }

@@ -18,6 +18,7 @@ package org.gradle.integtests.environment
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.AvailableJavaHomes
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.internal.jvm.Jvm
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
@@ -69,7 +70,8 @@ class BuildEnvironmentIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("GRADLE-1762")
-    @Requires(TestPrecondition.JDK8_OR_EARLIER) //modifies environment variables
+    @Requires(TestPrecondition.SET_ENV_VARIABLE)
+    @ToBeFixedForInstantExecution
     def "build uses environment variables from where the build was launched"() {
         file('build.gradle') << "println System.getenv('foo')"
 
@@ -86,6 +88,7 @@ class BuildEnvironmentIntegrationTest extends AbstractIntegrationSpec {
         out.contains("and will be even better")
     }
 
+    @Requires(TestPrecondition.WORKING_DIR)
     def "build is executed with working directory set to where the build was launched from"() {
         def project1 = file("project1")
         def project2 = file("project2")
@@ -129,6 +132,7 @@ assert classesDir.directory
     }
 
     @IgnoreIf({ AvailableJavaHomes.differentJdk == null })
+    @ToBeFixedForInstantExecution
     def "java home from environment should be used to run build"() {
         def alternateJavaHome = AvailableJavaHomes.differentJdk.javaHome
 

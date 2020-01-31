@@ -19,6 +19,7 @@ package org.gradle.api.artifacts.result;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
+import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.internal.scan.UsedByScanPlugin;
 
 import java.util.Set;
@@ -28,7 +29,6 @@ import java.util.Set;
  * in the resolved dependency graph, and the dependencies between them.
  */
 @UsedByScanPlugin
-@Incubating
 public interface ResolutionResult {
 
     /**
@@ -90,4 +90,15 @@ public interface ResolutionResult {
      * @param closure - closure that is applied for each component
      */
     void allComponents(Closure closure);
+
+    /**
+     * The attributes that were requested. Those are the attributes which
+     * are used during variant aware resolution, to select the variants.
+     * Attributes returned by this method are <i>desugared</i>, meaning that
+     * they have lost their rich types and can only be of type Boolean or String.
+     *
+     * @since 5.6
+     */
+    @Incubating
+    AttributeContainer getRequestedAttributes();
 }

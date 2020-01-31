@@ -34,7 +34,7 @@ import static org.gradle.api.tasks.TaskDependencyMatchers.dependsOn
 import static org.gradle.util.Matchers.isEmpty
 import static org.gradle.util.WrapUtil.toLinkedSet
 import static org.gradle.util.WrapUtil.toSet
-import static org.hamcrest.Matchers.*
+import static org.hamcrest.CoreMatchers.*
 import static org.junit.Assert.*
 
 class ScalaBasePluginTest {
@@ -65,7 +65,7 @@ class ScalaBasePluginTest {
         project.sourceSets.create('custom')
         def task = project.tasks.compileCustomScala
         assert task.zincClasspath instanceof Configuration
-        assert task.zincClasspath.dependencies.find { it.name.contains('zinc') }
+        assert task.zincClasspath.incoming.dependencies.find { it.name.contains('zinc') }
     }
 
     @Test
@@ -83,7 +83,7 @@ class ScalaBasePluginTest {
         assertThat(task, instanceOf(ScalaCompile.class))
         assertThat(task.description, equalTo('Compiles the custom Scala source.'))
         assertThat(task.classpath.files as List, equalTo([
-            customSourceSet.java.outputDir
+            customSourceSet.java.destinationDirectory.get().asFile
         ]))
         assertThat(task.source as List, equalTo(customSourceSet.scala as List))
         assertThat(task, dependsOn('compileCustomJava'))
@@ -96,8 +96,9 @@ class ScalaBasePluginTest {
         ScalaCompile task = project.tasks['compileCustomScala']
         project.gradle.buildListenerBroadcaster.projectsEvaluated(project.gradle)
 
-        assertThat(task.scalaCompileOptions.incrementalOptions.analysisFile, equalTo(new File("$project.buildDir/tmp/scala/compilerAnalysis/compileCustomScala.analysis")))
-        assertThat(task.scalaCompileOptions.incrementalOptions.publishedCode, equalTo(project.tasks['customJar'].archivePath))
+        assertThat(task.scalaCompileOptions.incrementalOptions.analysisFile.get().asFile, equalTo(new File("$project.buildDir/tmp/scala/compilerAnalysis/compileCustomScala.analysis")))
+        assertThat(task.scalaCompileOptions.incrementalOptions.publishedCode.get().asFile, equalTo(project.tasks['customJar'].archivePath))
+        assertThat(task.analysisMappingFile.get().asFile, equalTo(new File("$project.buildDir/tmp/scala/compilerAnalysis/compileCustomScala.mapping")))
     }
 
     @Test
@@ -105,12 +106,12 @@ class ScalaBasePluginTest {
         project.sourceSets.create('custom')
         project.tasks.create('customJar', Jar)
         ScalaCompile task = project.tasks['compileCustomScala']
-        task.scalaCompileOptions.incrementalOptions.analysisFile = new File("/my/file")
-        task.scalaCompileOptions.incrementalOptions.publishedCode = new File("/my/published/code.jar")
+        task.scalaCompileOptions.incrementalOptions.analysisFile.set(project.file("my/file"))
+        task.scalaCompileOptions.incrementalOptions.publishedCode.set(project.file("my/published/code.jar"))
         project.gradle.buildListenerBroadcaster.projectsEvaluated(project.gradle)
 
-        assertThat(task.scalaCompileOptions.incrementalOptions.analysisFile, equalTo(new File("/my/file")))
-        assertThat(task.scalaCompileOptions.incrementalOptions.publishedCode, equalTo(new File("/my/published/code.jar")))
+        assertThat(task.scalaCompileOptions.incrementalOptions.analysisFile.get().asFile, equalTo(project.file("my/file")))
+        assertThat(task.scalaCompileOptions.incrementalOptions.publishedCode.get().asFile, equalTo(project.file("my/published/code.jar")))
     }
 
     @Test

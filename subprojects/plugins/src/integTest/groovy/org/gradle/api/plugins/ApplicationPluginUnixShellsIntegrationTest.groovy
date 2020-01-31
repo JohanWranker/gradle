@@ -16,6 +16,7 @@
 package org.gradle.api.plugins
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.Requires
@@ -40,123 +41,132 @@ class ApplicationPluginUnixShellsIntegrationTest extends AbstractIntegrationSpec
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("bash") })
+    @ToBeFixedForInstantExecution
     def "can execute generated Unix start script in Bash"() {
         given:
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("bash")
+        runViaUnixStartScript("bash")
 
         then:
-        result.output.contains('Hello World!')
+        outputContains('Hello World!')
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("dash") })
+    @ToBeFixedForInstantExecution
     def "can execute generated Unix start script in Dash"() {
         given:
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("dash")
+        runViaUnixStartScript("dash")
 
         then:
-        result.output.contains('Hello World!')
+        outputContains('Hello World!')
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("static-sh") })
+    @ToBeFixedForInstantExecution
     def "can execute generated Unix start script in BusyBox"() {
         given:
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("static-sh")
+        runViaUnixStartScript("static-sh")
 
         then:
-        result.output.contains('Hello World!')
+        outputContains('Hello World!')
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("bash") })
+    @ToBeFixedForInstantExecution
     def "can use APP_HOME in DEFAULT_JVM_OPTS with custom start script in Bash"() {
         given:
         extendBuildFileWithAppHomeProperty()
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("bash")
+        runViaUnixStartScript("bash")
 
         then:
-        result.assertOutputContains("App Home: ${file('build/install/sample').absolutePath}")
+        outputContains("App Home: ${file('build/install/sample').absolutePath}")
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("dash") })
+    @ToBeFixedForInstantExecution
     def "can use APP_HOME in DEFAULT_JVM_OPTS with custom start script in Dash"() {
         given:
         extendBuildFileWithAppHomeProperty()
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("dash")
+        runViaUnixStartScript("dash")
 
         then:
-        result.assertOutputContains("App Home: ${file('build/install/sample').absolutePath}")
+        outputContains("App Home: ${file('build/install/sample').absolutePath}")
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("static-sh") })
+    @ToBeFixedForInstantExecution
     def "can use APP_HOME in DEFAULT_JVM_OPTS with custom start script in BusyBox"() {
         given:
         extendBuildFileWithAppHomeProperty()
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("static-sh")
+        runViaUnixStartScript("static-sh")
 
         then:
-        result.assertOutputContains("App Home: ${file('build/install/sample').absolutePath}")
+        outputContains("App Home: ${file('build/install/sample').absolutePath}")
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("bash") })
+    @ToBeFixedForInstantExecution
     def "can pass argument to App with custom start script in Bash"() {
         given:
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("bash", "someArg1", "someArg1", "some arg 2", "-DFOO=\\\"bar < baz\\\"", "-DGOO='car < caz'")
+        runViaUnixStartScript("bash", "someArg1", "someArg1", "some arg 2", "-DFOO=\\\"bar < baz\\\"", "-DGOO='car < caz'")
 
         then:
-        result.output.contains('Arg: someArg1')
-        result.output.contains('Arg: some arg 2')
-        result.output.contains('Arg: -DFOO="bar < baz"')
-        result.output.contains('Arg: -DGOO=\'car < caz\'')
+        outputContains('Arg: someArg1')
+        outputContains('Arg: some arg 2')
+        outputContains('Arg: -DFOO="bar < baz"')
+        outputContains('Arg: -DGOO=\'car < caz\'')
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("dash") })
+    @ToBeFixedForInstantExecution
     def "can pass argument to App with custom start script in Dash"() {
         given:
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("dash", "someArg1", "some arg 2", "-DFOO=\\\"bar < baz\\\"", "-DGOO='car < caz'")
+        runViaUnixStartScript("dash", "someArg1", "some arg 2", "-DFOO=\\\"bar < baz\\\"", "-DGOO='car < caz'")
 
         then:
-        result.output.contains('Arg: someArg1')
-        result.output.contains('Arg: some arg 2')
-        result.output.contains('Arg: -DFOO="bar < baz"')
-        result.output.contains('Arg: -DGOO=\'car < caz\'')
+        outputContains('Arg: someArg1')
+        outputContains('Arg: some arg 2')
+        outputContains('Arg: -DFOO="bar < baz"')
+        outputContains('Arg: -DGOO=\'car < caz\'')
     }
 
     @Requires(adhoc = { ApplicationPluginUnixShellsIntegrationTest.shellAvailable("static-sh") })
+    @ToBeFixedForInstantExecution
     def "can pass argument to App with custom start script in BusyBox"() {
         given:
         succeeds('installDist')
 
         when:
-        ExecutionResult result = runViaUnixStartScript("static-sh", "someArg1", "some arg 2", "-DFOO=\\\"bar < baz\\\"", "-DGOO='car < caz'")
+        runViaUnixStartScript("static-sh", "someArg1", "some arg 2", "-DFOO=\\\"bar < baz\\\"", "-DGOO='car < caz'")
 
         then:
-        result.output.contains('Arg: someArg1')
-        result.output.contains('Arg: some arg 2')
-        result.output.contains('Arg: -DFOO="bar < baz"')
-        result.output.contains('Arg: -DGOO=\'car < caz\'')
+        outputContains('Arg: someArg1')
+        outputContains('Arg: some arg 2')
+        outputContains('Arg: -DFOO="bar < baz"')
+        outputContains('Arg: -DGOO=\'car < caz\'')
     }
 
     ExecutionResult runViaUnixStartScript(String shCommand, String... args) {
@@ -170,7 +180,7 @@ task execStartScript(type: Exec) {
     args "${args.join('", "')}"
 }
 """
-        return executer.withTasks('execStartScript').run()
+        return succeeds('execStartScript')
     }
 
     private String setUpTestPATH(String shCommand) {

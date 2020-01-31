@@ -18,18 +18,21 @@ package org.gradle.integtests
 
 import groovy.transform.NotYetImplemented
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.StaleOutputJavaProject
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.integtests.fixtures.executer.GradleExecuter
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
 import org.gradle.integtests.fixtures.versions.ReleasedVersionDistributions
+import org.gradle.internal.jvm.Jvm
+import org.junit.Assume
 import spock.lang.Issue
-import spock.lang.Timeout
 import spock.lang.Unroll
 
 import static org.gradle.integtests.fixtures.StaleOutputJavaProject.JAR_TASK_NAME
 import static org.gradle.util.GFileUtils.forceDelete
 
-@Timeout(120)
+@IntegrationTestTimeout(240)
 class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
 
     private final ReleasedVersionDistributions releasedVersionDistributions = new ReleasedVersionDistributions()
@@ -41,10 +44,13 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
 
     def setup() {
         buildFile << "apply plugin: 'base'\n"
+        // When adding support for a new JDK version, the previous release might not work with it yet.
+        Assume.assumeTrue(releasedVersionDistributions.mostRecentRelease.worksWith(Jvm.current()))
     }
 
     @Issue("https://github.com/gradle/gradle/issues/821")
     @Unroll
+    @ToBeFixedForInstantExecution
     def "production class files are removed in a single project build for #description"() {
         given:
         def javaProject = new StaleOutputJavaProject(testDirectory, buildDirName)
@@ -85,6 +91,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         'out'        | false      | 'reconfigured build directory'
     }
 
+    @ToBeFixedForInstantExecution
     def "production class files outside of 'build' are removed"() {
         given:
         def javaProject = new StaleOutputJavaProject(testDirectory, 'out')
@@ -120,47 +127,9 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         javaProject.assertBuildTasksSkipped(result)
     }
 
-    @Issue("https://github.com/gradle/gradle/issues/1274")
-    def "buildSrc included in multi-project build as subproject"() {
-        file("buildSrc/src/main/groovy/MyPlugin.groovy") << """
-            import org.gradle.api.*
-
-            class MyPlugin implements Plugin<Project> {
-                void apply(Project project) {
-                    project.tasks.create("myTask") {
-                        doLast {
-                            def closure = {
-                                println "From plugin"
-                            }
-                            closure()
-                        }
-                    }
-                }
-            }
-        """
-        file("buildSrc/build.gradle") << "apply plugin: 'groovy'"
-        buildFile << """
-            apply plugin: 'java'
-            apply plugin: MyPlugin
-            myTask.dependsOn 'jar'
-        """
-        settingsFile << """
-            include 'buildSrc'
-        """
-
-        when:
-        result = runWithMostRecentFinalRelease("myTask")
-        then:
-        result.assertOutputContains("From plugin")
-
-        when:
-        succeeds "myTask"
-        then:
-        result.assertOutputContains("From plugin")
-    }
-
     // We register the output directory before task execution and would have deleted output files at the end of configuration.
     @Issue("https://github.com/gradle/gradle/issues/821")
+    @ToBeFixedForInstantExecution
     def "production class files are removed even if output directory is reconfigured during execution phase"() {
         given:
         def javaProject = new StaleOutputJavaProject(testDirectory)
@@ -188,6 +157,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         javaProject.redundantClassFileAlternate.assertIsFile()
 
         when:
+        buildFile.text = buildFile.text.replace('compileJava.destinationDir', 'compileJava.destinationDirectory')
         forceDelete(javaProject.redundantSourceFile)
         succeeds JAR_TASK_NAME
 
@@ -308,6 +278,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("https://github.com/gradle/gradle/issues/821")
+    @ToBeFixedForInstantExecution
     def "task history is deleted"() {
         def javaProject = new StaleOutputJavaProject(testDirectory)
         buildFile << "apply plugin: 'java'"
@@ -403,7 +374,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         result = runWithMostRecentFinalRelease(taskPath)
 
         then:
-        result.executedTasks.contains(taskPath)
+        result.assertTaskExecuted(taskPath)
         targetFile1.assertIsFile()
         targetFile2.assertIsFile()
 
@@ -456,7 +427,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         result = runWithMostRecentFinalRelease(taskPath)
 
         then:
-        result.executedTasks.contains(taskPath)
+        result.assertTaskExecuted(taskPath)
         targetFile1.assertIsFile()
         targetFile2.assertIsFile()
 
@@ -507,7 +478,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         result = runWithMostRecentFinalRelease(taskPath)
 
         then:
-        result.executedTasks.containsAll(taskPath, ':copy1', ':copy2')
+        result.assertTasksExecuted(taskPath, ':copy1', ':copy2')
         targetFile1.assertIsFile()
         targetFile2.assertIsFile()
 
@@ -563,7 +534,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         result = runWithMostRecentFinalRelease(taskPath)
 
         then:
-        result.executedTasks.contains(taskPath)
+        result.assertTaskExecuted(taskPath)
         targetFile1.assertIsFile()
         targetFile2.assertIsFile()
 
@@ -578,7 +549,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         targetFile2.assertDoesNotExist()
     }
 
-    def "task is renamed"() {
+    def "task is replaced"() {
         given:
         def sourceFile1 = file('source/source1.txt')
         sourceFile1 << 'a'
@@ -589,7 +560,7 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         def taskPath = ':copy'
 
         buildFile << """                     
-            task copy(type: Copy) {
+            tasks.register("copy", Copy) {
                 from file('source')
                 into 'build/target'
             }
@@ -599,32 +570,29 @@ class StaleOutputHistoryLossIntegrationTest extends AbstractIntegrationSpec {
         result = runWithMostRecentFinalRelease(taskPath)
 
         then:
-        result.executedTasks.contains(taskPath)
+        result.assertTaskExecuted(taskPath)
         targetFile1.assertIsFile()
         targetFile2.assertIsFile()
 
         when:
-        def newTaskPath = ':newCopy'
-
         buildFile << """
-            tasks.remove(copy)
-
-            task newCopy(type: Copy) {
+            tasks.replace("copy", Copy).configure {
                 from file('source')
                 into 'build/target'
             }
         """
         forceDelete(sourceFile2)
-        succeeds newTaskPath
+        succeeds taskPath
 
         then:
-        executedAndNotSkipped(newTaskPath)
+        executedAndNotSkipped(taskPath)
         targetFile1.assertIsFile()
         targetFile2.assertDoesNotExist()
     }
 
     private ExecutionResult runWithMostRecentFinalRelease(String... tasks) {
-        mostRecentReleaseExecuter.withTasks(tasks).run()
+        result = mostRecentReleaseExecuter.withTasks(tasks).run()
+        result
     }
 
     static String createProjectName(int projectNo) {

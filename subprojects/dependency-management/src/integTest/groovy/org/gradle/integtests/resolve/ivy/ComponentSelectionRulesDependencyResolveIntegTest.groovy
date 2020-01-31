@@ -16,6 +16,7 @@
 
 package org.gradle.integtests.resolve.ivy
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.GradleMetadataResolveRunner
 import org.junit.Assume
 import spock.lang.Issue
@@ -24,10 +25,11 @@ import spock.lang.Unroll
 
 class ComponentSelectionRulesDependencyResolveIntegTest extends AbstractComponentSelectionRulesIntegrationTest {
     boolean isWellBehaved(boolean mavenCompatible, boolean gradleCompatible = true) {
-        (GradleMetadataResolveRunner.useIvy() || mavenCompatible) && (!GradleMetadataResolveRunner.gradleMetadataEnabled || gradleCompatible)
+        (GradleMetadataResolveRunner.useIvy() || mavenCompatible) && (!GradleMetadataResolveRunner.gradleMetadataPublished || gradleCompatible)
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "uses '#rule' rule to choose component for #selector"() {
         given:
         Assume.assumeTrue isWellBehaved(mavenCompatible, gradleCompatible)
@@ -51,13 +53,13 @@ class ComponentSelectionRulesDependencyResolveIntegTest extends AbstractComponen
 """
 
         when:
-        def chosenModule = setupInterations(selector, chosenVersion, downloadedMetadata)
+        def chosenModule = setupInteractions(selector, chosenVersion, downloadedMetadata)
 
         then:
         checkDependencies {
             resolve.expectGraph {
                 root(":", ":test:") {
-                    edge("org.utils:api:${selector}", "org.utils:${chosenModule}:${chosenVersion}")
+                    edge("org.utils:api:${selector}", "org.utils:${chosenModule}:${chosenVersion}").byReasons(reasons)
                 }
             }
         }
@@ -72,20 +74,20 @@ class ComponentSelectionRulesDependencyResolveIntegTest extends AbstractComponen
         resetExpectations()
 
         where:
-        selector             | rule            | chosenVersion | candidates       | downloadedMetadata | mavenCompatible | gradleCompatible
-        "1.+"                | "select 1.1"    | "1.1"         | '["1.2", "1.1"]' | ['1.1']            | true            | true
-        "1.+"                | "select status" | "1.1"         | '["1.2", "1.1"]' | ['1.2', '1.1']     | false           | true
-        "1.+"                | "select branch" | "1.1"         | '["1.2", "1.1"]' | ['1.2', '1.1']     | false           | false
-        "latest.integration" | "select 2.1"    | "2.1"         | '["2.1"]'        | ['2.1']            | true            | true
-        "latest.milestone"   | "select 2.0"    | "2.0"         | '["2.0"]'        | ['2.1', '2.0']     | false           | true
-        "latest.milestone"   | "select status" | "2.0"         | '["2.0"]'        | ['2.1', '2.0']     | false           | true
-        "latest.milestone"   | "select branch" | "2.0"         | '["2.0"]'        | ['2.1', '2.0']     | false           | false
-        "1.1"                | "select 1.1"    | "1.1"         | '["1.1"]'        | ['1.1']            | true            | true
-        "1.1"                | "select status" | "1.1"         | '["1.1"]'        | ['1.1']            | false           | true
-        "1.1"                | "select branch" | "1.1"         | '["1.1"]'        | ['1.1']            | false           | false
+        selector             | rule            | chosenVersion | candidates       | downloadedMetadata | mavenCompatible | gradleCompatible | reasons
+        "1.+"                | "select 1.1"    | "1.1"         | '["1.2", "1.1"]' | ['1.1']            | true            | true             | ["didn't match versions 2.1, 2.0", "rejection: 1.2 by rule because not 1.1"]
+        "1.+"                | "select status" | "1.1"         | '["1.2", "1.1"]' | ['1.2', '1.1']     | false           | true             | ["didn't match versions 2.1, 2.0", "rejection: 1.2 by rule because not milestone"]
+        "1.+"                | "select branch" | "1.1"         | '["1.2", "1.1"]' | ['1.2', '1.1']     | false           | false            | ["didn't match versions 2.1, 2.0", "rejection: 1.2 by rule because not branch"]
+        "latest.integration" | "select 2.1"    | "2.1"         | '["2.1"]'        | ['2.1']            | true            | true             | []
+        "latest.milestone"   | "select 2.0"    | "2.0"         | '["2.0"]'        | ['2.1', '2.0']     | false           | true             | ["didn't match version 2.1"]
+        "latest.milestone"   | "select status" | "2.0"         | '["2.0"]'        | ['2.1', '2.0']     | false           | true             | ["didn't match version 2.1"]
+        "latest.milestone"   | "select branch" | "2.0"         | '["2.0"]'        | ['2.1', '2.0']     | false           | false            | ["didn't match version 2.1"]
+        "1.1"                | "select 1.1"    | "1.1"         | '["1.1"]'        | ['1.1']            | true            | true             | []
+        "1.1"                | "select status" | "1.1"         | '["1.1"]'        | ['1.1']            | false           | true             | []
+        "1.1"                | "select branch" | "1.1"         | '["1.1"]'        | ['1.1']            | false           | false            | []
     }
 
-    private String setupInterations(String selector, String chosenVersion, List<String> downloadedMetadata, Closure<Void> more = {}) {
+    private String setupInteractions(String selector, String chosenVersion, List<String> downloadedMetadata, Closure<Void> more = {}) {
         def chosenModule = chosenVersion ? (chosenVersion.contains('-lib') ? 'lib' : 'api') : null
         repositoryInteractions {
             'org.utils:api' {
@@ -115,6 +117,7 @@ class ComponentSelectionRulesDependencyResolveIntegTest extends AbstractComponen
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "uses '#rule' rule to reject all candidates for dynamic version #selector"() {
         given:
         Assume.assumeTrue isWellBehaved(mavenCompatible)
@@ -143,7 +146,7 @@ class ComponentSelectionRulesDependencyResolveIntegTest extends AbstractComponen
 """
 
         when:
-        setupInterations(selector, null, downloadedMetadata)
+        setupInteractions(selector, null, downloadedMetadata)
 
         then:
         checkDependencies(':checkLenient')
@@ -187,6 +190,7 @@ class ComponentSelectionRulesDependencyResolveIntegTest extends AbstractComponen
         "latest.milestone"   | "select 1.1"               | '["2.0"]'               | ['2.1', '2.0']        | false
     }
 
+    @ToBeFixedForInstantExecution
     def "reports all candidates rejected by rule"() {
         buildFile << """
 
@@ -204,7 +208,7 @@ class ComponentSelectionRulesDependencyResolveIntegTest extends AbstractComponen
 """
 
         when:
-        setupInterations('1.+', null, ['1.2', '1.1', '1.0'])
+        setupInteractions('1.+', null, ['1.2', '1.1', '1.0'])
 
         then:
         fails ':checkDeps'
@@ -212,17 +216,17 @@ class ComponentSelectionRulesDependencyResolveIntegTest extends AbstractComponen
         and:
         failureHasCause("""Could not find any version that matches org.utils:api:1.+.
 Versions that do not match:
-    2.1
-    2.0
+  - 2.1
+  - 2.0
 Versions rejected by component selection rules:
-    1.2
-    1.1
-    1.0
+  - 1.2
+  - 1.1
+  - 1.0
 Searched in the following locations:
-    ${versionListingURI('org.utils', 'api')}
-${triedMetadata('org.utils', 'api', "1.2", false, gradleMetadataEnabled || !experimentalEnabled)}
-${triedMetadata('org.utils', 'api', "1.1", false, gradleMetadataEnabled || !experimentalEnabled)}
-${triedMetadata('org.utils', 'api', "1.0", false, gradleMetadataEnabled || !experimentalEnabled)}
+  - ${versionListingURI('org.utils', 'api')}
+${triedMetadata('org.utils', 'api', "1.2")}
+${triedMetadata('org.utils', 'api', "1.1")}
+${triedMetadata('org.utils', 'api', "1.0")}
 Required by:
 """)
 
@@ -241,14 +245,14 @@ Required by:
         // TODO - this failure and the previous failure should report the same urls (whatever that happens to be)
         failureHasCause("""Could not find any version that matches org.utils:api:1.+.
 Versions that do not match:
-    2.1
-    2.0
+  - 2.1
+  - 2.0
 Versions rejected by component selection rules:
-    1.2
-    1.1
-    1.0
+  - 1.2
+  - 1.1
+  - 1.0
 Searched in the following locations:
-    ${versionListingURI('org.utils', 'api')}
+  - ${versionListingURI('org.utils', 'api')}
 Required by:
 """)
     }
@@ -281,7 +285,7 @@ Required by:
 """
 
         when:
-        setupInterations(selector, null, downloadedMetadata)
+        setupInteractions(selector, null, downloadedMetadata)
 
         then:
         checkDependencies(':checkLenient')
@@ -324,8 +328,9 @@ Required by:
             configurations.all {
                 resolutionStrategy {
                     componentSelection {
-                        all { ComponentSelection selection, IvyModuleDescriptor ivy ->
-                            if (ivy.branch != "other") {
+                        all { ComponentSelection selection ->
+                            def ivy = selection.getDescriptor(IvyModuleDescriptor)
+                            if (ivy != null && ivy.branch != "other") {
                                 selection.reject("looking for other")
                             }
                         }
@@ -392,9 +397,6 @@ Required by:
                         withModule("some.other:module") { ComponentSelection cs ->
                             throw new RuntimeException()
                         }
-                        withModule("some.other:module") { ComponentSelection cs, IvyModuleDescriptor descriptor, ComponentMetadata metadata ->
-                            throw new RuntimeException()
-                        }
                     }
                 }
             }
@@ -408,7 +410,7 @@ Required by:
         """
 
         when:
-        setupInterations(selector, chosen, downloadedMetadata) {
+        setupInteractions(selector, chosen, downloadedMetadata) {
             'org.utils:lib' {
                 expectVersionListing()
             }
@@ -431,8 +433,9 @@ Required by:
     }
 
     @Issue("GRADLE-3236")
+    @ToBeFixedForInstantExecution
     def "can select a different component for the same selector in different configurations"() {
-        def descriptorArg = GradleMetadataResolveRunner.useIvy() ? 'IvyModuleDescriptor ivy' : 'ComponentMetadata md'
+        def descriptorArg = GradleMetadataResolveRunner.useIvy() ? 'selection.getDescriptor(IvyModuleDescriptor)' : 'selection.metadata'
         buildFile << """
             configurations {
                 modules
@@ -440,9 +443,11 @@ Required by:
                     extendsFrom modules
                     resolutionStrategy {
                         componentSelection {
-                            all { ComponentSelection selection, $descriptorArg ->
-                                println "A is evaluating \$selection.candidate"
-                                if (selection.candidate.version != "1.1") { selection.reject("Rejected by A") }
+                            all { ComponentSelection selection ->
+                                if ($descriptorArg != null) {
+                                    println "A is evaluating \$selection.candidate"
+                                    if (selection.candidate.version != "1.1") { selection.reject("Rejected by A") }
+                                }
                             }
                         }
                     }
@@ -451,9 +456,11 @@ Required by:
                     extendsFrom modules
                     resolutionStrategy {
                         componentSelection {
-                            all { ComponentSelection selection, $descriptorArg ->
-                                println "B is evaluating \$selection.candidate"
-                                if (selection.candidate.version != "1.0") { selection.reject("Rejected by B") }
+                            all { ComponentSelection selection ->
+                                if ($descriptorArg != null) {
+                                    println "B is evaluating \$selection.candidate"
+                                    if (selection.candidate.version != "1.0") { selection.reject("Rejected by B") }
+                                }
                             }
                         }
                     }

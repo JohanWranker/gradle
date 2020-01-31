@@ -19,15 +19,11 @@ package org.gradle.integtests.fixtures.executer;
 import org.gradle.api.Action;
 import org.gradle.internal.Factory;
 import org.gradle.process.internal.AbstractExecHandleBuilder;
-import org.gradle.util.SingleMessageLogger;
+import org.gradle.util.IncubationLogger;
 
 import java.io.PipedOutputStream;
-import java.util.HashSet;
-import java.util.Set;
 
 import static java.lang.String.format;
-import static org.hamcrest.Matchers.equalTo;
-import static org.junit.Assert.assertThat;
 
 public class ParallelForkingGradleHandle extends ForkingGradleHandle {
 
@@ -50,20 +46,13 @@ public class ParallelForkingGradleHandle extends ForkingGradleHandle {
      */
     private static class ParallelExecutionResult extends OutputScrapingExecutionFailure {
         public ParallelExecutionResult(String output, String error) {
-            super(output, error);
-        }
-
-        @Override
-        public ExecutionResult assertTasksExecuted(Object... taskPaths) {
-            Set<String> expectedTasks = new HashSet<String>(flattenTaskPaths(taskPaths));
-            assertThat(String.format("Expected tasks %s not found in process output:%n%s", expectedTasks, getOutput()), new HashSet<String>(getExecutedTasks()), equalTo(expectedTasks));
-            return this;
+            super(output, error, true);
         }
 
         @Override
         public String getNormalizedOutput() {
             String output = super.getNormalizedOutput();
-            String parallelWarningPrefix = String.format(SingleMessageLogger.INCUBATION_MESSAGE, ".*");
+            String parallelWarningPrefix = String.format(IncubationLogger.INCUBATION_MESSAGE, ".*");
             return output.replaceFirst(format("(?m)%s.*$\n", parallelWarningPrefix), "");
         }
 

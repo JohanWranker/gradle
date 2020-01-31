@@ -25,6 +25,7 @@ import java.util.List;
 public class GradleInstallation {
 
     public static final FileFilter DIRECTORY_FILTER = new FileFilter() {
+        @Override
         public boolean accept(File pathname) {
             return pathname.isDirectory();
         }
@@ -44,6 +45,10 @@ public class GradleInstallation {
 
     public List<File> getLibDirs() {
         return libDirs;
+    }
+
+    public File getSrcDir() {
+        return dir.toPath().resolve("src").toFile();
     }
 
     private static List<File> findLibDirs(File dir) {

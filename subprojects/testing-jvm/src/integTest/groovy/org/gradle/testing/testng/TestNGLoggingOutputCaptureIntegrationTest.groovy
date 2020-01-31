@@ -16,6 +16,7 @@
 
 package org.gradle.testing.testng
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.HtmlTestExecutionResult
 import org.gradle.integtests.fixtures.JUnitXmlTestExecutionResult
 import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
@@ -25,7 +26,7 @@ import org.gradle.util.GradleVersion
 
 import static org.gradle.testing.fixture.TestNGCoverage.FIXED_ICLASS_LISTENER
 import static org.gradle.testing.fixture.TestNGCoverage.STANDARD_COVERAGE
-import static org.hamcrest.Matchers.is
+import static org.hamcrest.CoreMatchers.is
 
 @TargetCoverage({STANDARD_COVERAGE})
 class TestNGLoggingOutputCaptureIntegrationTest extends MultiVersionIntegrationSpec {
@@ -34,7 +35,7 @@ class TestNGLoggingOutputCaptureIntegrationTest extends MultiVersionIntegrationS
         buildFile << """
             apply plugin: "java"
             ${jcenterRepository()}
-            dependencies { testCompile "org.testng:testng:$version" }
+            dependencies { testImplementation "org.testng:testng:$version" }
             test {
                 useTestNG()
                 reports.junitXml.outputPerTestCase = true
@@ -80,6 +81,7 @@ class TestNGLoggingOutputCaptureIntegrationTest extends MultiVersionIntegrationS
         """
     }
 
+    @ToBeFixedForInstantExecution
     def "attaches events to correct test descriptors of a suite"() {
         buildFile << "test.useTestNG { suites 'suite.xml' }"
 
@@ -89,7 +91,7 @@ class TestNGLoggingOutputCaptureIntegrationTest extends MultiVersionIntegrationS
   <test name='The Foo Test'><classes><class name='FooTest'/></classes></test>
 </suite>"""
 
-        when: run "test"
+        when: succeeds "test"
 
         then:
         containsLinesThatMatch(result.output,
@@ -99,7 +101,7 @@ class TestNGLoggingOutputCaptureIntegrationTest extends MultiVersionIntegrationS
             "Gradle Test Executor \\d+ -> constructor err"
         )
 
-        result.output.contains expectedOutput('The Foo Test')
+        outputContains expectedOutput('The Foo Test')
 
         /**
          * This test documents the current behavior. It's not right, we're missing a lot of output in the report.
@@ -115,8 +117,9 @@ class TestNGLoggingOutputCaptureIntegrationTest extends MultiVersionIntegrationS
         assertTestClassExecutionResultReport(classReport)
     }
 
+    @ToBeFixedForInstantExecution
     def "attaches output events to correct test descriptors"() {
-        when: run "test"
+        when: succeeds "test"
 
         then:
         containsLinesThatMatch(result.output,
@@ -126,7 +129,7 @@ class TestNGLoggingOutputCaptureIntegrationTest extends MultiVersionIntegrationS
             "Gradle Test Executor \\d+ -> constructor err"
         )
 
-        result.output.contains expectedOutput('Gradle test')
+        outputContains expectedOutput('Gradle test')
 
         def xmlReport = new JUnitXmlTestExecutionResult(testDirectory)
         def classResult = xmlReport.testClass("FooTest")

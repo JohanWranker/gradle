@@ -21,7 +21,6 @@ import org.gradle.internal.UncheckedException;
 import org.gradle.internal.classpath.ClassPath;
 import org.gradle.internal.classpath.DefaultClassPath;
 import org.gradle.internal.reflect.JavaMethod;
-import org.gradle.internal.reflect.JavaReflectionUtil;
 
 import java.io.File;
 import java.net.MalformedURLException;
@@ -31,6 +30,8 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.security.CodeSource;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -42,7 +43,7 @@ public class ClasspathUtil {
             for (URL url : classLoader.getURLs()) {
                 original.add(toURI(url));
             }
-            JavaMethod<URLClassLoader, Object> method = JavaReflectionUtil.method(URLClassLoader.class, Object.class, "addURL", URL.class);
+            JavaMethod<URLClassLoader, Object> method = JavaMethod.of(URLClassLoader.class, Object.class, "addURL", URL.class);
             for (URL classpathElement : classpathElements) {
                 if (original.add(toURI(classpathElement))) {
                     method.invoke(classLoader, classpathElement);
@@ -55,21 +56,25 @@ public class ClasspathUtil {
 
     public static ClassPath getClasspath(ClassLoader classLoader) {
         final List<File> implementationClassPath = new ArrayList<File>();
+        collectClasspathOf(classLoader, implementationClassPath);
+        return DefaultClassPath.of(implementationClassPath);
+    }
+
+    public static void collectClasspathOf(ClassLoader classLoader, final Collection<File> classpathFiles) {
         new ClassLoaderVisitor() {
             @Override
             public void visitClassPath(URL[] classPath) {
                 for (URL url : classPath) {
                     if (url.getProtocol() != null && url.getProtocol().equals("file")) {
                         try {
-                            implementationClassPath.add(new File(toURI(url)));
+                            classpathFiles.add(new File(toURI(url)));
                         } catch (URISyntaxException e) {
-                            throw new UncheckedException(e);
+                            throw UncheckedException.throwAsUncheckedException(e);
                         }
                     }
                 }
             }
         }.visit(classLoader);
-        return DefaultClassPath.of(implementationClassPath);
     }
 
     public static File getClasspathForClass(String targetClassName) {
@@ -151,8 +156,22 @@ public class ClasspathUtil {
                                url.getPort(),
                                url.getFile().replace(" ", "%20")).toURI();
             } catch (MalformedURLException e1) {
-                throw new UncheckedException(e1);
+                throw UncheckedException.throwAsUncheckedException(e1);
             }
         }
+    }
+
+    /**
+     * Collects all URLs from {@code startingClassloader} (inclusive) until {@code stopAt} (exclusive) into {@code classpath}.
+     *
+     * If {@code stopAt} is not a parent of {@code startingClassloader}, this effectively collects all URLs from the classloader hierarchy.
+     */
+    public static void collectClasspathUntil(ClassLoader startingClassloader, ClassLoader stopAt, final Set<URL> classpath) {
+        new ClassLoaderVisitor(stopAt) {
+            @Override
+            public void visitClassPath(URL[] classPath) {
+                classpath.addAll(Arrays.asList(classPath));
+            }
+        }.visit(startingClassloader);
     }
 }

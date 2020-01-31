@@ -19,14 +19,17 @@ package org.gradle.ide.xcode.tasks;
 import org.gradle.api.Incubating;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.ide.xcode.tasks.internal.XcodeWorkspaceFile;
 import org.gradle.plugins.ide.api.XmlGeneratorTask;
 
 import java.io.File;
 
 /**
- * Task for generating a workspace file.
+ * Task for generating a Xcode workspace file (e.g. {@code Foo.xcworkspace/contents.xcworkspacedata}). A workspace can contain any number of Xcode projects.
  *
+ * @see org.gradle.ide.xcode.XcodeWorkspace
  * @since 4.2
  */
 @Incubating
@@ -49,6 +52,7 @@ public class GenerateXcodeWorkspaceFileTask extends XmlGeneratorTask<XcodeWorksp
         return new XcodeWorkspaceFile(getXmlTransformer());
     }
 
+    @PathSensitive(PathSensitivity.ABSOLUTE)
     @InputFiles
     public FileCollection getXcodeProjectLocations() {
         return xcodeProjectLocations;

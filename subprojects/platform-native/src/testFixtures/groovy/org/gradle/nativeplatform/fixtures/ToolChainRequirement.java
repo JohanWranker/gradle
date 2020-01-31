@@ -35,6 +35,12 @@ public enum ToolChainRequirement {
     VISUALCPP_2017,
     // Any available Visual Studio >= 2017
     VISUALCPP_2017_OR_NEWER,
+    // Exactly Visual Studio 2019
+    VISUALCPP_2019,
+    // Any available Visual Studio >= 2019
+    VISUALCPP_2019_OR_NEWER,
+    // Any windows GCC compatible implementation (mingw, cygwin)
+    WINDOWS_GCC,
     // Any available GCC implementation (including mingw, cygwin, but not clang)
     GCC,
     // Any available GCC compatible implementation (including mingw, cygwin, and clang)
@@ -46,5 +52,13 @@ public enum ToolChainRequirement {
     // Any Swift 3.x compiler
     SWIFTC_3,
     // Any Swift 4.x compiler
-    SWIFTC_4
+    SWIFTC_4,
+    // Any available Swift compiler <= 4
+    SWIFTC_4_OR_OLDER,
+    // Any Swift 5.x compiler
+    SWIFTC_5,
+    // Supports building 32-bit binaries
+    SUPPORTS_32,
+    // Supports building both 32-bit and 64-bit binaries
+    SUPPORTS_32_AND_64
 }

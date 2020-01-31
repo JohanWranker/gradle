@@ -16,9 +16,6 @@
 
 package org.gradle.api.internal.tasks.compile;
 
-import com.google.common.collect.ImmutableList;
-import org.gradle.api.file.FileCollection;
-
 import java.io.File;
 import java.io.Serializable;
 import java.util.List;
@@ -28,9 +25,10 @@ public class DefaultJvmLanguageCompileSpec implements JvmLanguageCompileSpec, Se
     private File tempDir;
     private List<File> classpath;
     private File destinationDir;
-    private FileCollection source;
+    private Iterable<File> sourceFiles;
     private String sourceCompatibility;
     private String targetCompatibility;
+    private List<File> sourceRoots;
 
     @Override
     public File getWorkingDir() {
@@ -62,13 +60,13 @@ public class DefaultJvmLanguageCompileSpec implements JvmLanguageCompileSpec, Se
     }
 
     @Override
-    public FileCollection getSource() {
-        return source;
+    public Iterable<File> getSourceFiles() {
+        return sourceFiles;
     }
 
     @Override
-    public void setSource(FileCollection source) {
-        this.source = source;
+    public void setSourceFiles(Iterable<File> sourceFiles) {
+        this.sourceFiles = sourceFiles;
     }
 
     @Override
@@ -79,18 +77,6 @@ public class DefaultJvmLanguageCompileSpec implements JvmLanguageCompileSpec, Se
     @Override
     public void setCompileClasspath(List<File> classpath) {
         this.classpath = classpath;
-    }
-
-    @Deprecated
-    @Override
-    public Iterable<File> getClasspath() {
-        return classpath;
-    }
-
-    @Deprecated
-    @Override
-    public void setClasspath(Iterable<File> classpath) {
-        this.classpath = ImmutableList.copyOf(classpath);
     }
 
     @Override
@@ -111,5 +97,15 @@ public class DefaultJvmLanguageCompileSpec implements JvmLanguageCompileSpec, Se
     @Override
     public void setTargetCompatibility(String targetCompatibility) {
         this.targetCompatibility = targetCompatibility;
+    }
+
+    @Override
+    public List<File> getSourceRoots() {
+        return sourceRoots;
+    }
+
+    @Override
+    public void setSourcesRoots(List<File> sourceRoots) {
+        this.sourceRoots = sourceRoots;
     }
 }

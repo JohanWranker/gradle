@@ -16,56 +16,108 @@
 
 package org.gradle.api.internal.artifacts.transform;
 
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactVisitor;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.BuildDependenciesVisitor;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvableArtifact;
+import com.google.common.collect.Maps;
+import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvedArtifactSet;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.api.internal.file.FileCollectionStructureVisitor;
+import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
+import org.gradle.internal.Describables;
+import org.gradle.internal.DisplayName;
 import org.gradle.internal.operations.BuildOperationQueue;
 import org.gradle.internal.operations.RunnableBuildOperation;
 
-import java.io.File;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
-class ConsumerProvidedResolvedVariant implements ResolvedArtifactSet {
+/**
+ * Transformed artifact set that performs the transformation itself when requested.
+ */
+public class ConsumerProvidedResolvedVariant implements ResolvedArtifactSet, ConsumerProvidedVariantFiles {
+    private final ComponentIdentifier componentIdentifier;
     private final ResolvedArtifactSet delegate;
     private final AttributeContainerInternal attributes;
-    private final ArtifactTransformer transform;
+    private final Transformation transformation;
+    private final ExtraExecutionGraphDependenciesResolverFactory resolverFactory;
+    private final TransformationNodeRegistry transformationNodeRegistry;
 
-    ConsumerProvidedResolvedVariant(ResolvedArtifactSet delegate, AttributeContainerInternal target, ArtifactTransformer transform) {
+    public ConsumerProvidedResolvedVariant(
+        ComponentIdentifier componentIdentifier,
+        ResolvedArtifactSet delegate,
+        AttributeContainerInternal target,
+        Transformation transformation,
+        ExtraExecutionGraphDependenciesResolverFactory dependenciesResolverFactory,
+        TransformationNodeRegistry transformationNodeRegistry
+    ) {
+        this.componentIdentifier = componentIdentifier;
         this.delegate = delegate;
         this.attributes = target;
-        this.transform = transform;
+        this.transformation = transformation;
+        this.resolverFactory = dependenciesResolverFactory;
+        this.transformationNodeRegistry = transformationNodeRegistry;
+    }
+
+    @Override
+    public ImmutableAttributes getTargetVariantAttributes() {
+        return attributes.asImmutable();
+    }
+
+    @Override
+    public DisplayName getTargetVariantName() {
+        return Describables.of(componentIdentifier, attributes);
+    }
+
+    @Override
+    public String toString() {
+        return getTargetVariantName().getCapitalizedDisplayName();
     }
 
     @Override
     public Completion startVisit(BuildOperationQueue<RunnableBuildOperation> actions, AsyncArtifactListener listener) {
-        Map<ResolvableArtifact, TransformArtifactOperation> artifactResults = new ConcurrentHashMap<ResolvableArtifact, TransformArtifactOperation>();
-        Map<File, TransformFileOperation> fileResults = new ConcurrentHashMap<File, TransformFileOperation>();
-        Completion result = delegate.startVisit(actions, new TransformingAsyncArtifactListener(transform, listener, actions, artifactResults, fileResults));
-        return new TransformingResult(result, artifactResults, fileResults);
+        FileCollectionStructureVisitor.VisitType visitType = listener.prepareForVisit(this);
+        if (visitType == FileCollectionStructureVisitor.VisitType.NoContents) {
+            return visitor -> visitor.endVisitCollection(ConsumerProvidedResolvedVariant.this);
+        }
+        Map<ComponentArtifactIdentifier, TransformationResult> artifactResults = Maps.newConcurrentMap();
+        Completion result = delegate.startVisit(actions, new TransformingAsyncArtifactListener(transformation, actions, artifactResults, getDependenciesResolver(), transformationNodeRegistry));
+        return new TransformCompletion(result, attributes, artifactResults);
     }
 
     @Override
-    public void collectBuildDependencies(BuildDependenciesVisitor visitor) {
-        delegate.collectBuildDependencies(visitor);
+    public void visitLocalArtifacts(LocalArtifactVisitor listener) {
+        // Cannot visit local artifacts until transform has been executed
     }
 
-    private class TransformingResult implements Completion {
-        private final Completion result;
-        private final Map<ResolvableArtifact, TransformArtifactOperation> artifactResults;
-        private final Map<File, TransformFileOperation> fileResults;
-
-        TransformingResult(Completion result, Map<ResolvableArtifact, TransformArtifactOperation> artifactResults, Map<File, TransformFileOperation> fileResults) {
-            this.result = result;
-            this.artifactResults = artifactResults;
-            this.fileResults = fileResults;
+    @Override
+    public void visitDependencies(TaskDependencyResolveContext context) {
+        Collection<TransformationNode> scheduledNodes = transformationNodeRegistry.getOrCreate(delegate, transformation, getDependenciesResolver());
+        if (!scheduledNodes.isEmpty()) {
+            context.add(new DefaultTransformationDependency(scheduledNodes));
         }
+    }
 
-        @Override
-        public void visit(ArtifactVisitor visitor) {
-            result.visit(new ArtifactTransformingVisitor(visitor, attributes, artifactResults, fileResults));
+    @Override
+    public Collection<TransformationNode> getScheduledNodes() {
+        // Only care about transformed project outputs. For everything else, calculate the value eagerly
+        AtomicReference<Boolean> hasProjectArtifacts = new AtomicReference<>(false);
+        delegate.visitLocalArtifacts(artifact -> {
+            if (artifact.getId().getComponentIdentifier() instanceof ProjectComponentIdentifier) {
+                hasProjectArtifacts.set(true);
+            }
+        });
+        if (hasProjectArtifacts.get()) {
+            return transformationNodeRegistry.getOrCreate(delegate, transformation, getDependenciesResolver());
+        } else {
+            return Collections.emptySet();
         }
+    }
+
+    private ExecutionGraphDependenciesResolver getDependenciesResolver() {
+        return resolverFactory.create(componentIdentifier);
     }
 }

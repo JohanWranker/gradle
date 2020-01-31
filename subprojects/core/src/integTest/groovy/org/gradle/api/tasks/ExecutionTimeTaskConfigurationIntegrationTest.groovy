@@ -25,35 +25,31 @@ class ExecutionTimeTaskConfigurationIntegrationTest extends AbstractIntegrationS
         buildFile.text = """
             def anAction = {} as Action
 
-            task broken {
+            task broken1 {
                 doLast {
                     $config
                 }
             }
 
-            task broken2 << {
-                $config
+            task broken2 {
+                doLast {}
             }
 
-            task broken3 << { }
-
-            task broken4 {
-                dependsOn broken3
+            task broken3 {
+                dependsOn broken2
                 doLast {
-                    broken3.configure { $config }
+                    broken2.configure { $config }
                 }
             }
         """
 
         when:
         executer.withArgument("--continue")
-        executer.expectDeprecationWarning()
-        fails("broken", "broken2", "broken4")
+        fails("broken1", "broken2", "broken3")
 
         then:
-        failure.assertHasCause("Cannot call ${description} on task ':broken' after task has started execution.")
-        failure.assertHasCause("Cannot call ${description} on task ':broken2' after task has started execution. Check the configuration of task ':broken2' as you may have misused '<<' at task declaration.")
-        failure.assertHasCause("Cannot call ${description} on task ':broken3' after task has started execution.")
+        failure.assertHasCause("Cannot call ${description} on task ':broken1' after task has started execution.")
+        failure.assertHasCause("Cannot call ${description} on task ':broken2' after task has started execution.")
 
         where:
         config                                                      | description
@@ -69,7 +65,6 @@ class ExecutionTimeTaskConfigurationIntegrationTest extends AbstractIntegrationS
         "actions.clear()"                                           | "Task.getActions().clear()"
         "def iter = actions.iterator(); iter.next(); iter.remove()" | "Task.getActions().remove()"
         "actions = []"                                              | "Task.setActions(List<Action>)"
-        "deleteAllActions()"                                        | "Task.deleteAllActions()"
         "onlyIf { }"                                                | "Task.onlyIf(Closure)"
         "onlyIf({ } as Spec)"                                       | "Task.onlyIf(Spec)"
         "setOnlyIf({ })"                                            | "Task.setOnlyIf(Closure)"

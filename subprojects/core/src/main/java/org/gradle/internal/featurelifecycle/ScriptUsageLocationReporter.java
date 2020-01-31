@@ -16,7 +16,7 @@
 
 package org.gradle.internal.featurelifecycle;
 
-import net.jcip.annotations.ThreadSafe;
+import javax.annotation.concurrent.ThreadSafe;
 import org.apache.commons.lang.StringUtils;
 import org.gradle.groovy.scripts.Script;
 import org.gradle.groovy.scripts.ScriptExecutionListener;
@@ -43,7 +43,8 @@ public class ScriptUsageLocationReporter implements ScriptExecutionListener, Usa
         }
     }
 
-    public void reportLocation(DeprecatedFeatureUsage usage, StringBuilder target) {
+    @Override
+    public void reportLocation(FeatureUsage usage, StringBuilder target) {
         lock.lock();
         try {
             doReportLocation(usage, target);
@@ -52,7 +53,7 @@ public class ScriptUsageLocationReporter implements ScriptExecutionListener, Usa
         }
     }
 
-    private void doReportLocation(DeprecatedFeatureUsage usage, StringBuilder target) {
+    private void doReportLocation(FeatureUsage usage, StringBuilder target) {
         List<StackTraceElement> stack = usage.getStack();
         if (stack.isEmpty()) {
             return;

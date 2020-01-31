@@ -17,9 +17,11 @@
 package org.gradle.api.artifacts;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.attributes.HasConfigurableAttributes;
+import org.gradle.api.capabilities.Capability;
+
+import java.util.Collection;
 
 /**
  * Represents the outgoing artifacts associated with a configuration. These artifacts are used when the configuration is referenced during dependency resolution.
@@ -30,7 +32,6 @@ import org.gradle.api.attributes.HasConfigurableAttributes;
  *
  * @since 3.3
  */
-@Incubating
 public interface ConfigurationPublications extends HasConfigurableAttributes<ConfigurationPublications> {
     /**
      * Returns the artifacts associated with this configuration. When an artifact is added to this set, an implicit variant is defined for the configuration. These artifacts are also inherited by all configurations that extend this configuration.
@@ -60,4 +61,26 @@ public interface ConfigurationPublications extends HasConfigurableAttributes<Con
      * Configures the variants of this configuration.
      */
     void variants(Action<? super NamedDomainObjectContainer<ConfigurationVariant>> configureAction);
+
+
+    /**
+     * Declares a capability for this configuration.
+     *
+     * @param notation the notation
+     *
+     * Valid notations are a <i>group:name:version</i> string (e.g: <i>org.test:capability:1.0</i>, or a map
+     * with keys <i>group</i>, <i>name</i> and <i>version</i>.
+     *
+     * @since 4.7.
+     */
+    void capability(Object notation);
+
+    /**
+     * Returns the capabilities declared for this configuration.
+     *
+     * @return the capabilities for this variant
+     *
+     * @since 4.7
+     */
+    Collection<? extends Capability> getCapabilities();
 }

@@ -18,7 +18,6 @@ package org.gradle.api.artifacts.repositories;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.ActionConfiguration;
-import org.gradle.api.Incubating;
 import org.gradle.api.artifacts.ComponentMetadataSupplier;
 
 import java.net.URI;
@@ -36,7 +35,7 @@ import java.net.URI;
  * <p>
  * Repositories of this type are created by the {@link org.gradle.api.artifacts.dsl.RepositoryHandler#ivy(org.gradle.api.Action)} group of methods.
  */
-public interface IvyArtifactRepository extends ArtifactRepository, AuthenticationSupported {
+public interface IvyArtifactRepository extends ArtifactRepository, UrlArtifactRepository, AuthenticationSupported, MetadataSupplierAware {
 
     String IVY_ARTIFACT_PATTERN = "[organisation]/[module]/[revision]/[type]s/[artifact](.[ext])";
 
@@ -51,6 +50,7 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      *
      * @return The URL.
      */
+    @Override
     URI getUrl();
 
     /**
@@ -59,6 +59,7 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      * @param url The base URL.
      * @since 4.0
      */
+    @Override
     void setUrl(URI url);
 
     /**
@@ -69,6 +70,7 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      *
      * @param url The base URL.
      */
+    @Override
     void setUrl(Object url);
 
     /**
@@ -97,10 +99,40 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
     void ivyPattern(String pattern);
 
     /**
-     * Specifies the layout to use with this repository, based on the root url.
-     * See {@link #layout(String, Closure)}.
+     * Specifies how the items of the repository are organized.
+     * <p>
+     * Recognised values are as follows:
+     * </p>
+     * <h4>'gradle'</h4>
+     * <p>
+     * A Repository Layout that applies the following patterns:
+     * </p>
+     * <ul>
+     *     <li>Artifacts: <code>$baseUri/{@value #GRADLE_ARTIFACT_PATTERN}</code></li>
+     *     <li>Ivy: <code>$baseUri/{@value #GRADLE_IVY_PATTERN}</code></li>
+     * </ul>
+     * <h4>'maven'</h4>
+     * <p>
+     * A Repository Layout that applies the following patterns:
+     * </p>
+     * <ul>
+     *     <li>Artifacts: <code>$baseUri/{@value #MAVEN_ARTIFACT_PATTERN}</code></li>
+     *     <li>Ivy: <code>$baseUri/{@value #MAVEN_IVY_PATTERN}</code></li>
+     * </ul>
+     * <p>
+     * Following the Maven convention, the 'organisation' value is further processed by replacing '.' with '/'.
+     * </p>
+     * <h4>'ivy'</h4>
+     * <p>
+     * A Repository Layout that applies the following patterns:
+     * </p>
+     * <ul>
+     *     <li>Artifacts: <code>$baseUri/{@value #IVY_ARTIFACT_PATTERN}</code></li>
+     *     <li>Ivy: <code>$baseUri/{@value #IVY_ARTIFACT_PATTERN}</code></li>
+     * </ul>
      *
      * @param layoutName The name of the layout to use.
+     * @see #patternLayout(Action)
      */
     void layout(String layoutName);
 
@@ -143,7 +175,7 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      * <p>
      * A repository layout that allows custom patterns to be defined. eg:
      * </p>
-     * <pre class='autoTested'>
+     * <pre>
      * repositories {
      *     ivy {
      *         layout 'pattern' , {
@@ -153,13 +185,36 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      *     }
      * }
      * </pre>
-     * <p>The available pattern tokens are listed as part of <a href="http://ant.apache.org/ivy/history/latest-milestone/concept.html#patterns">Ivy's Main Concepts documentation</a>.</p>
+     * <p>The available pattern tokens are listed as part of <a href="http://ant.apache.org/ivy/history/master/concept.html#patterns">Ivy's Main Concepts documentation</a>.</p>
      *
      * @param layoutName The name of the layout to use.
      * @param config The action used to configure the layout.
      * @since 2.3 (feature was already present in Groovy DSL, this particular method introduced in 2.3)
+     * @deprecated use {@link #layout(String)} or {@link #patternLayout(Action)}
      */
+    @Deprecated
     void layout(String layoutName, Action<? extends RepositoryLayout> config);
+
+    /**
+     * Specifies how the items of the repository are organized.
+     * <p>
+     * The layout is configured with the supplied closure.
+     * <pre class='autoTested'>
+     * repositories {
+     *     ivy {
+     *         patternLayout {
+     *             artifact '[module]/[revision]/[artifact](.[ext])'
+     *             ivy '[module]/[revision]/ivy.xml'
+     *         }
+     *     }
+     * }
+     * </pre>
+     * <p>The available pattern tokens are listed as part of <a href="http://ant.apache.org/ivy/history/master/concept.html#patterns">Ivy's Main Concepts documentation</a>.</p>
+     *
+     * @param config The action used to configure the layout.
+     * @since 5.0
+     */
+    void patternLayout(Action<? super  IvyPatternRepositoryLayout> config);
 
     /**
      * Specifies how the items of the repository are organized. See {@link #layout(String, org.gradle.api.Action)}
@@ -167,7 +222,9 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      * @param layoutName The name of the layout to use.
      * @param config The closure used to configure the layout.
      * An instance of {@link RepositoryLayout} is passed as a parameter to the closure.
+     * @deprecated use {@link #layout(String)} or {@link #patternLayout(Action)}
      */
+    @Deprecated
     void layout(String layoutName, Closure config);
 
     /**
@@ -176,7 +233,6 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      *
      * @return The meta-data provider for this repository.
      */
-    @Incubating
     IvyArtifactRepositoryMetaDataProvider getResolve();
 
     /**
@@ -188,7 +244,7 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      *
      * @since 4.0
      */
-    @Incubating
+    @Override
     void setMetadataSupplier(Class<? extends ComponentMetadataSupplier> rule);
 
     /**
@@ -199,7 +255,7 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      *
      * @since 4.0
      */
-    @Incubating
+    @Override
     void setMetadataSupplier(Class<? extends ComponentMetadataSupplier> rule, Action<? super ActionConfiguration> configureAction);
 
     /**
@@ -210,7 +266,6 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      *
      * @since 4.5
      */
-    @Incubating
     void metadataSources(Action<? super MetadataSources> configureAction);
 
     /**
@@ -219,7 +274,6 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
      * @since 4.5
      *
      */
-    @Incubating
     interface MetadataSources {
         /**
          * Indicates that this repository will contain Gradle metadata.
@@ -228,6 +282,9 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
 
         /**
          * Indicates that this repository will contain Ivy descriptors.
+         * If the Ivy file contains a marker telling that Gradle metadata exists
+         * for this component, Gradle will <i>also</i> look for the Gradle metadata
+         * file. Gradle module metadata redirection will not happen if {@code ignoreGradleMetadataRedirection()} has been used.
          */
         void ivyDescriptor();
 
@@ -236,6 +293,14 @@ public interface IvyArtifactRepository extends ArtifactRepository, Authenticatio
          * but we can infer it from the presence of an artifact file.
          */
         void artifact();
+
+        /**
+         * Indicates that this repository will ignore Gradle module metadata redirection markers found in Ivy files.
+         *
+         * @since 5.6
+         *
+         */
+        void ignoreGradleMetadataRedirection();
     }
 
 }

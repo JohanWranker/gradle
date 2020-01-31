@@ -17,9 +17,12 @@
 package org.gradle.internal.logging.console
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class ConsoleTypePersistIntegrationTest extends AbstractIntegrationSpec {
+    @ToBeFixedForInstantExecution
     def "--console can be persisted in gradle.properties"() {
+
         given:
         buildFile << """
             task assertConsoleType { 

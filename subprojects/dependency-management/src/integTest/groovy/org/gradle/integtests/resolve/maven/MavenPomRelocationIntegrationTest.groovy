@@ -17,17 +17,28 @@
 package org.gradle.integtests.resolve.maven
 
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Issue
 import spock.lang.Unroll
 
 @Issue('https://github.com/gradle/gradle/issues/1789')
 class MavenPomRelocationIntegrationTest extends AbstractHttpDependencyResolutionTest {
 
+    def setup() {
+        file("compileClasspath").mkdir()
+        file("runtimeClasspath").mkdir()
+    }
+
     @Unroll
     def "can resolve relocated module"() {
         given:
         def original = publishPomWithRelocation('groupA', 'artifactA', relocationGroupId, relocationArtifactId)
-        def newModule = mavenHttpRepo.module(newGroupId, newArtifactId, "1.0").publish()
+        def apiDep = mavenHttpRepo.module("org", "api", "1.0").publish()
+        def implDep = mavenHttpRepo.module("org", "impl", "1.0").publish()
+        def newModule = mavenHttpRepo.module(newGroupId, newArtifactId, "1.0")
+            .dependsOn(apiDep, scope: 'compile')
+            .dependsOn(implDep, scope: 'runtime')
+            .publish()
 
         and:
         createBuildFileWithDependency('groupA', 'artifactA')
@@ -36,12 +47,17 @@ class MavenPomRelocationIntegrationTest extends AbstractHttpDependencyResolution
         original.pom.expectGet()
         newModule.pom.expectGet()
         newModule.artifact.expectGet()
+        apiDep.pom.expectGet()
+        apiDep.artifact.expectGet()
+        implDep.pom.expectGet()
+        implDep.artifact.expectGet()
 
         when:
         run "retrieve"
 
         then:
-        file("libs").assertHasDescendants("${newArtifactId}-1.0.jar")
+        file("compileClasspath").assertHasDescendants("${newArtifactId}-1.0.jar", "api-1.0.jar")
+        file("runtimeClasspath").assertHasDescendants("${newArtifactId}-1.0.jar", "api-1.0.jar", "impl-1.0.jar")
 
         where:
         relocationGroupId | relocationArtifactId | newGroupId | newArtifactId
@@ -69,7 +85,7 @@ class MavenPomRelocationIntegrationTest extends AbstractHttpDependencyResolution
         run "retrieve"
 
         then:
-        file("libs").assertHasDescendants("artifactB-1.0.jar")
+        file("compileClasspath").assertHasDescendants("artifactB-1.0.jar")
     }
 
     def "can resolve module from a nested relocation"() {
@@ -91,9 +107,10 @@ class MavenPomRelocationIntegrationTest extends AbstractHttpDependencyResolution
         run "retrieve"
 
         then:
-        file("libs").assertHasDescendants("artifactC-1.0.jar")
+        file("compileClasspath").assertHasDescendants("artifactC-1.0.jar")
     }
 
+    @ToBeFixedForInstantExecution
     def "fails to resolve module if published artifact does not exist with relocated coordinates"() {
         given:
         def original = publishPomWithRelocation('groupA', 'artifactA', 'notExist', 'notExist')
@@ -105,7 +122,6 @@ class MavenPomRelocationIntegrationTest extends AbstractHttpDependencyResolution
         and:
         original.pom.expectGet()
         newModule.pom.expectGet()
-        newModule.artifact.expectHead()
 
         expect:
         fails "retrieve"
@@ -114,12 +130,15 @@ class MavenPomRelocationIntegrationTest extends AbstractHttpDependencyResolution
 
     def createBuildFileWithDependency(String groupId, String artifactId) {
         buildFile << """
+apply plugin: 'java-library'
 repositories { maven { url '${mavenHttpRepo.uri}' } }
-configurations { compile }
-dependencies { compile '${groupId}:${artifactId}:1.0' }
-task retrieve(type: Sync) {
-    into 'libs'
-    from configurations.compile
+dependencies { implementation '${groupId}:${artifactId}:1.0' }
+task retrieve {}
+['compile', 'runtime'].each { cp ->
+   retrieve.dependsOn(tasks.create("retrieve\${cp.capitalize()}Classpath", Sync) {
+      into "\${cp}Classpath"
+      from configurations.getByName("\${cp}Classpath")
+   })
 }
 """
     }

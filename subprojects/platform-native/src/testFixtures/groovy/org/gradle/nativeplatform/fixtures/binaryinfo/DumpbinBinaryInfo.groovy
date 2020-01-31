@@ -37,12 +37,13 @@ class DumpbinBinaryInfo implements BinaryInfo {
             throw new UnsupportedOperationException("Visual Studio is unavailable on this system.")
         }
         DefaultNativePlatform targetPlatform = new DefaultNativePlatform("default");
-        vcBin = vsInstall.getVisualCpp().getBinaryPath(targetPlatform)
-        vcPath = vsInstall.getVisualCpp().getPath(targetPlatform).join(';')
+        def visualCpp = vsInstall.visualCpp.forPlatform(targetPlatform)
+        vcBin = visualCpp.binDir
+        vcPath = visualCpp.path.join(';')
     }
 
     static @Nullable VisualStudioInstall findVisualStudio() {
-        return VisualStudioLocatorTestFixture.visualStudioLocator.locateDefaultVisualStudioInstall().visualStudio
+        return VisualStudioLocatorTestFixture.visualStudioLocator.locateComponent(null).component
     }
 
     private findExe(String exe) {
@@ -95,7 +96,26 @@ class DumpbinBinaryInfo implements BinaryInfo {
     }
 
     List<BinaryInfo.Symbol> listSymbols() {
-        throw new UnsupportedOperationException("Not yet implemented")
+        def dumpbin = findExe("dumpbin.exe")
+        def process = [dumpbin.absolutePath, '/SYMBOLS', binaryFile.absolutePath].execute(["PATH=$vcPath"], null)
+        def lines = process.inputStream.readLines()
+        return lines.findAll { it.contains(' | ') }.collect { line ->
+            // Looks like:
+            // 000 0105673E ABS    notype       Static       | @comp.id
+            // 001 80000191 ABS    notype       Static       | @feat.00
+            // 002 00000000 SECT1  notype       Static       | .drectve
+            // 005 00000000 SECT2  notype       Static       | .debug$S
+            // 008 00000000 SECT3  notype       Static       | .debug$T
+            // 00B 00000000 SECT4  notype       Static       | .text$mn
+            // 00E 00000000 SECT5  notype       Static       | .debug$S
+            // 011 00000000 UNDEF  notype ()    External     | ?life@@YAHXZ (int __cdecl life(void))
+            // 012 00000000 SECT4  notype ()    External     | _main
+            // 013 00000000 SECT6  notype       Static       | .chks64
+            def tokens = line.split('\\s+')
+            def pipeIndex = tokens.findIndexOf { it == '|' }
+            assert pipeIndex != -1
+            return new BinaryInfo.Symbol(tokens[pipeIndex + 1], tokens[3].charAt(0), line.contains("External"))
+        }
     }
 
     List<BinaryInfo.Symbol> listDebugSymbols() {

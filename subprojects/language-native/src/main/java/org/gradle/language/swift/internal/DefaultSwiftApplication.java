@@ -16,15 +16,17 @@
 
 package org.gradle.language.swift.internal;
 
-import org.apache.commons.lang.StringUtils;
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
+import org.gradle.internal.Describables;
+import org.gradle.internal.DisplayName;
 import org.gradle.language.ComponentDependencies;
+import org.gradle.language.cpp.internal.NativeVariantIdentity;
 import org.gradle.language.internal.DefaultComponentDependencies;
 import org.gradle.language.swift.SwiftApplication;
+import org.gradle.language.swift.SwiftBinary;
 import org.gradle.language.swift.SwiftExecutable;
 import org.gradle.language.swift.SwiftPlatform;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
@@ -32,17 +34,22 @@ import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 
 import javax.inject.Inject;
 
-public class DefaultSwiftApplication extends DefaultSwiftComponent implements SwiftApplication {
+public class DefaultSwiftApplication extends DefaultSwiftComponent<SwiftBinary> implements SwiftApplication {
     private final ObjectFactory objectFactory;
     private final Property<SwiftExecutable> developmentBinary;
     private final DefaultComponentDependencies dependencies;
 
     @Inject
-    public DefaultSwiftApplication(String name, ObjectFactory objectFactory, FileOperations fileOperations) {
-        super(name, fileOperations, objectFactory);
+    public DefaultSwiftApplication(String name, ObjectFactory objectFactory) {
+        super(name, objectFactory);
         this.objectFactory = objectFactory;
         this.developmentBinary = objectFactory.property(SwiftExecutable.class);
         this.dependencies = objectFactory.newInstance(DefaultComponentDependencies.class, getNames().withSuffix("implementation"));
+    }
+
+    @Override
+    public DisplayName getDisplayName() {
+        return Describables.withTypeAndName("Swift application", getName());
     }
 
     @Override
@@ -59,8 +66,8 @@ public class DefaultSwiftApplication extends DefaultSwiftComponent implements Sw
         action.execute(dependencies);
     }
 
-    public SwiftExecutable addExecutable(String nameSuffix, boolean debuggable, boolean optimized, boolean testable, SwiftPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
-        SwiftExecutable result = objectFactory.newInstance(DefaultSwiftExecutable.class, getName() + StringUtils.capitalize(nameSuffix), getModule(), debuggable, optimized, testable, getSwiftSource(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider);
+    public SwiftExecutable addExecutable(NativeVariantIdentity identity, boolean testable, SwiftPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
+        SwiftExecutable result = objectFactory.newInstance(DefaultSwiftExecutable.class, getNames().append(identity.getName()), getModule(), testable, getSwiftSource(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider, identity);
         getBinaries().add(result);
         return result;
     }

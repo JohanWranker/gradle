@@ -33,7 +33,8 @@ class ObjectiveCppPCHCompilerTest extends GccCompatibleNativeCompilerTest {
     }
 
     @Override
-    protected List<String> getCompilerSpecificArguments(File includeDir) {
-        return [ '-x', 'objective-c++-header' ] + super.getCompilerSpecificArguments(includeDir)
+    protected List<String> getCompilerSpecificArguments(File includeDir, File systemIncludeDir) {
+        def arguments = super.getCompilerSpecificArguments(includeDir, systemIncludeDir)
+        return ['-x', 'objective-c++-header' ] + arguments
     }
 }

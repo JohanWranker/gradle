@@ -19,11 +19,10 @@ package org.gradle.api.tasks
 import org.gradle.api.plugins.ExtensionAware
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.TestResources
-import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.util.Matchers
 import org.gradle.util.ToBeImplemented
 import org.junit.Rule
-import spock.lang.IgnoreIf
 import spock.lang.Issue
 import spock.lang.Unroll
 
@@ -74,6 +73,42 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
             'one/one.a',
             'two/two.a',
         )
+    }
+
+    def "useful help message when property cannot be expanded"() {
+        given:
+        buildFile << """
+            task copy (type: Copy) {
+                // two.a expects "one" to be defined
+                from('src/two/two.a')
+                into('dest')
+                expand("notused": "notused")
+            }
+        """
+        when:
+        fails 'copy'
+        then:
+        failure.assertHasCause("Could not copy file '${file("src/two/two.a")}' to '${file("dest/two.a")}'.")
+        failure.assertHasCause("Missing property (one) for Groovy template expansion. Defined keys [notused, out].")
+    }
+
+    def "useful help message when property cannot be expanded in filter chain"() {
+        given:
+        buildFile << """
+            task copy (type: Copy) {
+                // two.a expects "one" to be defined
+                from('src/two/two.a')
+                into('dest')
+                // expect "two" to be defined as well
+                filter { line -> '\$two ' + line }
+                expand("notused": "notused")
+            }
+        """
+        when:
+        fails 'copy'
+        then:
+        failure.assertHasCause("Could not copy file '${file("src/two/two.a")}' to '${file("dest/two.a")}'.")
+        failure.assertHasCause("Missing property (two) for Groovy template expansion. Defined keys [notused, out].")
     }
 
     def "multiple source with inherited include and exclude patterns"() {
@@ -447,6 +482,43 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         )
     }
 
+    def "copy from task provider"() {
+        given:
+        buildScript '''
+            configurations { compile }
+            dependencies { compile files('a.jar') }
+            def fileProducer = tasks.register("fileProducer") {
+                outputs.file 'build/out.txt'
+                doLast {
+                    file('build/out.txt').text = 'some content'
+                }
+            }
+            def dirProducer = tasks.register("dirProducer") {
+                outputs.dir 'build/outdir'
+                doLast {
+                    file('build/outdir').mkdirs()
+                    file('build/outdir/file1.txt').text = 'some content'
+                    file('build/outdir/sub').mkdirs()
+                    file('build/outdir/sub/file2.txt').text = 'some content'
+                }
+            }
+            task copy(type: Copy) {
+                from fileProducer, dirProducer
+                into 'dest'
+            }
+        '''.stripIndent()
+
+        when:
+        run 'copy', '-i'
+
+        then:
+        file('dest').assertHasDescendants(
+            'out.txt',
+            'file1.txt',
+            'sub/file2.txt'
+        )
+    }
+
     def "copy with CopySpec"() {
         given:
         buildScript '''
@@ -530,6 +602,7 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
      * two.a starts off with "$one\n${one+1}\n${one+1+1}\n"
      * If these filters are chained in the correct order, you should get 6, 11, and 16
      */
+
     def "multiple filter with CopySpec"() {
         given:
         buildScript '''
@@ -905,7 +978,6 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
     }
 
     @Issue("https://issues.gradle.org/browse/GRADLE-2838")
-    @IgnoreIf({GradleContextualExecuter.parallel})
     def "include empty dirs works when nested"() {
         given:
         file("a/a.txt") << "foo"
@@ -928,13 +1000,12 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         succeeds "copyTask"
 
         then:
-        ":copyTask" in nonSkippedTasks
+        executedAndNotSkipped(":copyTask")
         def destinationDir = file("out")
         destinationDir.assertHasDescendants("a.txt", "b.txt")
         destinationDir.listFiles().findAll { it.directory }*.name.toSet() == ["dirA"].toSet()
     }
 
-    @IgnoreIf({GradleContextualExecuter.parallel})
     def "include empty dirs is overridden by subsequent"() {
         given:
         file("a/a.txt") << "foo"
@@ -958,10 +1029,13 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         """
 
         when:
+        executer.expectDocumentedDeprecationWarning("Copying or archiving duplicate paths with the default duplicates strategy has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Duplicate path: \"b.txt\". Explicitly set the duplicates strategy to 'DuplicatesStrategy.INCLUDE' if you want to allow duplicate paths. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_5.html#implicit_duplicate_strategy_for_copy_or_archive_tasks_has_been_deprecated")
         succeeds "copyTask"
 
         then:
-        ":copyTask" in nonSkippedTasks
+        executedAndNotSkipped(":copyTask")
 
         def destinationDir = file("out")
         destinationDir.assertHasDescendants("a.txt", "b.txt")
@@ -1052,6 +1126,7 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         "**/abc*abc" | "abc"
     }
 
+    @ToBeFixedForInstantExecution
     def "changing case-sensitive setting makes task out-of-date"() {
         given:
         buildScript '''
@@ -1077,7 +1152,7 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         when:
         run "copy"
         then:
-        skippedTasks.empty
+        noneSkipped()
     }
 
     @ToBeImplemented
@@ -1104,7 +1179,7 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         run "copy"
         then:
         // TODO Task should not be skipped
-        !!! skippedTasks.empty
+        !!!skipped(":copy")
     }
 
     @ToBeImplemented
@@ -1131,7 +1206,7 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         run "copy"
         then:
         // TODO Task should not be skipped
-        !!! skippedTasks.empty
+        !!!skipped(":copy")
     }
 
     @ToBeImplemented
@@ -1158,7 +1233,7 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         run "copy"
         then:
         // TODO Task should not be skipped
-        !!! skippedTasks.empty
+        !!!skipped(":copy")
     }
 
     @Issue("https://issues.gradle.org/browse/GRADLE-3554")
@@ -1177,10 +1252,11 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         when:
         run 'copy'
         then:
-        executedTasks == [":compileJava", ":processResources", ":classes", ":copy"]
+        result.assertTasksExecuted(":compileJava", ":processResources", ":classes", ":copy")
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "changing spec-level property #property makes task out-of-date"() {
         given:
         buildScript """
@@ -1206,7 +1282,7 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         when:
         run "copy", "--info"
         then:
-        skippedTasks.empty
+        noneSkipped()
         output.contains "Value of input property 'rootSpec\$1\$1.$property' has changed for task ':copy'"
 
         where:
@@ -1218,4 +1294,61 @@ class CopyTaskIntegrationSpec extends AbstractIntegrationSpec {
         "fileMode"           | "0600"                       | "0644"
         "filteringCharset"   | "'iso8859-1'"                | "'utf-8'"
     }
+
+    @Unroll
+    def "null action is forbidden for #method"() {
+        given:
+        buildScript """
+            task copy(type: Copy) {
+                into "out"
+                from 'src'
+                ${method} 'dest', null
+            }
+        """
+
+        expect:
+        fails 'copy'
+        failure.assertHasCause("Gradle does not allow passing null for the configuration action for CopySpec.${method}().")
+
+        where:
+        method << ["from", "into"]
+    }
+
+
+    @Unroll
+    def "task output caching is disabled when #description is used"() {
+        file("src.txt").createNewFile()
+        buildFile << """
+            task copy(type: Copy) {
+                outputs.cacheIf { true }
+                ${mutation}
+                from "src.txt"
+                into "destination"
+            }
+        """
+
+        withBuildCache().run "copy"
+        file("destination").deleteDir()
+
+        when:
+        withBuildCache().run "copy"
+
+        then:
+        noneSkipped()
+
+        where:
+        description                 | mutation
+        "outputs.cacheIf { false }" | "outputs.cacheIf { false }"
+        "eachFile(Closure)"         | "eachFile {}"
+        "eachFile(Action)"          | "eachFile(org.gradle.internal.Actions.doNothing())"
+        "expand(Map)"               | "expand([:])"
+        "filter(Closure)"           | "filter {}"
+        "filter(Class)"             | "filter(PushbackReader)"
+        "filter(Map, Class)"        | "filter([:], PushbackReader)"
+        "filter(Transformer)"       | "filter(org.gradle.internal.Transformers.noOpTransformer())"
+        "rename(Closure)"           | "rename {}"
+        "rename(Pattern, String)"   | "rename(/(.*)/, '\$1')"
+        "rename(Transformer)"       | "rename(org.gradle.internal.Transformers.noOpTransformer())"
+    }
+
 }

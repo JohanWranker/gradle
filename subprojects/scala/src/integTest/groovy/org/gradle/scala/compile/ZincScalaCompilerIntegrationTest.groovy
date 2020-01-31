@@ -16,12 +16,13 @@
 package org.gradle.scala.compile
 
 import org.gradle.integtests.fixtures.AvailableJavaHomes
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
 import org.gradle.integtests.fixtures.ScalaCoverage
 import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.internal.hash.Hashing
 import org.gradle.test.fixtures.file.ClassFile
-
 import org.gradle.util.VersionNumber
 import org.junit.Assume
 import org.junit.Rule
@@ -36,6 +37,7 @@ class ZincScalaCompilerIntegrationTest extends MultiVersionIntegrationSpec {
     def setup() {
         args("-PscalaVersion=$version")
         buildFile << buildScript()
+        executer.withRepositoryMirrors()
     }
 
     def compileGoodCode() {
@@ -53,7 +55,7 @@ class ZincScalaCompilerIntegrationTest extends MultiVersionIntegrationSpec {
 
         expect:
         fails("compileScala")
-        errorOutput.contains("type mismatch")
+        result.assertHasErrorOutput("type mismatch")
         scalaClassFile("").assertHasDescendants()
     }
 
@@ -115,7 +117,7 @@ compileScala.scalaCompileOptions.failOnError = false
 
         expect:
         succeeds("compileScala")
-        errorOutput.contains("type mismatch")
+        result.assertHasErrorOutput("type mismatch")
         scalaClassFile("").assertHasDescendants()
     }
 
@@ -133,7 +135,7 @@ compileScala.scalaCompileOptions.failOnError = false
             ${mavenCentralRepository()}
 
             dependencies {
-                compile 'org.scala-lang:scala-library:2.11.1'
+                implementation 'org.scala-lang:scala-library:2.11.12'
             }
             
             tasks.withType(ScalaCompile) { 
@@ -164,6 +166,7 @@ compileScala.scalaCompileOptions.failOnError = false
 
     }
 
+    @ToBeFixedForInstantExecution
     def compileWithSpecifiedEncoding() {
         given:
         goodCodeEncodedWith("ISO8859_7")
@@ -181,6 +184,7 @@ compileScala.scalaCompileOptions.encoding = "ISO8859_7"
         file("encoded.out").getText("utf-8") == "\u03b1\u03b2\u03b3"
     }
 
+    @ToBeFixedForInstantExecution
     def compilesWithSpecifiedDebugSettings() {
         given:
         goodCode()
@@ -224,22 +228,16 @@ compileScala.scalaCompileOptions.debugLevel = "none"
         !noDebug.debugIncludesLocalVariables
     }
 
-    def failsWithGoodErrorMessageWhenScalaToolsNotConfigured() {
-
-    }
-
     def buildScript() {
 """
 apply plugin: "scala"
 
 repositories {
     ${mavenCentralRepositoryDefinition()}
-    // temporary measure for the next few hours, until Zinc 0.2-M2 has landed in Central
-    maven { url "https://oss.sonatype.org/content/repositories/releases" }
 }
 
 dependencies {
-    compile "org.scala-lang:scala-library:$version"
+    implementation "org.scala-lang:scala-library:$version"
 }
 """
     }
@@ -249,13 +247,8 @@ dependencies {
 """
 package compile.test
 
-import scala.collection.JavaConversions._
-
 class Person(val name: String, val age: Int) {
-    def hello() {
-        val x: java.util.List[Int] = List(3, 1, 2)
-        java.util.Collections.reverse(x)
-    }
+    def hello(): List[Int] = List(3, 1, 2)
 }
 """
         file("src/main/scala/compile/test/Person2.scala") <<
@@ -273,7 +266,7 @@ class Person2(name: String, age: Int) extends Person(name, age) {
 import java.io.{FileOutputStream, File, OutputStreamWriter}
 
 object Main {
-    def main(args: Array[String]) {
+    def main(args: Array[String]): Unit = {
         // Some lowercase greek letters
         val content = "\u03b1\u03b2\u03b3"
         val writer = new OutputStreamWriter(new FileOutputStream(new File("encoded.out")), "utf-8")
@@ -315,6 +308,7 @@ class Person(val name: String, val age: Int) {
         return new ClassFile(scalaClassFile(path))
     }
 
+    @ToBeFixedForInstantExecution
     def compilesScalaCodeIncrementally() {
         setup:
         def person = scalaClassFile("Person.class")
@@ -329,14 +323,12 @@ class Person(val name: String, val age: Int) {
         run("compileScala")
 
         then:
-        person.exists()
-        house.exists()
-        other.exists()
-        person.lastModified() != old(person.lastModified())
-        house.lastModified() != old(house.lastModified())
+        classHash(person) != old(classHash(person))
+        classHash(house) != old(classHash(house))
         other.lastModified() == old(other.lastModified())
     }
 
+    @ToBeFixedForInstantExecution
     def compilesJavaCodeIncrementally() {
         setup:
         def person = scalaClassFile("Person.class")
@@ -356,11 +348,13 @@ class Person(val name: String, val age: Int) {
         other.lastModified() == old(other.lastModified())
     }
 
+    @ToBeFixedForInstantExecution
     def compilesIncrementallyAcrossProjectBoundaries() {
         setup:
         def person = file("prj1/build/classes/scala/main/Person.class")
         def house = file("prj2/build/classes/scala/main/House.class")
         def other = file("prj2/build/classes/scala/main/Other.class")
+        args("-PscalaVersion=$version")
         run("compileScala")
 
         when:
@@ -370,11 +364,13 @@ class Person(val name: String, val age: Int) {
         run("compileScala")
 
         then:
-        person.lastModified() != old(person.lastModified())
-        house.lastModified() != old(house.lastModified())
+        classHash(person) != old(classHash(person))
+        classHash(house) != old(classHash(house))
         other.lastModified() == old(other.lastModified())
+
     }
 
+    @ToBeFixedForInstantExecution
     def compilesAllScalaCodeWhenForced() {
         setup:
         def person = scalaClassFile("Person.class")
@@ -389,8 +385,18 @@ class Person(val name: String, val age: Int) {
         run("compileScala")
 
         then:
-        person.lastModified() != old(person.lastModified())
+        classHash(person) != old(classHash(person))
         house.lastModified() != old(house.lastModified())
         other.lastModified() != old(other.lastModified())
+    }
+
+    def classHash(File file) {
+        def dir = file.parentFile
+        def name = file.name - '.class'
+        def hasher = Hashing.md5().newHasher()
+        dir.listFiles().findAll { it.name.startsWith(name) && it.name.endsWith('.class')}.sort().each {
+            hasher.putBytes(it.bytes)
+        }
+        hasher.hash()
     }
 }

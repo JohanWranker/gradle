@@ -26,15 +26,17 @@ public class DefaultExternalModuleDependency extends AbstractExternalModuleDepen
     }
 
     public DefaultExternalModuleDependency(String group, String name, String version, String configuration) {
-        super(group, name, version, configuration);
+        super(assertModuleId(group, name), version, configuration);
     }
 
+    @Override
     public DefaultExternalModuleDependency copy() {
         DefaultExternalModuleDependency copiedModuleDependency = new DefaultExternalModuleDependency(getGroup(), getName(), getVersion(), getTargetConfiguration());
         copyTo(copiedModuleDependency);
         return copiedModuleDependency;
     }
 
+    @Override
     public boolean contentEquals(Dependency dependency) {
         if (this == dependency) {
             return true;
@@ -46,24 +48,6 @@ public class DefaultExternalModuleDependency extends AbstractExternalModuleDepen
         ExternalModuleDependency that = (ExternalModuleDependency) dependency;
         return isContentEqualsFor(that);
 
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
-        }
-
-        DefaultExternalModuleDependency that = (DefaultExternalModuleDependency) o;
-        return isContentEqualsFor(that);
-    }
-
-    @Override
-    public int hashCode() {
-        return super.hashCode();
     }
 
     @Override

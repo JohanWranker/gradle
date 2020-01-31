@@ -17,17 +17,20 @@ package org.gradle.api.internal;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
+import org.gradle.api.NamedDomainObjectProvider;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.Namer;
+import org.gradle.internal.Cast;
 import org.gradle.internal.Transformers;
 import org.gradle.internal.metaobject.AbstractDynamicObject;
 import org.gradle.internal.metaobject.ConfigureDelegate;
-import org.gradle.internal.metaobject.DynamicObject;
 import org.gradle.internal.metaobject.DynamicInvokeResult;
+import org.gradle.internal.metaobject.DynamicObject;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.util.ConfigureUtil;
 
+import javax.annotation.Nullable;
 import java.util.Map;
 
 public abstract class AbstractPolymorphicDomainObjectContainer<T>
@@ -35,16 +38,19 @@ public abstract class AbstractPolymorphicDomainObjectContainer<T>
 
     private final ContainerElementsDynamicObject elementsDynamicObject = new ContainerElementsDynamicObject();
 
-    protected AbstractPolymorphicDomainObjectContainer(Class<T> type, Instantiator instantiator, Namer<? super T> namer) {
-        super(type, instantiator, namer);
+    protected AbstractPolymorphicDomainObjectContainer(Class<T> type, Instantiator instantiator, Namer<? super T> namer, CollectionCallbackActionDecorator callbackDecorator) {
+        super(type, instantiator, namer, callbackDecorator);
     }
 
     protected abstract <U extends T> U doCreate(String name, Class<U> type);
 
+    @Override
     public <U extends T> U create(String name, Class<U> type) {
+        assertMutable("create(String, Class)");
         return create(name, type, null);
     }
 
+    @Override
     public <U extends T> U maybeCreate(String name, Class<U> type) throws InvalidUserDataException {
         T item = findByName(name);
         if (item != null) {
@@ -53,7 +59,9 @@ public abstract class AbstractPolymorphicDomainObjectContainer<T>
         return create(name, type);
     }
 
+    @Override
     public <U extends T> U create(String name, Class<U> type, Action<? super U> configuration) {
+        assertMutable("create(String, Class, Action)");
         assertCanAdd(name);
         U object = doCreate(name, type);
         add(object);
@@ -61,6 +69,39 @@ public abstract class AbstractPolymorphicDomainObjectContainer<T>
             configuration.execute(object);
         }
         return object;
+    }
+
+    @Override
+    public <U extends T> NamedDomainObjectProvider<U> register(String name, Class<U> type) throws InvalidUserDataException {
+        assertMutable("register(String, Class)");
+        return createDomainObjectProvider(name, type, null);
+    }
+
+    @Override
+    public <U extends T> NamedDomainObjectProvider<U> register(String name, Class<U> type, Action<? super U> configurationAction) throws InvalidUserDataException {
+        assertMutable("register(String, Class, Action)");
+        return createDomainObjectProvider(name, type, configurationAction);
+    }
+
+    protected <U extends T> NamedDomainObjectProvider<U> createDomainObjectProvider(String name, Class<U> type, @Nullable Action<? super U> configurationAction) {
+        assertCanAdd(name);
+        NamedDomainObjectProvider<U> provider = Cast.uncheckedCast(
+            getInstantiator().newInstance(NamedDomainObjectCreatingProvider.class, AbstractPolymorphicDomainObjectContainer.this, name, type, configurationAction)
+        );
+        addLater(provider);
+        return provider;
+    }
+
+    // Cannot be private due to reflective instantiation
+    public class NamedDomainObjectCreatingProvider<I extends T> extends AbstractDomainObjectCreatingProvider<I> {
+        public NamedDomainObjectCreatingProvider(String name, Class<I> type, @Nullable Action<? super I> configureAction) {
+            super(name, type, configureAction);
+        }
+
+        @Override
+        protected I createDomainObject() {
+            return doCreate(getName(), getType());
+        }
     }
 
     @Override
@@ -121,6 +162,7 @@ public abstract class AbstractPolymorphicDomainObjectContainer<T>
         }
     }
 
+    @Override
     public <U extends T> NamedDomainObjectContainer<U> containerWithType(Class<U> type) {
         return getInstantiator().newInstance(TypedDomainObjectContainerWrapper.class, type, this);
     }

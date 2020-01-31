@@ -16,51 +16,60 @@
 
 package org.gradle.api.tasks.compile
 
-import org.gradle.api.internal.tasks.compile.processing.IncrementalAnnotationProcessorType
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.CompilationOutputsFixture
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.language.fixtures.AnnotationProcessorFixture
+import org.gradle.language.fixtures.CompileJavaBuildOperationsFixture
+import org.gradle.test.fixtures.file.TestFile
 
 abstract class AbstractIncrementalAnnotationProcessingIntegrationTest extends AbstractIntegrationSpec {
 
+    protected CompileJavaBuildOperationsFixture operations
     protected CompilationOutputsFixture outputs
+
+    protected TestFile annotationProjectDir
+    protected TestFile libraryProjectDir
+    protected TestFile processorProjectDir
 
     def setup() {
         executer.requireOwnGradleUserHomeDir()
 
+        operations = new CompileJavaBuildOperationsFixture(executer, testDirectoryProvider)
         outputs = new CompilationOutputsFixture(file("build/classes"))
 
-        def annotationProcessorProjectDir = testDirectory.file("annotation-processor").createDir()
+        annotationProjectDir = testDirectory.file("annotation").createDir()
+        libraryProjectDir = testDirectory.file("library").createDir()
+        processorProjectDir = testDirectory.file("processor").createDir()
 
         settingsFile << """
-            include "annotation-processor"
+            include "annotation", "library", "processor"
         """
+
         buildFile << """
-            apply plugin: 'java'
+            allprojects {
+                apply plugin: 'java'
+            }
             
             dependencies {
-                compileOnly project(":annotation-processor")
-                annotationProcessor project(":annotation-processor")
-            }
-            
-            compileJava {
-                compileJava.options.incremental = true
-                options.fork = true
+                compileOnly project(":annotation")
+                annotationProcessor project(":processor")
             }
         """
 
-        annotationProcessorProjectDir.file("build.gradle") << """
-            apply plugin: "java"
+        processorProjectDir.file("build.gradle") << """
+            dependencies {
+                implementation project(":annotation")
+                implementation project(":library")
+            }
         """
-
-        def fixture = new AnnotationProcessorFixture()
-        fixture.type = getProcessorType()
-        fixture.writeSupportLibraryTo(annotationProcessorProjectDir)
-        fixture.writeApiTo(annotationProcessorProjectDir)
-        fixture.writeAnnotationProcessorTo(annotationProcessorProjectDir)
     }
 
-    protected abstract IncrementalAnnotationProcessorType getProcessorType()
+    protected void withProcessor(AnnotationProcessorFixture processor) {
+        processor.writeSupportLibraryTo(libraryProjectDir)
+        processor.writeApiTo(annotationProjectDir)
+        processor.writeAnnotationProcessorTo(processorProjectDir)
+    }
 
     protected final File java(String... classBodies) {
         File out
@@ -73,5 +82,73 @@ abstract class AbstractIncrementalAnnotationProcessingIntegrationTest extends Ab
             out = f
         }
         out
+    }
+
+    def "explicit -processor option overrides automatic detection"() {
+        buildFile << """
+            compileJava.options.compilerArgs << "-processor" << "unknown.Processor"
+        """
+        java "class A {}"
+
+        expect:
+        fails("compileJava")
+        failure.assertHasCause("Annotation processor 'unknown.Processor' not found")
+    }
+
+    def "recompiles when a resource changes"() {
+        given:
+        buildFile << """
+            compileJava.inputs.dir 'src/main/resources'
+        """
+        java("class A {}")
+        java("class B {}")
+        def resource = file("src/main/resources/foo.txt")
+        resource.text = 'foo'
+
+        outputs.snapshot { succeeds 'compileJava' }
+
+        when:
+        resource.text = 'bar'
+
+        then:
+        succeeds 'compileJava'
+        outputs.recompiledClasses("A", "B")
+    }
+
+    def "recompiles when a resource is removed"() {
+        given:
+        buildFile << """
+            compileJava.inputs.dir 'src/main/resources'
+        """
+        java("class A {}")
+        java("class B {}")
+        def resource = file("src/main/resources/foo.txt")
+        resource.text = 'foo'
+
+        outputs.snapshot { succeeds 'compileJava' }
+
+        when:
+        resource.delete()
+
+        then:
+        succeeds 'compileJava'
+        outputs.recompiledClasses("A", "B")
+    }
+
+    @ToBeFixedForInstantExecution
+    def "compilation is incremental when an empty directory is added"() {
+        given:
+        def a = java("class A {}")
+        java("class B {}")
+
+        outputs.snapshot { succeeds 'compileJava' }
+
+        when:
+        a.text = "class A { /*change*/ }"
+        file('src/main/java/different').createDir()
+
+        then:
+        succeeds 'compileJava'
+        outputs.recompiledClasses("A")
     }
 }

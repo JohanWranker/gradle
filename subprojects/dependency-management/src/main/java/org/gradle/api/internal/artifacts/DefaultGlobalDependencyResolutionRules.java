@@ -17,7 +17,6 @@
 package org.gradle.api.internal.artifacts;
 
 import org.gradle.api.Action;
-import org.gradle.api.Transformer;
 import org.gradle.api.artifacts.DependencySubstitution;
 import org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution.DependencySubstitutionRules;
 import org.gradle.internal.Actions;
@@ -26,22 +25,24 @@ import org.gradle.util.CollectionUtils;
 import java.util.List;
 
 public class DefaultGlobalDependencyResolutionRules implements GlobalDependencyResolutionRules {
-    private final ComponentMetadataProcessor componentMetadataProcessor;
+    private final ComponentMetadataProcessorFactory componentMetadataProcessorFactory;
     private final ComponentModuleMetadataProcessor moduleMetadataProcessor;
     private final DependencySubstitutionRules globalDependencySubstitutionRule;
 
-    public DefaultGlobalDependencyResolutionRules(ComponentMetadataProcessor componentMetadataProcessor,
+    public DefaultGlobalDependencyResolutionRules(ComponentMetadataProcessorFactory componentMetadataProcessorFactory,
                                                   ComponentModuleMetadataProcessor moduleMetadataProcessor,
                                                   List<DependencySubstitutionRules> ruleProviders) {
-        this.componentMetadataProcessor = componentMetadataProcessor;
+        this.componentMetadataProcessorFactory = componentMetadataProcessorFactory;
         this.moduleMetadataProcessor = moduleMetadataProcessor;
         this.globalDependencySubstitutionRule = new CompositeDependencySubstitutionRules(ruleProviders);
     }
 
-    public ComponentMetadataProcessor getComponentMetadataProcessor() {
-        return componentMetadataProcessor;
+    @Override
+    public ComponentMetadataProcessorFactory getComponentMetadataProcessorFactory() {
+        return componentMetadataProcessorFactory;
     }
 
+    @Override
     public ComponentModuleMetadataProcessor getModuleMetadataProcessor() {
         return moduleMetadataProcessor;
     }
@@ -60,12 +61,7 @@ public class DefaultGlobalDependencyResolutionRules implements GlobalDependencyR
 
         @Override
         public Action<DependencySubstitution> getRuleAction() {
-            return Actions.composite(CollectionUtils.collect(ruleProviders, new Transformer<Action<? super DependencySubstitution>, DependencySubstitutionRules>() {
-                @Override
-                public Action<? super DependencySubstitution> transform(DependencySubstitutionRules rule) {
-                    return rule.getRuleAction();
-                }
-            }));
+            return Actions.composite(CollectionUtils.collect(ruleProviders, DependencySubstitutionRules::getRuleAction));
         }
 
         @Override

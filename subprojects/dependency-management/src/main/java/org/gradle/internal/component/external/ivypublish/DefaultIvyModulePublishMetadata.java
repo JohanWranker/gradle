@@ -59,6 +59,7 @@ public class DefaultIvyModulePublishMetadata implements IvyModulePublishMetadata
         this.status = status;
     }
 
+    @Override
     public ModuleComponentIdentifier getComponentId() {
         return id;
     }
@@ -101,8 +102,11 @@ public class DefaultIvyModulePublishMetadata implements IvyModulePublishMetadata
             DefaultImmutableVersionConstraint transformedConstraint =
                 new DefaultImmutableVersionConstraint(
                     VERSION_TRANSFORMER.transform(versionConstraint.getPreferredVersion()),
-                    CollectionUtils.collect(versionConstraint.getRejectedVersions(), VERSION_TRANSFORMER));
-            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getGroup(), selector.getModule(), transformedConstraint);
+                    VERSION_TRANSFORMER.transform(versionConstraint.getRequiredVersion()),
+                    VERSION_TRANSFORMER.transform(versionConstraint.getStrictVersion()),
+                    CollectionUtils.collect(versionConstraint.getRejectedVersions(), VERSION_TRANSFORMER),
+                    versionConstraint.getBranch());
+            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getModuleIdentifier(), transformedConstraint, selector.getAttributes(), selector.getRequestedCapabilities());
             return dependency.withTarget(newSelector);
         }
         return dependency;
@@ -129,6 +133,7 @@ public class DefaultIvyModulePublishMetadata implements IvyModulePublishMetadata
         return artifact;
     }
 
+    @Override
     public Collection<IvyModuleArtifactPublishMetadata> getArtifacts() {
         return artifactsById.values();
     }
@@ -166,6 +171,11 @@ public class DefaultIvyModulePublishMetadata implements IvyModulePublishMetadata
         @Override
         public void addFiles(LocalFileDependencyMetadata files) {
             // Ignore files
+        }
+
+        @Override
+        public void enableLocking() {
+            // Ignore
         }
     }
 

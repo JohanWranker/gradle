@@ -17,11 +17,8 @@
 package org.gradle.internal.resource.transport.http
 
 import org.apache.http.ssl.SSLInitializationException
-
-import org.gradle.internal.SystemProperties
-
+import spock.lang.Issue
 import spock.lang.Specification
-
 /**
  * Tests loading of keystores and truststores corresponding to system
  * properties specified.
@@ -31,7 +28,7 @@ class DefaultSslContextFactoryTest extends Specification {
     def loader
 
     void setup() {
-        props = ['java.home': SystemProperties.getInstance().javaHomeDir.path]
+        props = ['java.home': System.properties['java.home']]
         loader = new DefaultSslContextFactory.SslContextCacheLoader()
     }
 
@@ -103,6 +100,30 @@ class DefaultSslContextFactoryTest extends Specification {
         thrown(SSLInitializationException)
     }
 
+    @Issue("gradle/gradle#7546")
+    void 'keystore type without keystore file'() {
+        given:
+        props['javax.net.ssl.keyStoreType'] = 'JKS'
+
+        when:
+        loader.load(props)
+
+        then:
+        notThrown(SSLInitializationException)
+    }
+
+    void 'keystore type with NONE keystore file'() {
+        given:
+        props['javax.net.ssl.keyStoreType'] = 'JKS'
+        props['javax.net.ssl.keyStore'] = 'NONE'
+
+        when:
+        loader.load(props)
+
+        then:
+        notThrown(SSLInitializationException)
+    }
+
     void 'valid keystore file without specifying password'() {
         given:
         props['javax.net.ssl.keyStore'] = getDefaultTrustStore()
@@ -140,7 +161,7 @@ class DefaultSslContextFactoryTest extends Specification {
         notThrown(SSLInitializationException)
     }
 
-    // NOTE: A keystore and a truststore are generally both simmply a JKS
+    // NOTE: A keystore and a truststore are generally both simply a JKS
     //       file.  A default "keystore" is always shipped with the JRE and
     //       it contains simply trusted public certificates, and it is the
     //       default truststore used when one is not explicitly specified.

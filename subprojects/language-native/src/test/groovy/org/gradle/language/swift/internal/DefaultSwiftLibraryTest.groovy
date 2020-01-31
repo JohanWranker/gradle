@@ -16,12 +16,16 @@
 
 package org.gradle.language.swift.internal
 
-import org.gradle.api.artifacts.Configuration
-import org.gradle.api.internal.file.FileCollectionInternal
+import org.gradle.language.cpp.internal.DefaultUsageContext
+import org.gradle.language.cpp.internal.NativeVariantIdentity
 import org.gradle.language.swift.SwiftPlatform
+import org.gradle.nativeplatform.MachineArchitecture
+import org.gradle.nativeplatform.OperatingSystemFamily
+import org.gradle.nativeplatform.TargetMachine
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.util.AttributeTestUtil
 import org.gradle.util.TestUtil
 import org.junit.Rule
 import spock.lang.Specification
@@ -33,7 +37,13 @@ class DefaultSwiftLibraryTest extends Specification {
     DefaultSwiftLibrary library
 
     def setup() {
-        library = new DefaultSwiftLibrary("main", project.objects, project, project.configurations)
+        library = project.objects.newInstance(DefaultSwiftLibrary, "main")
+    }
+
+    def "has display name"() {
+        expect:
+        library.displayName.displayName == "Swift library 'main'"
+        library.toString() == "Swift library 'main'"
     }
 
     def "has implementation configuration"() {
@@ -52,8 +62,8 @@ class DefaultSwiftLibraryTest extends Specification {
         def platformToolProvider = Stub(PlatformToolProvider)
 
         expect:
-        def binary = library.addStaticLibrary("debug", true, false, true, targetPlatform, toolChain, platformToolProvider)
-        binary.name == "mainDebug"
+        def binary = library.addStaticLibrary(identity, true, targetPlatform, toolChain, platformToolProvider)
+        binary.name == "mainTest"
         binary.debuggable
         !binary.optimized
         binary.testable
@@ -71,8 +81,8 @@ class DefaultSwiftLibraryTest extends Specification {
         def platformToolProvider = Stub(PlatformToolProvider)
 
         expect:
-        def binary = library.addSharedLibrary("debug", true, false, true, targetPlatform, toolChain, platformToolProvider)
-        binary.name == "mainDebug"
+        def binary = library.addSharedLibrary(identity, true, targetPlatform, toolChain, platformToolProvider)
+        binary.name == "mainTest"
         binary.debuggable
         !binary.optimized
         binary.testable
@@ -93,9 +103,21 @@ class DefaultSwiftLibraryTest extends Specification {
 
         then:
         def ex = thrown(IllegalStateException)
-        ex.message == "No value has been specified for this provider."
+        ex.message == "Cannot query the value of Swift library 'main' property 'developmentBinary' because it has no value available."
     }
 
-    interface TestConfiguration extends Configuration, FileCollectionInternal {
+    private NativeVariantIdentity getIdentity() {
+        return new NativeVariantIdentity("test", null, null, null, true, false, targetMachine(OperatingSystemFamily.WINDOWS, MachineArchitecture.X86_64),
+            new DefaultUsageContext("test", AttributeTestUtil.attributesFactory().mutable()),
+            new DefaultUsageContext("test", AttributeTestUtil.attributesFactory().mutable())
+        )
+    }
+
+    private TargetMachine targetMachine(String os, String arch) {
+        def objectFactory = TestUtil.objectFactory()
+        return Stub(TargetMachine) {
+            getOperatingSystemFamily() >> objectFactory.named(OperatingSystemFamily.class, os)
+            getArchitecture() >> objectFactory.named(MachineArchitecture.class, arch)
+        }
     }
 }

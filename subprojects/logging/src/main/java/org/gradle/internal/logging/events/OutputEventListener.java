@@ -16,9 +16,12 @@
 
 package org.gradle.internal.logging.events;
 
-import org.gradle.internal.scan.UsedByScanPlugin;
-
-@UsedByScanPlugin
 public interface OutputEventListener {
     void onOutput(OutputEvent event);
+
+    OutputEventListener NO_OP = new OutputEventListener() {
+        @Override
+        public void onOutput(OutputEvent event) {
+        }
+    };
 }

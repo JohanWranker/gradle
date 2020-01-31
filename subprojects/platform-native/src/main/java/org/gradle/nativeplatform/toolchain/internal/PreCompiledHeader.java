@@ -30,6 +30,7 @@ import org.gradle.api.tasks.TaskDependency;
 import org.gradle.platform.base.internal.ComponentSpecIdentifier;
 
 import java.io.File;
+import javax.annotation.Nullable;
 
 public class PreCompiledHeader extends AbstractBuildableComponentSpec {
     FileCollection pchObjects;
@@ -55,23 +56,24 @@ public class PreCompiledHeader extends AbstractBuildableComponentSpec {
         return pchObjects;
     }
 
+    @Nullable
     @Optional
-    @InputFile
     @PathSensitive(PathSensitivity.ABSOLUTE)
+    @InputFile
     public File getPrefixHeaderFile() {
         return prefixHeaderFile;
     }
 
-    public void setPrefixHeaderFile(File prefixHeaderFile) {
+    public void setPrefixHeaderFile(@Nullable File prefixHeaderFile) {
         this.prefixHeaderFile = prefixHeaderFile;
     }
 
-    @Optional @Input
+    @Nullable @Optional @Input
     public String getIncludeString() {
         return includeString;
     }
 
-    public void setIncludeString(String includeString) {
+    public void setIncludeString(@Nullable String includeString) {
         this.includeString = includeString;
     }
 
@@ -106,6 +108,7 @@ public class PreCompiledHeader extends AbstractBuildableComponentSpec {
     }
 
     @Internal
+    @Nullable
     @Override
     public Task getBuildTask() {
         return super.getBuildTask();
@@ -118,6 +121,7 @@ public class PreCompiledHeader extends AbstractBuildableComponentSpec {
     }
 
     @Internal
+    @Nullable
     @Override
     public Task getCheckTask() {
         return super.getCheckTask();

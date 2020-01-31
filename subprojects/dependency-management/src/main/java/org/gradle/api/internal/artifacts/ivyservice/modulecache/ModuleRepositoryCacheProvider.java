@@ -17,12 +17,30 @@ package org.gradle.api.internal.artifacts.ivyservice.modulecache;
 
 public class ModuleRepositoryCacheProvider {
     private final ModuleRepositoryCaches caches;
+    private final ModuleRepositoryCaches inMemoryCaches;
+    private final ResolvedArtifactCaches resolvedArtifactCaches = new ResolvedArtifactCaches();
 
-    public ModuleRepositoryCacheProvider(ModuleRepositoryCaches caches) {
+    public ModuleRepositoryCacheProvider(ModuleRepositoryCaches caches, ModuleRepositoryCaches inMemoryCaches) {
         this.caches = caches;
+        this.inMemoryCaches = inMemoryCaches;
     }
 
-    public ModuleRepositoryCaches getCaches() {
+    /**
+     * Returns caches which will also be persisted to disk. They will also have an in-memory
+     * front-end, but eventually all results are persisted.
+     */
+    public ModuleRepositoryCaches getPersistentCaches() {
         return caches;
+    }
+
+    /**
+     * Returns caches which are *only* in memory: they will never write anything to disk.
+     */
+    public ModuleRepositoryCaches getInMemoryOnlyCaches() {
+        return inMemoryCaches;
+    }
+
+    public ResolvedArtifactCaches getResolvedArtifactCaches() {
+        return resolvedArtifactCaches;
     }
 }

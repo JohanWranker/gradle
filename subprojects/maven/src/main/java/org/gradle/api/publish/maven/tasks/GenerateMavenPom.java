@@ -17,7 +17,7 @@
 package org.gradle.api.publish.maven.tasks;
 
 import org.gradle.api.DefaultTask;
-import org.gradle.api.Incubating;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.publication.maven.internal.VersionRangeMapper;
 import org.gradle.api.publish.maven.MavenDependency;
@@ -38,11 +38,12 @@ import java.io.File;
  *
  * @since 1.4
  */
-@Incubating
 public class GenerateMavenPom extends DefaultTask {
 
     private MavenPom pom;
     private Object destination;
+    private ImmutableAttributes compileScopeAttributes = ImmutableAttributes.EMPTY;
+    private ImmutableAttributes runtimeScopeAttributes = ImmutableAttributes.EMPTY;
 
     public GenerateMavenPom() {
         // Never up to date; we don't understand the data structures.
@@ -57,6 +58,16 @@ public class GenerateMavenPom extends DefaultTask {
     @Inject
     protected VersionRangeMapper getVersionRangeMapper() {
         throw new UnsupportedOperationException();
+    }
+
+    public GenerateMavenPom withCompileScopeAttributes(ImmutableAttributes compileScopeAttributes) {
+        this.compileScopeAttributes = compileScopeAttributes;
+        return this;
+    }
+
+    public GenerateMavenPom withRuntimeScopeAttributes(ImmutableAttributes compileScopeAttributes) {
+        this.runtimeScopeAttributes = compileScopeAttributes;
+        return this;
     }
 
     /**
@@ -108,8 +119,14 @@ public class GenerateMavenPom extends DefaultTask {
     public void doGenerate() {
         MavenPomInternal pomInternal = (MavenPomInternal) getPom();
 
-        MavenPomFileGenerator pomGenerator = new MavenPomFileGenerator(pomInternal.getProjectIdentity(), getVersionRangeMapper());
-        pomGenerator.setPackaging(pomInternal.getPackaging());
+        MavenPomFileGenerator pomGenerator = new MavenPomFileGenerator(
+                pomInternal.getProjectIdentity(),
+                getVersionRangeMapper(),
+                pomInternal.getVersionMappingStrategy(),
+                compileScopeAttributes,
+                runtimeScopeAttributes,
+                pomInternal.writeGradleMetadataMarker());
+        pomGenerator.configureFrom(pomInternal);
 
         for (MavenDependency mavenDependency : pomInternal.getApiDependencyManagement()) {
             pomGenerator.addApiDependencyManagement(mavenDependency);
@@ -119,11 +136,18 @@ public class GenerateMavenPom extends DefaultTask {
             pomGenerator.addRuntimeDependencyManagement(mavenDependency);
         }
 
+        for (MavenDependency mavenDependency : pomInternal.getImportDependencyManagement()) {
+            pomGenerator.addImportDependencyManagement(mavenDependency);
+        }
+
         for (MavenDependencyInternal runtimeDependency : pomInternal.getApiDependencies()) {
             pomGenerator.addApiDependency(runtimeDependency);
         }
         for (MavenDependencyInternal runtimeDependency : pomInternal.getRuntimeDependencies()) {
             pomGenerator.addRuntimeDependency(runtimeDependency);
+        }
+        for (MavenDependencyInternal optionalDependency : pomInternal.getOptionalDependencies()) {
+            pomGenerator.addOptionalDependency(optionalDependency);
         }
 
         pomGenerator.withXml(pomInternal.getXmlAction());

@@ -15,15 +15,21 @@
  */
 package org.gradle.testing
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.testing.fixture.JUnitMultiVersionIntegrationSpec
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import spock.lang.Issue
 
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_4_LATEST
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_VINTAGE_JUPITER
+
 @Issue("GRADLE-1009")
-public class TestOutputListenerIntegrationTest extends AbstractIntegrationSpec {
+@TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE_JUPITER })
+class TestOutputListenerIntegrationTest extends JUnitMultiVersionIntegrationSpec {
     @Rule public final TestResources resources = new TestResources(temporaryFolder)
 
     @Before
@@ -56,7 +62,7 @@ public class SomeTest {
         buildFile << """
 apply plugin: 'java'
 ${mavenCentralRepository()}
-dependencies { testCompile "junit:junit:4.12" }
+dependencies { testImplementation "junit:junit:4.12" }
 
 test.addTestOutputListener(new VerboseOutputListener(logger: project.logger))
 
@@ -109,7 +115,7 @@ public class SomeTest {
         buildFile << """
 apply plugin: 'java'
 ${mavenCentralRepository()}
-dependencies { testCompile "junit:junit:4.12" }
+dependencies { testImplementation "junit:junit:4.12" }
 
 test.onOutput { descriptor, event ->
     logger.lifecycle("first: " + event.message)
@@ -128,11 +134,11 @@ class VerboseOutputListener implements TestOutputListener {
 """
 
         when:
-        def result = executer.withTasks('test').run()
+        succeeds('test')
 
         then:
-        result.output.contains('first: message from foo')
-        result.output.contains('second: message from foo')
+        outputContains('first: message from foo')
+        outputContains('second: message from foo')
     }
 
     @Test
@@ -152,7 +158,7 @@ public class SomeTest {
         buildFile << """
 apply plugin: 'java'
 ${mavenCentralRepository()}
-dependencies { testCompile "junit:junit:4.12" }
+dependencies { testImplementation "junit:junit:4.12" }
 
 test.testLogging {
     showStandardStreams = true
@@ -160,15 +166,18 @@ test.testLogging {
 """
 
         when:
-        def result = executer.withTasks('test').withArguments('-i').run()
+        executer.withArgument('-i')
+        succeeds('test')
 
         then:
-        result.output.contains('message from foo')
+        outputContains('message from foo')
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     def "shows standard stream also for testNG"() {
         given:
+        ignoreWhenJUnitPlatform()
         def test = file("src/test/java/SomeTest.java")
         test << """
 import org.testng.*;
@@ -186,7 +195,7 @@ public class SomeTest {
         buildFile << """
 apply plugin: 'java'
 ${mavenCentralRepository()}
-dependencies { testCompile 'org.testng:testng:6.3.1' }
+dependencies { testImplementation 'org.testng:testng:6.3.1' }
 
 test {
     useTestNG()
@@ -194,14 +203,17 @@ test {
 }
 """
         when: "run with quiet"
-        def result = executer.withArguments("-q").withTasks('test'). run()
+        executer.withArguments("-q")
+        succeeds('test')
+
         then:
-        !result.output.contains('output from foo')
+        outputDoesNotContain('output from foo')
 
         when: "run with lifecycle"
-        result = executer.noExtraLogging().withTasks('cleanTest', 'test').run()
+        executer.noExtraLogging()
+        succeeds('cleanTest', 'test')
 
         then:
-        result.output.contains('output from foo')
+        outputContains('output from foo')
     }
 }

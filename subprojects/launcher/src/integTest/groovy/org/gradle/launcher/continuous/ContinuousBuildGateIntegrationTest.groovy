@@ -18,13 +18,14 @@ package org.gradle.launcher.continuous
 
 import org.gradle.deployment.internal.DeploymentRegistryInternal
 import org.gradle.initialization.ContinuousExecutionGate
+import org.gradle.integtests.fixtures.AbstractContinuousIntegrationTest
 import org.gradle.internal.filewatch.PendingChangesListener
 import org.gradle.internal.filewatch.PendingChangesManager
 import org.gradle.internal.filewatch.SingleFirePendingChangesListener
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
 import org.junit.Rule
 
-class ContinuousBuildGateIntegrationTest extends Java7RequiringContinuousIntegrationTest {
+class ContinuousBuildGateIntegrationTest extends AbstractContinuousIntegrationTest {
     @Rule BlockingHttpServer server = new BlockingHttpServer()
 
     def setup() {
@@ -99,8 +100,8 @@ class ContinuousBuildGateIntegrationTest extends Java7RequiringContinuousIntegra
     }
 
     def "build only starts when gate is opened"() {
-        server.expect(server.resource("command", "close"))
-        def command = server.expectAndBlock(server.resource("command", "open"))
+        server.expect(server.get("command").send("close"))
+        def command = server.expectAndBlock(server.get("command").send("open"))
 
         def inputFile = file("input.txt")
         def outputFile = file("build/output.txt")
@@ -120,7 +121,7 @@ class ContinuousBuildGateIntegrationTest extends Java7RequiringContinuousIntegra
         and:
         // command the gate keeper to open the gate and shutdown
         command.releaseAll()
-        server.expect(server.resource("command", "stop"))
+        server.expect(server.get("command").send("stop"))
         then:
         // waits for build to start and finish
         succeeds()

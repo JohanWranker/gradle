@@ -18,45 +18,62 @@ package org.gradle.api.internal;
 import groovy.lang.Closure;
 import org.gradle.api.NamedDomainObjectList;
 import org.gradle.api.Namer;
-import org.gradle.api.internal.collections.CollectionEventRegister;
 import org.gradle.api.internal.collections.CollectionFilter;
+import org.gradle.api.internal.collections.ElementSource;
 import org.gradle.api.internal.collections.FilteredList;
+import org.gradle.api.internal.collections.IndexedElementSource;
+import org.gradle.api.internal.collections.ListElementSource;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.reflect.Instantiator;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.ListIterator;
 
 public class DefaultNamedDomainObjectList<T> extends DefaultNamedDomainObjectCollection<T> implements NamedDomainObjectList<T> {
     public DefaultNamedDomainObjectList(DefaultNamedDomainObjectList<? super T> objects, CollectionFilter<T> filter, Instantiator instantiator, Namer<? super T> namer) {
         super(objects, filter, instantiator, namer);
     }
 
-    public DefaultNamedDomainObjectList(Class<T> type, CollectionEventRegister<T> collectionEventRegister, Instantiator instantiator, Namer<? super T> namer) {
-        super(type, new ArrayList<T>(), collectionEventRegister, new UnfilteredIndex<T>(), instantiator, namer);
-    }
-
+    /**
+     * only left here to not break `nebula.dependency-recommender` plugin.
+     */
+    @Deprecated
     public DefaultNamedDomainObjectList(Class<T> type, Instantiator instantiator, Namer<? super T> namer) {
-        super(type, new ArrayList<T>(), instantiator, namer);
+        super(type, new ListElementSource<T>(), instantiator, namer, CollectionCallbackActionDecorator.NOOP);
+        DeprecationLogger.deprecateInternalApi("constructor DefaultNamedDomainObjectList(Class<T>, Instantiator, Namer<T>)")
+            .replaceWith("ObjectFactory.namedDomainObjectList(Class<T>)")
+            .withUserManual("custom_gradle_types", "nameddomainobjectlist")
+            .nagUser();
     }
 
+    public DefaultNamedDomainObjectList(Class<T> type, Instantiator instantiator, Namer<? super T> namer, CollectionCallbackActionDecorator decorator) {
+        super(type, new ListElementSource<T>(), instantiator, namer, decorator);
+    }
+
+    @Override
     public void add(int index, T element) {
-        assertMutable();
+        assertMutable("add(int, T)");
         assertCanAdd(element);
         getStore().add(index, element);
         didAdd(element);
-        getEventRegister().getAddAction().execute(element);
+        getEventRegister().fireObjectAdded(element);
     }
 
+    @Override
     public boolean addAll(int index, Collection<? extends T> c) {
-        assertMutable();
+        assertMutable("addAll(int, Collection)");
         boolean changed = false;
         int current = index;
         for (T t : c) {
             if (!hasWithName(getNamer().determineName(t))) {
                 getStore().add(current, t);
                 didAdd(t);
-                getEventRegister().getAddAction().execute(t);
+                getEventRegister().fireObjectAdded(t);
                 changed = true;
                 current++;
             }
@@ -65,60 +82,68 @@ public class DefaultNamedDomainObjectList<T> extends DefaultNamedDomainObjectCol
     }
 
     @Override
-    protected List<T> getStore() {
-        return (List<T>) super.getStore();
+    protected IndexedElementSource<T> getStore() {
+        return (IndexedElementSource<T>) super.getStore();
     }
 
+    @Override
     public T get(int index) {
         return getStore().get(index);
     }
 
+    @Override
     public T set(int index, T element) {
-        assertMutable();
+        assertMutable("set(int, T)");
         assertCanAdd(element);
         T oldElement = getStore().set(index, element);
         if (oldElement != null) {
             didRemove(oldElement);
         }
-        getEventRegister().getRemoveAction().execute(oldElement);
+        getEventRegister().fireObjectRemoved(oldElement);
         didAdd(element);
-        getEventRegister().getAddAction().execute(element);
+        getEventRegister().fireObjectAdded(element);
         return oldElement;
     }
 
+    @Override
     public T remove(int index) {
-        assertMutable();
+        assertMutable("remove(int)");
         T element = getStore().remove(index);
         if (element != null) {
             didRemove(element);
         }
-        getEventRegister().getRemoveAction().execute(element);
+        getEventRegister().fireObjectRemoved(element);
         return element;
     }
 
+    @Override
     public int indexOf(Object o) {
         return getStore().indexOf(o);
     }
 
+    @Override
     public int lastIndexOf(Object o) {
         return getStore().lastIndexOf(o);
     }
 
+    @Override
     public ListIterator<T> listIterator() {
         return new ListIteratorImpl(getStore().listIterator());
     }
 
+    @Override
     public ListIterator<T> listIterator(int index) {
         return new ListIteratorImpl(getStore().listIterator(index));
     }
 
+    @Override
     public List<T> subList(int fromIndex, int toIndex) {
         return Collections.unmodifiableList(getStore().subList(fromIndex, toIndex));
     }
 
     @Override
-    protected <S extends T> Collection<S> filteredStore(CollectionFilter<S> filter) {
-        return new FilteredList<T, S>(this, filter);
+    protected <S extends T> IndexedElementSource<S> filteredStore(CollectionFilter<S> filter, ElementSource<T> elementSource) {
+        return new FilteredList<T, S>(elementSource, filter);
     }
 
     @Override
@@ -149,56 +174,65 @@ public class DefaultNamedDomainObjectList<T> extends DefaultNamedDomainObjectCol
             this.iterator = iterator;
         }
 
+        @Override
         public boolean hasNext() {
             return iterator.hasNext();
         }
 
+        @Override
         public boolean hasPrevious() {
             return iterator.hasPrevious();
         }
 
+        @Override
         public T next() {
             lastElement = iterator.next();
             return lastElement;
         }
 
+        @Override
         public T previous() {
             lastElement = iterator.previous();
             return lastElement;
         }
 
+        @Override
         public int nextIndex() {
             return iterator.nextIndex();
         }
 
+        @Override
         public int previousIndex() {
             return iterator.previousIndex();
         }
 
+        @Override
         public void add(T t) {
-            assertMutable();
+            assertMutable("listIterator().add(T)");
             assertCanAdd(t);
             iterator.add(t);
             didAdd(t);
-            getEventRegister().getAddAction().execute(t);
+            getEventRegister().fireObjectAdded(t);
         }
 
+        @Override
         public void remove() {
-            assertMutable();
+            assertMutable("listIterator().remove()");
             iterator.remove();
             didRemove(lastElement);
-            getEventRegister().getRemoveAction().execute(lastElement);
+            getEventRegister().fireObjectRemoved(lastElement);
             lastElement = null;
         }
 
+        @Override
         public void set(T t) {
-            assertMutable();
+            assertMutable("listIterator().set(T)");
             assertCanAdd(t);
             iterator.set(t);
             didRemove(lastElement);
-            getEventRegister().getRemoveAction().execute(lastElement);
+            getEventRegister().fireObjectRemoved(lastElement);
             didAdd(t);
-            getEventRegister().getAddAction().execute(t);
+            getEventRegister().fireObjectAdded(t);
             lastElement = null;
         }
     }

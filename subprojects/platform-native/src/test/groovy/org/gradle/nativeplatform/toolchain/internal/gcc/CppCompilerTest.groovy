@@ -16,6 +16,7 @@
 
 package org.gradle.nativeplatform.toolchain.internal.gcc
 
+
 import org.gradle.nativeplatform.toolchain.internal.CommandLineToolContext
 import org.gradle.nativeplatform.toolchain.internal.NativeCompiler
 import org.gradle.nativeplatform.toolchain.internal.compilespec.CppCompileSpec
@@ -33,7 +34,8 @@ class CppCompilerTest extends GccCompatibleNativeCompilerTest {
     }
 
     @Override
-    protected List<String> getCompilerSpecificArguments(File includeDir) {
-        [ '-x', 'c++' ] + super.getCompilerSpecificArguments(includeDir)
+    protected List<String> getCompilerSpecificArguments(File includeDir, File systemIncludeDir) {
+        def arguments = super.getCompilerSpecificArguments(includeDir, systemIncludeDir)
+        [ '-x', 'c++' ] + arguments
     }
 }

@@ -21,6 +21,7 @@ import org.gradle.integtests.fixtures.ZincScalaCompileFixture
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.test.fixtures.file.TestFile
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -32,6 +33,11 @@ class ProjectLayoutIntegrationTest extends AbstractIntegrationTest {
     @Rule
     public final TestResources resources = new TestResources(testDirectoryProvider)
 
+    @Before
+    void setUp() {
+        executer.withRepositoryMirrors()
+    }
+
     @Test
     void canHaveSomeSourceAndResourcesInSameDirectoryAndSomeInDifferentDirectories() {
         file('settings.gradle') << 'rootProject.name = "sharedSource"'
@@ -42,8 +48,8 @@ apply plugin: 'scala'
 
 ${mavenCentralRepository()}
 dependencies {
-    compile 'org.codehaus.groovy:groovy-all:2.4.10'
-    compile 'org.scala-lang:scala-library:2.11.1'
+    implementation 'org.codehaus.groovy:groovy-all:2.4.10'
+    implementation 'org.scala-lang:scala-library:2.11.12'
 }
 
 sourceSets.each {
@@ -162,7 +168,7 @@ sourceSets.main.java {
 '''
         file('b/build.gradle') << '''
 apply plugin: 'java'
-dependencies { compile project(':a') }
+dependencies { implementation project(':a') }
 sourceSets.main.java {
     srcDirs '../src'
     include 'org/gradle/b/**'
@@ -184,7 +190,7 @@ sourceSets.main.java {
 
     @Test
     void canUseANonStandardBuildDir() {
-        executer.expectDeprecationWarning().withTasks('build').run()
+        executer.withTasks('build').run()
 
         file('build').assertDoesNotExist()
 

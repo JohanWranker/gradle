@@ -16,22 +16,28 @@
 
 package org.gradle.api.internal.artifacts.transform;
 
+import com.google.common.collect.Lists;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 public class ConsumerVariantMatchResult {
     private int minDepth;
-    private final List<ConsumerVariant> matches = new ArrayList<ConsumerVariant>();
+    private final List<ConsumerVariant> matches;
 
-    public void applyTo(ConsumerVariantMatchResult result) {
-        result.matches.addAll(this.matches);
+    ConsumerVariantMatchResult(int estimateSize) {
+        matches = Lists.newArrayListWithExpectedSize(estimateSize);
     }
 
-    public void matched(ImmutableAttributes output, ArtifactTransformer transform, int depth) {
+    private ConsumerVariantMatchResult(ConsumerVariantMatchResult other) {
+        this.minDepth = other.minDepth;
+        this.matches = Collections.unmodifiableList(other.matches);
+    }
+
+    public void matched(ImmutableAttributes output, Transformation transformation, int depth) {
         // Collect only the shortest paths
         if (minDepth == 0) {
             minDepth = depth;
@@ -41,7 +47,7 @@ public class ConsumerVariantMatchResult {
         } else if (depth > minDepth) {
             return;
         }
-        matches.add(new ConsumerVariant(output, transform, depth));
+        matches.add(new ConsumerVariant(output, transformation, depth));
     }
 
     public boolean hasMatches() {
@@ -52,14 +58,18 @@ public class ConsumerVariantMatchResult {
         return matches;
     }
 
+    public ConsumerVariantMatchResult asImmutable() {
+        return new ConsumerVariantMatchResult(this);
+    }
+
     public static class ConsumerVariant {
         final AttributeContainerInternal attributes;
-        final ArtifactTransformer transformer;
+        final Transformation transformation;
         final int depth;
 
-        public ConsumerVariant(AttributeContainerInternal attributes, ArtifactTransformer transformer, int depth) {
+        public ConsumerVariant(AttributeContainerInternal attributes, Transformation transformation, int depth) {
             this.attributes = attributes;
-            this.transformer = transformer;
+            this.transformation = transformation;
             this.depth = depth;
         }
     }

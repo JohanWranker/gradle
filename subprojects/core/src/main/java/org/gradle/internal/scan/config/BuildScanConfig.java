@@ -62,8 +62,17 @@ public interface BuildScanConfig {
 
     interface Attributes {
 
+        /**
+         * No longer actually used, but needed for binary compatibility.
+         */
         boolean isRootProjectHasVcsMappings();
 
+        /**
+         * Whether the currently executing build is intended to execute tasks.
+         *
+         * @since 5.0
+         */
+        boolean isTaskExecutingBuild();
     }
 
 

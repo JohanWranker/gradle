@@ -29,7 +29,7 @@ import org.junit.Test
 
 import static org.gradle.api.tasks.TaskDependencyMatchers.dependsOn
 import static org.gradle.util.WrapUtil.toLinkedSet
-import static org.hamcrest.Matchers.*
+import static org.hamcrest.CoreMatchers.*
 import static org.junit.Assert.assertThat
 import static org.junit.Assert.assertTrue
 
@@ -65,7 +65,7 @@ class ScalaPluginTest {
         assertThat(task, instanceOf(ScalaCompile.class))
         assertThat(task.description, equalTo('Compiles the main Scala source.'))
         assertThat(task.classpath.files as List, equalTo([
-            mainSourceSet.java.outputDir
+            mainSourceSet.java.destinationDirectory.get().asFile
         ]))
         assertThat(task.source as List, equalTo(mainSourceSet.scala  as List))
         assertThat(task, dependsOn(JavaPlugin.COMPILE_JAVA_TASK_NAME))
@@ -75,13 +75,40 @@ class ScalaPluginTest {
         assertThat(task, instanceOf(ScalaCompile.class))
         assertThat(task.description, equalTo('Compiles the test Scala source.'))
         assertThat(task.classpath.files as List, equalTo([
-            mainSourceSet.java.outputDir,
-            mainSourceSet.scala.outputDir,
+            mainSourceSet.java.destinationDirectory.get().asFile,
+            mainSourceSet.scala.destinationDirectory.get().asFile,
             mainSourceSet.output.resourcesDir,
-            testSourceSet.java.outputDir,
+            testSourceSet.java.destinationDirectory.get().asFile,
         ]))
         assertThat(task.source as List, equalTo(testSourceSet.scala as List))
         assertThat(task, dependsOn(JavaPlugin.COMPILE_TEST_JAVA_TASK_NAME, JavaPlugin.CLASSES_TASK_NAME))
+    }
+
+    @Test void "compile dependency to java compilation can be turned off by changing the compile task classpath"() {
+        scalaPlugin.apply(project)
+
+        def task = project.tasks['compileScala']
+        task.classpath = project.sourceSets.main.compileClasspath
+
+        SourceSet mainSourceSet = project.sourceSets.main
+        assertThat(task, instanceOf(ScalaCompile.class))
+        assertThat(task.classpath.files as List, equalTo([]))
+        assertThat(task.source as List, equalTo(mainSourceSet.scala  as List))
+        assertThat(task, not(dependsOn(JavaPlugin.COMPILE_JAVA_TASK_NAME)))
+
+        task = project.tasks['compileTestScala']
+        task.classpath = project.sourceSets.test.compileClasspath
+
+        def testSourceSet = project.sourceSets.test
+        assertThat(task, instanceOf(ScalaCompile.class))
+        assertThat(task.classpath.files as List, equalTo([
+            mainSourceSet.java.destinationDirectory.get().asFile,
+            mainSourceSet.scala.destinationDirectory.get().asFile,
+            mainSourceSet.output.resourcesDir
+        ]))
+        assertThat(task.source as List, equalTo(testSourceSet.scala as List))
+        assertThat(task, dependsOn(JavaPlugin.CLASSES_TASK_NAME))
+        assertThat(task, not(dependsOn(JavaPlugin.COMPILE_TEST_JAVA_TASK_NAME)))
     }
 
     @Test void dependenciesOfJavaPluginTasksIncludeScalaCompileTasks() {
@@ -102,7 +129,7 @@ class ScalaPluginTest {
         assertThat(task, dependsOn(JavaPlugin.CLASSES_TASK_NAME))
         assertThat(task.destinationDir, equalTo(project.file("$project.docsDir/scaladoc")))
         assertThat(task.source as List, equalTo(project.sourceSets.main.scala as List))
-        assertThat(task.classpath, FileCollectionMatchers.sameCollection(project.files(project.sourceSets.main.output, project.sourceSets.main.compileClasspath)))
+        assertThat(task.classpath, FileCollectionMatchers.sameCollection(project.layout.configurableFiles(project.sourceSets.main.output, project.sourceSets.main.compileClasspath)))
         assertThat(task.title, equalTo(project.extensions.getByType(ReportingExtension).apiDocTitle))
     }
 
@@ -111,6 +138,6 @@ class ScalaPluginTest {
 
         def task = project.task('otherScaladoc', type: ScalaDoc)
         assertThat(task, dependsOn(JavaPlugin.CLASSES_TASK_NAME))
-        assertThat(task.classpath, FileCollectionMatchers.sameCollection(project.files(project.sourceSets.main.output, project.sourceSets.main.compileClasspath)))
+        assertThat(task.classpath, FileCollectionMatchers.sameCollection(project.layout.configurableFiles(project.sourceSets.main.output, project.sourceSets.main.compileClasspath)))
     }
 }

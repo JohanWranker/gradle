@@ -16,7 +16,9 @@
 
 package org.gradle.language.cpp
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.app.CppLib
+import org.gradle.nativeplatform.fixtures.app.SourceElement
 
 class CppSharedLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest {
 
@@ -33,8 +35,8 @@ class CppSharedLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
     }
 
     @Override
-    protected List<String> getTasksToAssembleDevelopmentBinary() {
-        return [":compileDebugCpp", ":linkDebug"]
+    protected List<String> getTasksToAssembleDevelopmentBinary(String variant) {
+        return [":compileDebug${variant.capitalize()}Cpp", ":linkDebug${variant.capitalize()}"]
     }
 
     @Override
@@ -42,6 +44,12 @@ class CppSharedLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
         return ":compileDebugCpp"
     }
 
+    @Override
+    protected SourceElement getComponentUnderTest() {
+        return new CppLib()
+    }
+
+    @ToBeFixedForInstantExecution
     def "can create shared library binary when only shared linkage is specified"() {
         def library = new CppLib()
         buildFile << """

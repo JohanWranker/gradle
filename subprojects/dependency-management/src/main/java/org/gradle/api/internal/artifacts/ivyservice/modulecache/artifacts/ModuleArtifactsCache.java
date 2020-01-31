@@ -18,21 +18,13 @@ package org.gradle.api.internal.artifacts.ivyservice.modulecache.artifacts;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ModuleComponentRepository;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
+import org.gradle.internal.hash.HashCode;
 
-import java.math.BigInteger;
 import java.util.Collection;
-import java.util.Set;
 
 public interface ModuleArtifactsCache {
-    CachedArtifacts cacheArtifacts(ModuleComponentRepository repository, ComponentIdentifier componentId, String context, BigInteger descriptorHash, Collection<? extends ComponentArtifactMetadata> artifacts);
+    CachedArtifacts cacheArtifacts(ModuleComponentRepository repository, ComponentIdentifier componentId, String context, HashCode descriptorHash, Collection<? extends ComponentArtifactMetadata> artifacts);
 
     CachedArtifacts getCachedArtifacts(ModuleComponentRepository delegate, ComponentIdentifier componentId, String context);
 
-    interface CachedArtifacts {
-        Set<ComponentArtifactMetadata> getArtifacts();
-
-        BigInteger getDescriptorHash();
-
-        long getAgeMillis();
-    }
 }

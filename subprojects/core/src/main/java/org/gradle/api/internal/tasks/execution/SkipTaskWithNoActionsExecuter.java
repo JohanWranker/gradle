@@ -19,17 +19,18 @@ import org.gradle.api.Task;
 import org.gradle.api.execution.TaskExecutionGraph;
 import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.tasks.TaskExecuter;
+import org.gradle.api.internal.tasks.TaskExecuterResult;
 import org.gradle.api.internal.tasks.TaskExecutionContext;
 import org.gradle.api.internal.tasks.TaskExecutionOutcome;
 import org.gradle.api.internal.tasks.TaskStateInternal;
-import org.gradle.api.logging.Logger;
-import org.gradle.api.logging.Logging;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A {@link org.gradle.api.internal.tasks.TaskExecuter} which skips tasks that have no actions.
  */
 public class SkipTaskWithNoActionsExecuter implements TaskExecuter {
-    private static final Logger LOGGER = Logging.getLogger(SkipTaskWithNoActionsExecuter.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(SkipTaskWithNoActionsExecuter.class);
     private final TaskExecutionGraph taskExecutionGraph;
     private final TaskExecuter executer;
 
@@ -38,24 +39,21 @@ public class SkipTaskWithNoActionsExecuter implements TaskExecuter {
         this.executer = executer;
     }
 
-    public void execute(TaskInternal task, TaskStateInternal state, TaskExecutionContext context) {
-        if (task.getTaskActions().isEmpty()) {
+    @Override
+    public TaskExecuterResult execute(TaskInternal task, TaskStateInternal state, TaskExecutionContext context) {
+        if (!task.hasTaskActions()) {
             LOGGER.info("Skipping {} as it has no actions.", task);
             boolean upToDate = true;
-            // FIXME: When TaskInternal.execute is removed, the task has to be part of the task graph when it is executed.
-            // Then we can remove this check.
-            if (taskExecutionGraph.hasTask(task)) {
-                for (Task dependency : taskExecutionGraph.getDependencies(task)) {
-                    if (!dependency.getState().getSkipped()) {
-                        upToDate = false;
-                        break;
-                    }
+            for (Task dependency : taskExecutionGraph.getDependencies(task)) {
+                if (!dependency.getState().getSkipped()) {
+                    upToDate = false;
+                    break;
                 }
             }
             state.setActionable(false);
             state.setOutcome(upToDate ? TaskExecutionOutcome.UP_TO_DATE : TaskExecutionOutcome.EXECUTED);
-            return;
+            return TaskExecuterResult.WITHOUT_OUTPUTS;
         }
-        executer.execute(task, state, context);
+        return executer.execute(task, state, context);
     }
 }

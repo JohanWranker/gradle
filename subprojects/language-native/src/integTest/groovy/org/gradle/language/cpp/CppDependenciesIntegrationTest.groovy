@@ -16,13 +16,20 @@
 
 package org.gradle.language.cpp
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraries
-import org.gradle.vcs.internal.spec.DirectoryRepositorySpec
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.vcs.fixtures.GitFileRepository
+import org.gradle.vcs.git.GitVersionControlSpec
+import org.junit.Rule
 
 class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
     def app = new CppAppWithLibraries()
+    @Rule
+    GitFileRepository repo = new GitFileRepository(testDirectory)
 
+    @ToBeFixedForInstantExecution
     def "can combine C++ builds in a composite"() {
         given:
         settingsFile << """
@@ -50,19 +57,19 @@ class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrati
 
     // NOTE: This method is named in a short way because of the maximum path length
     // on Windows.
+    @ToBeFixedForInstantExecution
     def "from VCS"() {
         given:
         settingsFile << """
-            import ${DirectoryRepositorySpec.canonicalName}
-
             include 'app'
 
             sourceControl {
                 vcsMappings {
                     all { details ->
                         if (details.requested.group == "org.gradle.cpp") {
-                            from(DirectoryRepositorySpec) {
-                                sourceDir = file(details.requested.module)
+                            from(${GitVersionControlSpec.name}) {
+                                url = uri("${repo.url}")
+                                rootDir = details.requested.module
                             }
                         }
                     }
@@ -71,8 +78,9 @@ class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrati
         """
 
         writeApp()
-        writeHelloLibrary()
-        writeLogLibrary()
+        writeHelloLibrary(repo.workTree)
+        writeLogLibrary(repo.workTree)
+        repo.commit('first')
 
         when:
         succeeds ":app:installDebug"
@@ -112,8 +120,8 @@ class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrati
         """
     }
 
-    private writeHelloLibrary() {
-        def libraryPath = file("hello")
+    private writeHelloLibrary(TestFile dir = testDirectory) {
+        def libraryPath = dir.file("hello")
         app.greeterLib.writeToProject(libraryPath)
         libraryPath.file("build.gradle") << """
             apply plugin: 'cpp-library'
@@ -124,17 +132,15 @@ class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrati
                 api 'org.gradle.cpp:log:latest.integration'
             }
         """
-        libraryPath.file("settings.gradle").touch()
     }
 
-    private writeLogLibrary() {
-        def logPath = file("log")
+    private writeLogLibrary(TestFile dir = testDirectory) {
+        def logPath = dir.file("log")
         app.loggerLib.writeToProject(logPath)
         logPath.file("build.gradle") << """
             apply plugin: 'cpp-library'
             group = 'org.gradle.cpp'
             version = '1.0'
         """
-        logPath.file("settings.gradle").touch()
     }
 }

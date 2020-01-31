@@ -16,21 +16,34 @@
 
 package org.gradle.workers.internal
 
-import spock.lang.Timeout
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.ProcessFixture
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
+import org.gradle.test.fixtures.ConcurrentTestUtil
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
+import org.gradle.workers.fixtures.WorkerExecutorFixture
 
-@Timeout(60)
+@IntegrationTestTimeout(180)
 class WorkerDaemonLifecycleTest extends AbstractDaemonWorkerExecutorIntegrationSpec {
     String logSnapshot = ""
 
     def "worker daemons are reused across builds"() {
-        withRunnableClassInBuildScript()
+        fixture.withWorkActionClassInBuildScript()
         buildFile << """
+            import org.gradle.workers.internal.WorkerDaemonFactory
+            
             task runInWorker1(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
             }
             
             task runInWorker2(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
+                doFirst {
+                    def all = services.get(WorkerDaemonFactory.class).clientsManager.allClients.size()
+                    def idle = services.get(WorkerDaemonFactory.class).clientsManager.idleClients.size()
+                    println "Existing worker daemons: \${idle} idle out of \${all} total"
+                }
             }
         """
 
@@ -45,7 +58,7 @@ class WorkerDaemonLifecycleTest extends AbstractDaemonWorkerExecutorIntegrationS
     }
 
     def "worker daemons can be restarted when daemon is stopped"() {
-        withRunnableClassInBuildScript()
+        fixture.withWorkActionClassInBuildScript()
         buildFile << """
             task runInWorker1(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
@@ -70,7 +83,7 @@ class WorkerDaemonLifecycleTest extends AbstractDaemonWorkerExecutorIntegrationS
     }
 
     def "worker daemons are stopped when daemon is stopped"() {
-        withRunnableClassInBuildScript()
+        fixture.withWorkActionClassInBuildScript()
         buildFile << """
             task runInWorker(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
@@ -93,7 +106,7 @@ class WorkerDaemonLifecycleTest extends AbstractDaemonWorkerExecutorIntegrationS
     }
 
     def "worker daemons are stopped and not reused when log level is changed"() {
-        withRunnableClassInBuildScript()
+        fixture.withWorkActionClassInBuildScript()
         buildFile << """
             task runInWorker1(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
@@ -122,8 +135,9 @@ class WorkerDaemonLifecycleTest extends AbstractDaemonWorkerExecutorIntegrationS
         assertDifferentDaemonsWereUsed("runInWorker1", "runInWorker2")
     }
 
+    @ToBeFixedForInstantExecution
     def "worker daemons are not reused when classpath changes"() {
-        withRunnableClassInBuildScript()
+        fixture.withWorkActionClassInBuildScript()
         buildFile << """
             task runInWorker1(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
@@ -158,8 +172,38 @@ class WorkerDaemonLifecycleTest extends AbstractDaemonWorkerExecutorIntegrationS
         assertDifferentDaemonsWereUsed("runInWorker1", "runInWorker2")
     }
 
+    @ToBeFixedForInstantExecution
+    def "worker daemons are not reused when they fail unexpectedly"() {
+        workerExecutorThatCanFailUnexpectedly.writeToBuildFile()
+        buildFile << """
+            task runInWorker1(type: WorkerTask) {
+                isolationMode = IsolationMode.PROCESS
+            }
+            
+            task runInWorker2(type: WorkerTask) {
+                // This will cause the worker process to fail with exit code 127
+                list = runInWorker1.list + ["poisonPill"]
+
+                isolationMode = IsolationMode.PROCESS
+            }
+        """
+
+        when:
+        succeeds "runInWorker1"
+
+        and:
+        executer.withStackTraceChecksDisabled()
+        fails "runInWorker2"
+
+        then:
+        assertSameDaemonWasUsed("runInWorker1", "runInWorker2")
+
+        then:
+        succeeds "runInWorker1"
+    }
+
     def "only compiler daemons are stopped with the build session"() {
-        withRunnableClassInBuildScript()
+        fixture.withWorkActionClassInBuildScript()
         file('src/main/java').createDir()
         file('src/main/java/Test.java') << "public class Test {}"
         buildFile << """
@@ -191,11 +235,55 @@ class WorkerDaemonLifecycleTest extends AbstractDaemonWorkerExecutorIntegrationS
         sinceSnapshot().contains("Stopped 1 worker daemon(s).")
     }
 
+    @Requires(TestPrecondition.UNIX)
+    def "worker daemons exit when the parent build daemon is killed"() {
+        fixture.withWorkActionClassInBuildScript()
+        buildFile << """
+            task runInWorker(type: WorkerTask) {
+                isolationMode = IsolationMode.PROCESS
+            }
+        """
+
+        when:
+        succeeds "runInWorker"
+
+        and:
+        def daemonProcess = new ProcessFixture(daemons.daemon.context.pid)
+        def children = daemonProcess.getChildProcesses()
+        // Sends a kill -9 to the daemon process only
+        daemons.daemon.killDaemonOnly()
+
+        then:
+        ConcurrentTestUtil.poll {
+            def info = daemonProcess.getProcessInfo(children)
+            // There is a header line in the process info
+            if (info.size() > 1) {
+                throw new IllegalStateException("Not all child processes have expired for daemon (pid ${daemons.daemon.context.pid}):\n" + info.join("\n"))
+            }
+        }
+
+        cleanup:
+        // In the event this fails, clean up any orphaned children
+        children.each { child ->
+            new ProcessFixture(child as Long).kill(true)
+        }
+    }
+
     void newSnapshot() {
         logSnapshot = daemons.daemon.log
     }
 
     String sinceSnapshot() {
         return daemons.daemon.log - logSnapshot
+    }
+
+    WorkerExecutorFixture.WorkActionClass getWorkerExecutorThatCanFailUnexpectedly() {
+        def executionClass = fixture.workActionThatCreatesFiles
+        executionClass.action += """
+            if (getParameters().getFiles().contains("poisonPill")) {
+                System.exit(127);
+            }
+        """
+        return executionClass
     }
 }

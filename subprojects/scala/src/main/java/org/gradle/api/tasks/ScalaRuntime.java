@@ -15,14 +15,16 @@
  */
 package org.gradle.api.tasks;
 
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
 import org.gradle.api.Buildable;
 import org.gradle.api.GradleException;
-import org.gradle.api.Incubating;
 import org.gradle.api.Project;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.artifacts.dependencies.DefaultExternalModuleDependency;
 import org.gradle.api.internal.file.collections.LazilyInitializedFileCollection;
 import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
+import org.gradle.language.scala.internal.toolchain.DefaultScalaToolProvider;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -43,7 +45,7 @@ import java.util.regex.Pattern;
  *     }
  *
  *     dependencies {
- *         compile "org.scala-lang:scala-library:2.10.1"
+ *         implementation "org.scala-lang:scala-library:2.10.1"
  *     }
  *
  *     def scalaClasspath = scalaRuntime.inferScalaClasspath(configurations.compile)
@@ -51,7 +53,6 @@ import java.util.regex.Pattern;
  *     // such as 'ScalaCompile' or 'ScalaDoc', or to execute these and other Scala tools directly.
  * </pre>
  */
-@Incubating
 public class ScalaRuntime {
     private static final Pattern SCALA_JAR_PATTERN = Pattern.compile("scala-(\\w.*?)-(\\d.*).jar");
 
@@ -71,7 +72,7 @@ public class ScalaRuntime {
      * @return a class path containing a corresponding 'scala-compiler' Jar and its dependencies
      */
     public FileCollection inferScalaClasspath(final Iterable<File> classpath) {
-        // alternatively, we could return project.files(Runnable)
+        // alternatively, we could return project.getLayout().files(Runnable)
         // would differ in the following ways: 1. live (not sure if we want live here) 2. no autowiring (probably want autowiring here)
         return new LazilyInitializedFileCollection() {
             @Override
@@ -96,7 +97,17 @@ public class ScalaRuntime {
                     throw new AssertionError(String.format("Unexpectedly failed to parse version of Scala Jar file: %s in %s", scalaLibraryJar, project));
                 }
 
-                return project.getConfigurations().detachedConfiguration(new DefaultExternalModuleDependency("org.scala-lang", "scala-compiler", scalaVersion));
+                String scalaMajorMinorVersion = Joiner.on('.').join(Splitter.on('.').splitToList(scalaVersion).subList(0, 2));
+                DefaultExternalModuleDependency compilerBridgeJar = new DefaultExternalModuleDependency("org.scala-sbt", "compiler-bridge_" + scalaMajorMinorVersion, DefaultScalaToolProvider.DEFAULT_ZINC_VERSION);
+                compilerBridgeJar.setTransitive(false);
+                compilerBridgeJar.artifact(artifact -> {
+                    artifact.setClassifier("sources");
+                    artifact.setType("jar");
+                    artifact.setExtension("jar");
+                    artifact.setName(compilerBridgeJar.getName());
+                });
+                DefaultExternalModuleDependency compilerInterfaceJar = new DefaultExternalModuleDependency("org.scala-sbt", "compiler-interface", DefaultScalaToolProvider.DEFAULT_ZINC_VERSION);
+                return project.getConfigurations().detachedConfiguration(new DefaultExternalModuleDependency("org.scala-lang", "scala-compiler", scalaVersion), compilerBridgeJar, compilerInterfaceJar);
             }
 
             // let's override this so that delegate isn't created at autowiring time (which would mean on every build)

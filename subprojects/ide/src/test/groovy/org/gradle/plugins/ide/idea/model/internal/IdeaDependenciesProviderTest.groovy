@@ -17,27 +17,26 @@
 package org.gradle.plugins.ide.idea.model.internal
 
 import org.gradle.api.artifacts.Configuration
-import org.gradle.api.internal.artifacts.component.DefaultBuildIdentifier
-import org.gradle.api.internal.artifacts.ivyservice.projectmodule.LocalComponentRegistry
-import org.gradle.api.internal.project.ProjectInternal
-import org.gradle.composite.internal.IncludedBuildTaskGraph
-import org.gradle.initialization.BuildIdentity
-import org.gradle.initialization.DefaultBuildIdentity
-import org.gradle.internal.service.DefaultServiceRegistry
+import org.gradle.api.internal.project.ProjectStateRegistry
 import org.gradle.plugins.ide.idea.IdeaPlugin
 import org.gradle.plugins.ide.idea.model.Dependency
 import org.gradle.plugins.ide.idea.model.SingleEntryModuleLibrary
+import org.gradle.plugins.ide.internal.IdeArtifactRegistry
+import org.gradle.plugins.ide.internal.resolver.NullGradleApiSourcesResolver
 import org.gradle.test.fixtures.AbstractProjectBuilderSpec
 import org.gradle.util.TestUtil
 
 class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
-    private final ProjectInternal project = TestUtil.createRootProject(temporaryFolder.testDirectory)
-    private final ProjectInternal childProject = TestUtil.createChildProject(project, "child", new File("."))
-    def serviceRegistry = new DefaultServiceRegistry()
-        .add(LocalComponentRegistry, Stub(LocalComponentRegistry))
-        .add(IncludedBuildTaskGraph, Stub(IncludedBuildTaskGraph))
-        .add(BuildIdentity, new DefaultBuildIdentity(new DefaultBuildIdentifier("foo")))
-    private final dependenciesProvider = new IdeaDependenciesProvider(serviceRegistry)
+    private final project = TestUtil.createRootProject(temporaryFolder.testDirectory)
+    private final childProject = TestUtil.createChildProject(project, "child", new File("."))
+    private final artifactRegistry = Stub(IdeArtifactRegistry)
+    private final dependenciesProvider = new IdeaDependenciesProvider(project, artifactRegistry, project.services.get(ProjectStateRegistry), NullGradleApiSourcesResolver.INSTANCE)
+
+    def setup() {
+        _ * artifactRegistry.getIdeProject(_, _) >> { Class c, def m ->
+            return Stub(c)
+        }
+    }
 
     def "no dependencies test"() {
         applyPluginToProjects()
@@ -61,8 +60,8 @@ class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
         module.offline = true
 
         when:
-        project.dependencies.add('compile', project.files('lib/guava.jar'))
-        project.dependencies.add('testCompile', project.files('lib/mockito.jar'))
+        project.dependencies.add('compile', project.layout.files('lib/guava.jar'))
+        project.dependencies.add('testCompile', project.layout.files('lib/mockito.jar'))
         def result = dependenciesProvider.provide(module)
 
         then:
@@ -80,8 +79,8 @@ class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
         module.offline = true
 
         when:
-        project.dependencies.add('testRuntime', project.files('lib/guava.jar'))
-        project.dependencies.add('excluded', project.files('lib/guava.jar'))
+        project.dependencies.add('testRuntime', project.layout.files('lib/guava.jar'))
+        project.dependencies.add('excluded', project.layout.files('lib/guava.jar'))
         module.scopes.TEST.minus << project.configurations.getByName('excluded')
         def result = dependenciesProvider.provide(module)
 
@@ -99,10 +98,10 @@ class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
         module.offline = true
 
         when:
-        project.dependencies.add('testRuntime', project.files('lib/guava.jar'))
-        project.dependencies.add('testRuntime', project.files('lib/slf4j-api.jar'))
-        project.dependencies.add('excluded1', project.files('lib/guava.jar'))
-        project.dependencies.add('excluded2', project.files('lib/slf4j-api.jar'))
+        project.dependencies.add('testRuntime', project.layout.files('lib/guava.jar'))
+        project.dependencies.add('testRuntime', project.layout.files('lib/slf4j-api.jar'))
+        project.dependencies.add('excluded1', project.layout.files('lib/guava.jar'))
+        project.dependencies.add('excluded2', project.layout.files('lib/slf4j-api.jar'))
         module.scopes.TEST.minus << project.configurations.getByName('excluded1')
         module.scopes.TEST.minus << project.configurations.getByName('excluded2')
         def result = dependenciesProvider.provide(module)
@@ -116,7 +115,7 @@ class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
         project.apply(plugin: 'java')
 
         def module = project.ideaModule.module
-        def extraDependency = project.dependencies.create(project.files('lib/guava.jar'))
+        def extraDependency = project.dependencies.create(project.layout.files('lib/guava.jar'))
         def detachedCfg = project.configurations.detachedConfiguration(extraDependency)
         module.offline = true
 
@@ -170,8 +169,8 @@ class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
         module.offline = true
 
         when:
-        project.dependencies.add('testCompile', project.files('lib/foo-impl.jar'))
-        project.dependencies.add('runtime', project.files('lib/foo-impl.jar'))
+        project.dependencies.add('testCompile', project.layout.files('lib/foo-impl.jar'))
+        project.dependencies.add('runtime', project.layout.files('lib/foo-impl.jar'))
         def result = dependenciesProvider.provide(module)
 
         then:
@@ -188,8 +187,8 @@ class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
         module.offline = true
 
         when:
-        project.dependencies.add('compileOnly', project.files('lib/foo-api.jar'))
-        project.dependencies.add('testRuntime', project.files('lib/foo-impl.jar'))
+        project.dependencies.add('compileOnly', project.layout.files('lib/foo-api.jar'))
+        project.dependencies.add('testRuntime', project.layout.files('lib/foo-impl.jar'))
         def result = dependenciesProvider.provide(module)
 
         then:
@@ -206,10 +205,10 @@ class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
         module.offline = true
 
         when:
-        project.dependencies.add('compileOnly', project.files('lib/foo-runtime.jar'))
-        project.dependencies.add('compileOnly', project.files('lib/foo-testRuntime.jar'))
-        project.dependencies.add('runtime', project.files('lib/foo-runtime.jar'))
-        project.dependencies.add('testRuntime', project.files('lib/foo-testRuntime.jar'))
+        project.dependencies.add('compileOnly', project.layout.files('lib/foo-runtime.jar'))
+        project.dependencies.add('compileOnly', project.layout.files('lib/foo-testRuntime.jar'))
+        project.dependencies.add('runtime', project.layout.files('lib/foo-runtime.jar'))
+        project.dependencies.add('testRuntime', project.layout.files('lib/foo-testRuntime.jar'))
         def result = dependenciesProvider.provide(module)
 
         then:
@@ -222,13 +221,12 @@ class IdeaDependenciesProviderTest extends AbstractProjectBuilderSpec {
         applyPluginToProjects()
         project.apply(plugin: 'java')
 
-        def dependenciesProvider = new IdeaDependenciesProvider(serviceRegistry)
         def module = project.ideaModule.module // Mock(IdeaModule)
         module.offline = true
         def extraConfiguration = project.configurations.create('extraConfiguration')
 
         when:
-        project.dependencies.add('testCompile', project.files('lib/mockito.jar'))
+        project.dependencies.add('testCompile', project.layout.files('lib/mockito.jar'))
         def result = dependenciesProvider.provide(module)
 
         then:

@@ -17,21 +17,17 @@ package org.gradle.util
 
 import org.gradle.api.Action
 import org.gradle.internal.concurrent.ExecutorFactory
-import org.jmock.integration.junit4.JMock
 import org.junit.Test
-import org.junit.runner.RunWith
 
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-import static org.hamcrest.Matchers.equalTo
-import static org.hamcrest.Matchers.greaterThan
+import static org.hamcrest.CoreMatchers.equalTo
 import static org.junit.Assert.assertThat
+import static org.junit.Assert.assertTrue
 
-@RunWith(JMock)
 class DisconnectableInputStreamTest extends MultithreadedTestRule {
-    final JUnit4GroovyMockery context = new JUnit4GroovyMockery()
 
     Action<Runnable> toActionExecuter(ExecutorFactory factory) {
         new Action<Runnable>() {
@@ -42,7 +38,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void inputStreamReadsFromSourceInputStream() {
+    void inputStreamReadsFromSourceInputStream() {
         def instr = new DisconnectableInputStream(stream("some text"), toActionExecuter(executorFactory))
 
         assertReads(instr, "some text")
@@ -54,7 +50,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void buffersDataReadFromSourceInputStream() {
+    void buffersDataReadFromSourceInputStream() {
         def instr = new DisconnectableInputStream(stream("test1test2end"), toActionExecuter(executorFactory))
 
         assertReads(instr, "test1")
@@ -68,7 +64,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void canReadSingleChars() {
+    void canReadSingleChars() {
         def instr = new DisconnectableInputStream(stream("abc"), toActionExecuter(executorFactory))
 
         assertThat((char) instr.read(), equalTo('a'.charAt(0)))
@@ -80,7 +76,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void canReadUsingZeroLengthBuffer() {
+    void canReadUsingZeroLengthBuffer() {
         def instr = new DisconnectableInputStream(stream("abc"), toActionExecuter(executorFactory))
 
         assertThat(instr.read(new byte[0], 0, 0), equalTo(0))
@@ -91,7 +87,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void canFillAndEmptyBufferInChunks() {
+    void canFillAndEmptyBufferInChunks() {
         def source = stream()
         source.onRead { buffer, pos, count ->
             System.arraycopy('aaaaaa'.bytes, 0, buffer, pos, 6)
@@ -126,7 +122,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void readBlocksUntilDataIsAvailable() {
+    void readBlocksUntilDataIsAvailable() {
 
         def source = stream()
         source.onRead { buffer, pos, count ->
@@ -147,7 +143,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void readBlocksUntilInputStreamIsClosed() {
+    void readBlocksUntilInputStreamIsClosed() {
         clockTick(1).hasParticipants(3)
         clockTick(2).hasParticipants(3)
 
@@ -176,7 +172,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void readBlocksUntilEndOfInputReached() {
+    void readBlocksUntilEndOfInputReached() {
         def source = stream()
         source.onRead { buffer, pos, count ->
             syncAt(1)
@@ -196,7 +192,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void readerBlocksUntilReaderReceivesReadException() {
+    void readerBlocksUntilReaderReceivesReadException() {
         IOException failure = new IOException("failed")
 
         def source = stream()
@@ -213,7 +209,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void readerThreadBlocksWhenBufferFull() {
+    void readerThreadBlocksWhenBufferFull() {
         def source = stream()
         source.onRead { buffer, pos, count ->
             System.arraycopy('abcdefghij'.bytes, 0, buffer, pos, 10)
@@ -238,7 +234,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void readerThreadStopsReadingAfterClose() {
+    void readerThreadStopsReadingAfterClose() {
         def source = stream()
         source.onRead { buffer, pos, count ->
             return count
@@ -252,7 +248,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
     }
 
     @Test
-    public void cannotReadFromInputStreamAfterItIsClosed() {
+    void cannotReadFromInputStreamAfterItIsClosed() {
         def instr = new DisconnectableInputStream(stream("some text"), toActionExecuter(executorFactory))
         instr.close()
 
@@ -282,7 +278,7 @@ class DisconnectableInputStreamTest extends MultithreadedTestRule {
         def remaining = expectedBytes.length
         while (remaining > 0) {
             def nread = instr.read(buffer, expectedBytes.length - remaining, remaining)
-            assertThat(nread, greaterThan(0))
+            assertTrue(nread > 0)
             remaining -= nread
         }
         assertThat(new String(buffer), equalTo(expected))

@@ -21,6 +21,7 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import static org.gradle.integtests.fixtures.executer.TaskOrderSpecs.any
 
 class TaskFilePropertiesIntegrationTest extends AbstractIntegrationSpec {
+
     def "task can use Path to represent input and output locations on annotated properties"() {
         buildFile << """
             import java.nio.file.Path
@@ -38,8 +39,8 @@ class TaskFilePropertiesIntegrationTest extends AbstractIntegrationSpec {
                 
                 @TaskAction
                 def go() {
-                    outputFile.text = inputFile.text
-                    inputDir.toFile().listFiles().each { f -> outputDir.resolve(f.name).text = f.text }
+                    outputFile.toFile().text = inputFile.toFile().text
+                    inputDir.toFile().listFiles().each { f -> outputDir.resolve(f.name).toFile().text = f.text }
                 }
             }
             
@@ -104,8 +105,8 @@ class TaskFilePropertiesIntegrationTest extends AbstractIntegrationSpec {
                 doLast {
                     Files.createDirectories(outputFile.parent)
                     Files.createDirectories(outputDir)
-                    outputFile.text = inputFile.text
-                    inputDir.toFile().listFiles().each { f -> outputDir.resolve(f.name).text = f.text }
+                    outputFile.toFile().text = inputFile.toFile().text
+                    inputDir.toFile().listFiles().each { f -> outputDir.resolve(f.name).toFile().text = f.text }
                 }
             }
 """
@@ -171,7 +172,7 @@ task jar {
 }
 
 task otherJar(type: Jar) {
-    destinationDir = buildDir
+    destinationDirectory = buildDir
 }
 
 configurations { archives }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 the original author or authors.
+ * Copyright 2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,35 +16,22 @@
 
 package org.gradle.api.provider;
 
+import org.gradle.api.Action;
 import org.gradle.api.Incubating;
-import org.gradle.api.Project;
+import org.gradle.api.file.FileContents;
+import org.gradle.api.file.RegularFile;
 
 import java.util.concurrent.Callable;
 
 /**
- * A factory for creating instances of {@code Provider} and {@code PropertyState}.
+ * A factory for creating instances of {@link Provider}.
+ *
  * <p>
- * An instance of the factory can be injected into a task or plugin by annotating a public constructor or method with {@code javax.inject.Inject}.
- *
- * <pre class='autoTested'>
- * public class MyTask extends DefaultTask {
- *   // injection into a constructor
- *   {@literal @}javax.inject.Inject
- *   public MyTask(ProviderFactory providerFactory) { }
- *
- *   // injection into a method
- *   {@literal @}javax.inject.Inject
- *   public ProviderFactory getProviderFactory() {
- *     throw new UnsupportedOperationException();
- *   }
- * }
- * </pre>
- *
- * <p>An instance of the factory is also available using {@link Project#getProviders()}</p>
+ * An instance of the factory can be injected into a task, plugin or other object by annotating a public constructor or property getter method with {@code javax.inject.Inject}.
+ * It is also available via {@link org.gradle.api.Project#getProviders()}.
  *
  * @since 4.0
  */
-@Incubating
 public interface ProviderFactory {
 
     /**
@@ -58,17 +45,111 @@ public interface ProviderFactory {
     <T> Provider<T> provider(Callable<? extends T> value);
 
     /**
-     * Creates a {@link PropertyState} implementation to hold values of the given type.
+     * Creates a {@link Provider} whose value is fetched from the environment variable with the given name.
      *
-     * <p>The property will have a value equal to the default value of that type as defined by the Java language specification.
-     * Please see <a href="https://docs.oracle.com/javase/tutorial/java/nutsandbolts/datatypes.html">Oracle's Java manual</a> for more information.
-     * <p>
-     * Any other data type than the standard Java data types returns a property with no value defined.
-     *
-     * @param valueType The type of the property.
-     * @return The property. Never returns null.
-     * @deprecated Use {@link org.gradle.api.model.ObjectFactory#property(Class)} instead.
+     * @param variableName The name of the environment variable.
+     * @return The provider. Never returns null.
+     * @since 6.1
      */
-    @Deprecated
-    <T> PropertyState<T> property(Class<T> valueType);
+    @Incubating
+    Provider<String> environmentVariable(String variableName);
+
+    /**
+     * Creates a {@link Provider} whose value is fetched from the environment variable with the given name.
+     *
+     * @param variableName The provider for the name of the environment variable; when the given provider has no value, the returned provider has no value.
+     * @return The provider. Never returns null.
+     * @since 6.1
+     */
+    @Incubating
+    Provider<String> environmentVariable(Provider<String> variableName);
+
+    /**
+     * Creates a {@link Provider} whose value is fetched from system properties using the given property name.
+     *
+     * @param propertyName the name of the system property
+     * @return the provider for the system property, never returns null
+     * @since 6.1
+     */
+    @Incubating
+    Provider<String> systemProperty(String propertyName);
+
+    /**
+     * Creates a {@link Provider} whose value is fetched from system properties using the given property name.
+     *
+     * @param propertyName the name of the system property
+     * @return the provider for the system property, never returns null
+     * @since 6.1
+     */
+    @Incubating
+    Provider<String> systemProperty(Provider<String> propertyName);
+
+    /**
+     * Creates a {@link Provider} whose value is fetched from the Gradle property of the given name.
+     *
+     * @param propertyName the name of the Gradle property
+     * @return the provider for the Gradle property, never returns null
+     * @since 6.2
+     */
+    @Incubating
+    Provider<String> gradleProperty(String propertyName);
+
+    /**
+     * Creates a {@link Provider} whose value is fetched from the Gradle property of the given name.
+     *
+     * @param propertyName the name of the Gradle property
+     * @return the provider for the Gradle property, never returns null
+     * @since 6.2
+     */
+    @Incubating
+    Provider<String> gradleProperty(Provider<String> propertyName);
+
+    /**
+     * Allows lazy access to the contents of the given file.
+     *
+     * When the file contents are read at configuration time the file is automatically considered
+     * as an input to the configuration model.
+     *
+     * @param file the file whose contents to read.
+     * @return an interface that allows lazy access to the contents of the given file.
+     *
+     * @see FileContents#getAsText()
+     * @see FileContents#getAsBytes()
+     *
+     * @since 6.1
+     */
+    @Incubating
+    FileContents fileContents(RegularFile file);
+
+    /**
+     * Allows lazy access to the contents of the given file.
+     *
+     * When the file contents are read at configuration time the file is automatically considered
+     * as an input to the configuration model.
+     *
+     * @param file provider of the file whose contents to read.
+     * @return an interface that allows lazy access to the contents of the given file.
+     *
+     * @see FileContents#getAsText()
+     * @see FileContents#getAsBytes()
+     *
+     * @since 6.1
+     */
+    @Incubating
+    FileContents fileContents(Provider<RegularFile> file);
+
+    /**
+     * Creates a {@link Provider} whose value is obtained from the given {@link ValueSource}.
+     *
+     * @param valueSourceType the type of the {@link ValueSource}
+     * @param configuration action to configure the parameters to the given {@link ValueSource}
+     * @return the provider, never returns null
+     * @since 6.1
+     */
+    @Incubating
+    <T, P extends ValueSourceParameters>
+    Provider<T> of(
+        Class<? extends ValueSource<T, P>> valueSourceType,
+        Action<? super ValueSourceSpec<P>> configuration
+    );
 }

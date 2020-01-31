@@ -16,17 +16,13 @@
 package org.gradle.integtests.resolve
 
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
-import org.gradle.integtests.fixtures.FeaturePreviewsFixture
-import spock.lang.Unroll
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class ClientModuleDependenciesResolveIntegrationTest extends AbstractHttpDependencyResolutionTest {
 
-    @Unroll
-    def "uses metadata from Client Module and looks up artifact in declared repositories (advancedPomSupport = #advancedPomSupport)"() {
+    @ToBeFixedForInstantExecution
+    def "uses metadata from Client Module and looks up artifact in declared repositories"() {
         given:
-        if (advancedPomSupport) {
-            FeaturePreviewsFixture.enableAdvancedPomSupport(propertiesFile)
-        }
         def repo1 = ivyHttpRepo("repo1")
         def repo2 = mavenHttpRepo("repo2")
         def projectAInRepo1 = repo1.module('group', 'projectA', '1.2')
@@ -56,7 +52,6 @@ task listJars {
         projectB.ivy.expectGet()
         projectB.jar.expectGet()
         projectAInRepo1.ivy.expectGetMissing()
-        projectAInRepo1.jar.expectHeadMissing()
         projectAInRepo2.pom.expectGet()
         projectAInRepo2.artifact.expectGet()
 
@@ -69,16 +64,11 @@ task listJars {
         then:
         succeeds('listJars')
 
-        where:
-        advancedPomSupport << [false, true]
     }
 
-    @Unroll
-    def "can resolve nested Client Module (advancedPomSupport = #advancedPomSupport)"() {
+    @ToBeFixedForInstantExecution
+    def "can resolve nested Client Module"() {
         given:
-        if (advancedPomSupport) {
-            FeaturePreviewsFixture.enableAdvancedPomSupport(propertiesFile)
-        }
         def repo = mavenHttpRepo("repo")
         def projectA = repo.module('test', 'projectA', '1.2').publish()
         def projectB = repo.module('test', 'projectB', '1.5').publish()
@@ -120,17 +110,11 @@ task listJars {
 
         then:
         succeeds('listJars')
-
-        where:
-        advancedPomSupport << [false, true]
     }
 
-    @Unroll
-    def "client module dependency ignores published artifact listing and resolves single jar file (advancedPomSupport = #advancedPomSupport)"() {
+    @ToBeFixedForInstantExecution
+    def "client module dependency ignores published artifact listing and resolves single jar file"() {
         given:
-        if (advancedPomSupport) {
-            FeaturePreviewsFixture.enableAdvancedPomSupport(propertiesFile)
-        }
         def projectA = ivyHttpRepo.module('group', 'projectA', '1.2')
                 .artifact()
                 .artifact(classifier: "extra")
@@ -179,8 +163,5 @@ task listClientModuleJars {
 
         then:
         succeeds('listClientModuleJars')
-
-        where:
-        advancedPomSupport << [false, true]
     }
 }

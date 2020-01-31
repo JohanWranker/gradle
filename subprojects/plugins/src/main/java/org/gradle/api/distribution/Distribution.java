@@ -20,16 +20,18 @@ import org.gradle.api.Action;
 import org.gradle.api.Incubating;
 import org.gradle.api.Named;
 import org.gradle.api.file.CopySpec;
+import org.gradle.api.model.ReplacedBy;
+import org.gradle.api.provider.Property;
 
 /**
- * A distribution allow to bundle an application or a library including dependencies,sources...
+ * A distribution allows to bundle an application or a library including dependencies, sources...
  */
-@Incubating
 public interface Distribution extends Named {
 
     /**
      * The name of this distribution.
      */
+    @Override
     String getName();
 
     /**
@@ -37,15 +39,34 @@ public interface Distribution extends Named {
      * <p>
      * If the {@link #getName()} of this distribution is "{@code main}" this defaults to the project's name.
      * Otherwise it is "{@code $project.name-$this.name}".
+     * </p>
+     *
+     * @deprecated Use #getDistributionBaseName()
      */
+    @Deprecated
+    @ReplacedBy("distributionBaseName")
     String getBaseName();
 
     /**
      * The baseName of the distribution.
      * <p>
      * Set to change the name of the distribution archives.
+     *
+     * @deprecated Use #getDistributionBaseName()
      */
+    @Deprecated
     void setBaseName(String baseName);
+
+    /**
+     * The baseName of the distribution, used in naming the distribution archives.
+     * <p>
+     * If the {@link #getName()} of this distribution is "{@code main}" this defaults to the project's name.
+     * Otherwise it is "{@code $project.name-$this.name}".
+     *
+     * @since 6.0
+     */
+    @Incubating
+    Property<String> getDistributionBaseName();
 
     /**
      * The contents of the distribution.

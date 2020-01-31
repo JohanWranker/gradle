@@ -16,16 +16,21 @@
 
 package org.gradle.play.integtest.samples
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.AbstractSampleIntegrationTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.integtests.fixtures.executer.GradleHandle
 import org.gradle.play.integtest.fixtures.RunningPlayApp
 import org.gradle.test.fixtures.ConcurrentTestUtil
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 import spock.lang.IgnoreIf
 
 import static org.gradle.integtests.fixtures.UrlValidator.*
+import static org.gradle.play.integtest.fixtures.PlayMultiVersionRunApplicationIntegrationTest.*
 
-abstract class AbstractPlaySampleIntegrationTest extends AbstractIntegrationSpec {
+@Requires(TestPrecondition.JDK8_OR_LATER)
+abstract class AbstractPlaySampleIntegrationTest extends AbstractSampleIntegrationTest {
     File initScript
     RunningPlayApp runningPlayApp = new RunningPlayApp(testDirectory)
 
@@ -39,16 +44,20 @@ abstract class AbstractPlaySampleIntegrationTest extends AbstractIntegrationSpec
     }
 
     def setup() {
+        executer.noDeprecationChecks()
+        executer.withPluginRepositoryMirror()
         initScript = file("initFile") << """
             gradle.allprojects {
                 tasks.withType(PlayRun) {
                     httpPort = 0
+                    ${java9AddJavaSqlModuleArgs()}
                 }
             }
         """
     }
 
     @IgnoreIf({ !AbstractPlaySampleIntegrationTest.portForWithBrowserTestIsFree() })
+    @ToBeFixedForInstantExecution
     def "produces usable application" () {
         when:
         executer.usingInitScript(initScript)
@@ -59,6 +68,7 @@ abstract class AbstractPlaySampleIntegrationTest extends AbstractIntegrationSpec
         succeeds "assemble"
 
         when:
+        executer.noDeprecationChecks()
         sample playSample
         executer.usingInitScript(initScript).withStdinPipe().withForceInteractive(true)
         GradleHandle gradleHandle = executer.withTasks(":runPlayBinary").start()
@@ -71,6 +81,7 @@ abstract class AbstractPlaySampleIntegrationTest extends AbstractIntegrationSpec
         checkContent()
 
         when:
+        executer.noDeprecationChecks()
         gradleHandle.cancelWithEOT().waitForFinish()
 
         then: "play server is stopped too"

@@ -18,6 +18,7 @@ package org.gradle.integtests.fixtures
 
 import groovy.transform.CompileStatic
 import org.gradle.integtests.fixtures.executer.AbstractGradleExecuter
+
 /**
  * A base runner for features hidden behind a flag, convenient for executing tests with the flag on or off.
  * If a test only makes sense if the feature is enabled, then it needs to be annotated with {@link RequiredFeatures}.
@@ -26,13 +27,13 @@ import org.gradle.integtests.fixtures.executer.AbstractGradleExecuter
 abstract class BehindFlagFeatureRunner extends AbstractMultiTestRunner {
     final Map<String, Feature> features
 
-    BehindFlagFeatureRunner(Class<?> target, Map<String, Feature> features) {
-        super(target)
-        features.each { systemProperty, description ->
-            // Ensure that the system property is propagated to forked Gradle executions
-            AbstractGradleExecuter.propagateSystemProperty(systemProperty)
-        }
+    BehindFlagFeatureRunner(Class<?> target, Map<String, Feature> features, boolean executeAllPermutations) {
+        super(target, executeAllPermutations)
         this.features = features
+    }
+
+    BehindFlagFeatureRunner(Class<?> target, Map<String, Feature> features) {
+        this(target, features, true)
     }
 
     static void extractRequiredFeatures(RequiredFeatures requires, Map<String, String> required) {
@@ -96,6 +97,8 @@ abstract class BehindFlagFeatureRunner extends AbstractMultiTestRunner {
         @Override
         protected void before() {
             featureValues.each { sysProp, value ->
+                // Ensure that the system property is propagated to forked Gradle executions
+                AbstractGradleExecuter.propagateSystemProperty(sysProp)
                 System.setProperty(sysProp, value)
             }
         }
@@ -103,6 +106,8 @@ abstract class BehindFlagFeatureRunner extends AbstractMultiTestRunner {
         @Override
         protected void after() {
             featureValues.each { sysProp, value ->
+                // Stop propagating this system property
+                AbstractGradleExecuter.doNotPropagateSystemProperty(sysProp)
                 System.properties.remove(sysProp)
             }
         }

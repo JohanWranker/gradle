@@ -27,12 +27,12 @@ import com.google.common.io.Files;
 import com.google.common.io.LineProcessor;
 import org.apache.tools.zip.ZipEntry;
 import org.apache.tools.zip.ZipFile;
-import org.gradle.api.logging.Logger;
+import org.gradle.api.internal.tasks.compile.incremental.processing.IncrementalAnnotationProcessorType;
 import org.gradle.cache.internal.FileContentCache;
 import org.gradle.cache.internal.FileContentCacheFactory;
 import org.gradle.internal.FileUtils;
-import org.gradle.internal.file.FileType;
 import org.gradle.internal.serialize.ListSerializer;
+import org.slf4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,10 +40,12 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
- * Inspects a classpath to find annotation processors contained in it.
+ * Inspects a classpath to find annotation processors contained in it. If several versions of the same annotation processor are found,
+ * the first one is returned, mimicking the behavior of {@link java.util.ServiceLoader}.
  */
 public class AnnotationProcessorDetector {
 
@@ -55,15 +57,20 @@ public class AnnotationProcessorDetector {
     private final boolean logStackTraces;
 
     public AnnotationProcessorDetector(FileContentCacheFactory cacheFactory, Logger logger, boolean logStackTraces) {
-        this.cache = cacheFactory.newCache("annotation-processors", 20000, new ProcessorServiceLocator(), new ListSerializer<AnnotationProcessorDeclaration>(new AnnotationProcessorDeclarationSerializer()));
+        this.cache = cacheFactory.newCache("annotation-processors", 20000, new ProcessorServiceLocator(), new ListSerializer<AnnotationProcessorDeclaration>(AnnotationProcessorDeclarationSerializer.INSTANCE));
         this.logger = logger;
         this.logStackTraces = logStackTraces;
     }
 
-    public List<AnnotationProcessorDeclaration> detectProcessors(Iterable<File> processorPath) {
-        List<AnnotationProcessorDeclaration> processors = Lists.newArrayList();
+    public Map<String, AnnotationProcessorDeclaration> detectProcessors(Iterable<File> processorPath) {
+        Map<String, AnnotationProcessorDeclaration> processors = Maps.newLinkedHashMap();
         for (File jarOrClassesDir : processorPath) {
-            processors.addAll(cache.get(jarOrClassesDir));
+            for (AnnotationProcessorDeclaration declaration : cache.get(jarOrClassesDir)) {
+                String className = declaration.getClassName();
+                if (!processors.containsKey(className)) {
+                    processors.put(className, declaration);
+                }
+            }
         }
         return processors;
     }
@@ -75,11 +82,10 @@ public class AnnotationProcessorDetector {
     private class ProcessorServiceLocator implements FileContentCacheFactory.Calculator<List<AnnotationProcessorDeclaration>> {
 
         @Override
-        public List<AnnotationProcessorDeclaration> calculate(File file, FileType fileType) {
-            if (fileType == FileType.Directory) {
+        public List<AnnotationProcessorDeclaration> calculate(File file, boolean isRegularFile) {
+            if (!isRegularFile) {
                 return detectProcessorsInClassesDir(file);
-            }
-            if (fileType == FileType.RegularFile && FileUtils.hasExtensionIgnoresCase(file.getName(), ".jar")) {
+            } else if (FileUtils.hasExtensionIgnoresCase(file.getName(), ".jar")) {
                 return detectProcessorsInJar(file);
             }
             return Collections.emptyList();
@@ -119,7 +125,7 @@ public class AnnotationProcessorDetector {
         }
 
         private List<String> readLines(File file) throws IOException {
-            return Files.readLines(file, Charsets.UTF_8, new MetadataLineProcessor());
+            return Files.asCharSource(file, Charsets.UTF_8).readLines(new MetadataLineProcessor());
         }
 
         private List<AnnotationProcessorDeclaration> detectProcessorsInJar(File jar) {
@@ -180,7 +186,7 @@ public class AnnotationProcessorDetector {
         }
 
         private IncrementalAnnotationProcessorType parseProcessorType(List<String> parts) {
-            return Enums.getIfPresent(IncrementalAnnotationProcessorType.class, parts.get(1).toUpperCase()).or(IncrementalAnnotationProcessorType.UNKNOWN);
+            return Enums.getIfPresent(IncrementalAnnotationProcessorType.class, parts.get(1).toUpperCase(Locale.ROOT)).or(IncrementalAnnotationProcessorType.UNKNOWN);
         }
 
         private List<AnnotationProcessorDeclaration> toProcessorDeclarations(List<String> processorNames, Map<String, IncrementalAnnotationProcessorType> processorTypes) {

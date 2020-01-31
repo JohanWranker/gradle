@@ -17,44 +17,47 @@
 package org.gradle.buildinit.plugins
 
 import org.gradle.buildinit.plugins.fixtures.ScriptDslFixture
-import org.gradle.integtests.fixtures.DefaultTestExecutionResult
-import org.gradle.testing.internal.util.RetryRule
-import org.junit.Rule
+import org.gradle.buildinit.plugins.internal.modifiers.BuildInitTestFramework
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Unroll
 
-import static org.gradle.integtests.fixtures.RetryRuleUtil.getRootCauseMessage
-import static org.gradle.testing.internal.util.RetryRule.retryIf
+import static org.gradle.buildinit.plugins.internal.modifiers.BuildInitDsl.GROOVY
 
 class JavaApplicationInitIntegrationTest extends AbstractInitIntegrationSpec {
 
-    public static final String SAMPLE_APP_CLASS = "src/main/java/App.java"
-    public static final String SAMPLE_APP_TEST_CLASS = "src/test/java/AppTest.java"
-    public static final String SAMPLE_APP_SPOCK_TEST_CLASS = "src/test/groovy/AppTest.groovy"
+    public static final String SAMPLE_APP_CLASS = "some/thing/App.java"
+    public static final String SAMPLE_APP_TEST_CLASS = "some/thing/AppTest.java"
+    public static final String SAMPLE_APP_SPOCK_TEST_CLASS = "some/thing/AppTest.groovy"
 
-    @Rule
-    RetryRule retryRule = retryIf { Throwable t ->
-        //retry on Jcenter connectivity issue
-        getRootCauseMessage(t).startsWith("Could not GET")
+    def "defaults to Groovy build scripts"() {
+        when:
+        run ('init', '--type', 'java-application')
+
+        then:
+        dslFixtureFor(GROOVY).assertGradleFilesGenerated()
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "creates sample source if no source present with #scriptDsl build scripts"() {
         when:
-        succeeds('init', '--type', 'java-application', '--dsl', scriptDsl.id)
+        run('init', '--type', 'java-application', '--dsl', scriptDsl.id)
 
         then:
-        file(SAMPLE_APP_CLASS).exists()
-        file(SAMPLE_APP_TEST_CLASS).exists()
-        dslFixtureFor(scriptDsl).assertGradleFilesGenerated()
+        targetDir.file("src/main/java").assertHasDescendants(SAMPLE_APP_CLASS)
+        targetDir.file("src/test/java").assertHasDescendants(SAMPLE_APP_TEST_CLASS)
+
+        and:
+        commonJvmFilesGenerated(scriptDsl)
 
         when:
-        succeeds("build")
+        run("build")
 
         then:
-        assertTestPassed("testAppHasAGreeting")
+        assertTestPassed("some.thing.AppTest", "testAppHasAGreeting")
 
         when:
-        succeeds("run")
+        run("run")
 
         then:
         outputContains("Hello world")
@@ -66,71 +69,159 @@ class JavaApplicationInitIntegrationTest extends AbstractInitIntegrationSpec {
     @Unroll
     def "creates sample source using spock instead of junit with #scriptDsl build scripts"() {
         when:
-        succeeds('init', '--type', 'java-application', '--test-framework', 'spock', '--dsl', scriptDsl.id)
+        run('init', '--type', 'java-application', '--test-framework', 'spock', '--dsl', scriptDsl.id)
 
         then:
-        file(SAMPLE_APP_CLASS).exists()
-        file(SAMPLE_APP_SPOCK_TEST_CLASS).exists()
-        dslFixtureFor(scriptDsl).assertGradleFilesGenerated()
+        targetDir.file("src/main/java").assertHasDescendants(SAMPLE_APP_CLASS)
+        !targetDir.file("src/test/java").exists()
+        targetDir.file("src/test/groovy").assertHasDescendants(SAMPLE_APP_SPOCK_TEST_CLASS)
+
+        and:
+        commonJvmFilesGenerated(scriptDsl)
 
         when:
-        succeeds("build")
+        run("build")
 
         then:
-        assertTestPassed("application has a greeting")
+        assertTestPassed("some.thing.AppTest", "application has a greeting")
 
         where:
         scriptDsl << ScriptDslFixture.SCRIPT_DSLS
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "creates sample source using testng instead of junit with #scriptDsl build scripts"() {
         when:
-        succeeds('init', '--type', 'java-application', '--test-framework', 'testng', '--dsl', scriptDsl.id)
+        run('init', '--type', 'java-application', '--test-framework', 'testng', '--dsl', scriptDsl.id)
 
         then:
-        file(SAMPLE_APP_CLASS).exists()
-        file(SAMPLE_APP_TEST_CLASS).exists()
-        dslFixtureFor(scriptDsl).assertGradleFilesGenerated()
+        targetDir.file("src/main/java").assertHasDescendants(SAMPLE_APP_CLASS)
+        targetDir.file("src/test/java").assertHasDescendants(SAMPLE_APP_TEST_CLASS)
+
+        and:
+        commonJvmFilesGenerated(scriptDsl)
 
         when:
-        succeeds("build")
+        run("build")
 
         then:
-        assertTestPassed("appHasAGreeting")
+        assertTestPassed("some.thing.AppTest", "appHasAGreeting")
 
         where:
         scriptDsl << ScriptDslFixture.SCRIPT_DSLS
     }
 
     @Unroll
-    def "setupProjectLayout is skipped when java sources detected with #scriptDsl build scripts"() {
+    def "creates sample source using junit-jupiter instead of junit with #scriptDsl build scripts"() {
+        when:
+        run('init', '--type', 'java-application', '--test-framework', 'junit-jupiter', '--dsl', scriptDsl.id)
+
+        then:
+        targetDir.file("src/main/java").assertHasDescendants(SAMPLE_APP_CLASS)
+        targetDir.file("src/test/java").assertHasDescendants(SAMPLE_APP_TEST_CLASS)
+
+        and:
+        commonJvmFilesGenerated(scriptDsl)
+
+        when:
+        run("build")
+
+        then:
+        assertTestPassed("some.thing.AppTest", "appHasAGreeting")
+
+        where:
+        scriptDsl << ScriptDslFixture.SCRIPT_DSLS
+    }
+
+    @Unroll
+    @ToBeFixedForInstantExecution
+    def "creates sample source with package and #testFramework and #scriptDsl build scripts"() {
+        when:
+        run('init', '--type', 'java-application', '--test-framework', 'testng', '--package', 'my.app', '--dsl', scriptDsl.id)
+
+        then:
+        targetDir.file("src/main/java").assertHasDescendants("my/app/App.java")
+        targetDir.file("src/test/java").assertHasDescendants("my/app/AppTest.java")
+
+        and:
+        commonJvmFilesGenerated(scriptDsl)
+
+        when:
+        run("build")
+
+        then:
+        assertTestPassed("my.app.AppTest", "appHasAGreeting")
+
+        when:
+        run("run")
+
+        then:
+        outputContains("Hello world")
+
+        where:
+        [scriptDsl, testFramework] << [ScriptDslFixture.SCRIPT_DSLS, [BuildInitTestFramework.JUNIT, BuildInitTestFramework.TESTNG]].combinations()
+    }
+
+    @Unroll
+    @ToBeFixedForInstantExecution
+    def "creates sample source with package and spock and #scriptDsl build scripts"() {
+        when:
+        run('init', '--type', 'java-application', '--test-framework', 'spock', '--package', 'my.app', '--dsl', scriptDsl.id)
+
+        then:
+        targetDir.file("src/main/java").assertHasDescendants("my/app/App.java")
+        targetDir.file("src/test/groovy").assertHasDescendants("my/app/AppTest.groovy")
+
+        and:
+        commonJvmFilesGenerated(scriptDsl)
+
+        when:
+        run("build")
+
+        then:
+        assertTestPassed("my.app.AppTest", "application has a greeting")
+
+        when:
+        run("run")
+
+        then:
+        outputContains("Hello world")
+
+        where:
+        scriptDsl << ScriptDslFixture.SCRIPT_DSLS
+    }
+
+    @Unroll
+    def "source generation is skipped when java sources detected with #scriptDsl build scripts"() {
         setup:
-        file("src/main/java/org/acme/SampleMain.java") << """
+        targetDir.file("src/main/java/org/acme/SampleMain.java") << """
         package org.acme;
 
         public class SampleMain{
         }
 """
-        file("src/test/java/org/acme/SampleMainTest.java") << """
+        targetDir.file("src/test/java/org/acme/SampleMainTest.java") << """
                 package org.acme;
 
-                public class SampleMain{
+                public class SampleMainTest {
                 }
         """
         when:
-        succeeds('init', '--type', 'java-application', '--dsl', scriptDsl.id)
+        run('init', '--type', 'java-application', '--dsl', scriptDsl.id)
 
         then:
-        !file(SAMPLE_APP_CLASS).exists()
-        !file(SAMPLE_APP_TEST_CLASS).exists()
+        targetDir.file("src/main/java").assertHasDescendants("org/acme/SampleMain.java")
+        targetDir.file("src/test/java").assertHasDescendants("org/acme/SampleMainTest.java")
         dslFixtureFor(scriptDsl).assertGradleFilesGenerated()
+
+        when:
+        run("build")
+
+        then:
+        executed(":test")
 
         where:
         scriptDsl << ScriptDslFixture.SCRIPT_DSLS
-    }
-
-    void assertTestPassed(String name) {
-        new DefaultTestExecutionResult(testDirectory).testClass("AppTest").assertTestPassed(name)
     }
 }

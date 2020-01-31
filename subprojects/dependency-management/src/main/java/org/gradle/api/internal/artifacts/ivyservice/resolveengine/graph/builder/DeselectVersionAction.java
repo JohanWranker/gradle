@@ -26,12 +26,8 @@ class DeselectVersionAction implements Action<ModuleIdentifier> {
         this.resolveState = resolveState;
     }
 
+    @Override
     public void execute(ModuleIdentifier module) {
-        ComponentState previouslySelected = resolveState.getModule(module).clearSelection();
-        if (previouslySelected != null) {
-            for (NodeState configuration : previouslySelected.getNodes()) {
-                configuration.deselect();
-            }
-        }
+        resolveState.getModule(module).clearSelection();
     }
 }

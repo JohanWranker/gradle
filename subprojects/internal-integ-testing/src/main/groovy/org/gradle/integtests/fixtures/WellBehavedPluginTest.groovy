@@ -18,10 +18,11 @@ package org.gradle.integtests.fixtures
 
 import org.gradle.api.internal.plugins.DefaultPluginManager
 import org.gradle.util.GUtil
+import org.junit.Assume
 
 import java.util.regex.Pattern
 
-abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
+abstract class WellBehavedPluginTest extends AbstractPluginIntegrationTest {
 
     String getPluginName() {
         def matcher = Pattern.compile("(\\w+)Plugin(GoodBehaviour)?(Integ(ration)?)?Test").matcher(getClass().simpleName)
@@ -39,6 +40,19 @@ abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
         return "assemble"
     }
 
+    @ToBeFixedForInstantExecution(bottomSpecs = [
+        "HelpTasksPluginIntegrationTest",
+        "JavaGradlePluginPluginIntegrationTest",
+        "ApplicationPluginIntegrationTest",
+        "CheckstylePluginIntegrationTest",
+        "CodeNarcPluginIntegrationTest",
+        "PmdPluginIntegrationTest",
+        "CppLibraryPluginIntegrationTest",
+        "CppApplicationPluginIntegrationTest",
+        "SwiftApplicationPluginIntegrationTest",
+        "XcodePluginIntegrationTest",
+        "IdeaPluginGoodBehaviourTest"
+    ])
     def "can apply plugin unqualified"() {
         given:
         applyPluginUnqualified()
@@ -47,6 +61,7 @@ abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
         succeeds mainTask
     }
 
+    @ToBeFixedForInstantExecution
     def "plugin does not force creation of build dir during configuration"() {
         given:
         applyPlugin()
@@ -58,6 +73,19 @@ abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
         !file("build").exists()
     }
 
+    @ToBeFixedForInstantExecution(bottomSpecs = [
+        "HelpTasksPluginIntegrationTest",
+        "JavaGradlePluginPluginIntegrationTest",
+        "ApplicationPluginIntegrationTest",
+        "CheckstylePluginIntegrationTest",
+        "CodeNarcPluginIntegrationTest",
+        "PmdPluginIntegrationTest",
+        "CppLibraryPluginIntegrationTest",
+        "CppApplicationPluginIntegrationTest",
+        "SwiftApplicationPluginIntegrationTest",
+        "XcodePluginIntegrationTest",
+        "IdeaPluginGoodBehaviourTest"
+    ])
     def "plugin can build with empty project"() {
         given:
         applyPlugin()
@@ -74,4 +102,34 @@ abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
         target << "apply plugin: '${getPluginName()}'\n"
     }
 
+    def "does not realize all possible tasks"() {
+        // TODO: This isn't done yet, we still realize many tasks
+        // Eventually, this should only realize "help"
+
+        Assume.assumeFalse(pluginName in [
+            'xctest', // Almost, still realizes compileTestSwift
+
+            'visual-studio',
+            'xcode',
+
+            'play-application',
+        ])
+
+        applyPlugin()
+
+        buildFile << """
+            def configuredTasks = []
+            tasks.configureEach {
+                configuredTasks << it
+            }
+
+            gradle.buildFinished {
+                def configuredTaskPaths = configuredTasks*.path
+
+                assert configuredTaskPaths == [':help']
+            }
+        """
+        expect:
+        succeeds("help")
+    }
 }

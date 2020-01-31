@@ -16,10 +16,12 @@
 
 package org.gradle.play.integtest
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.play.integtest.fixtures.PlayMultiVersionRunApplicationIntegrationTest
 
 abstract class PlayBinaryApplicationIntegrationTest extends PlayMultiVersionRunApplicationIntegrationTest {
 
+    @ToBeFixedForInstantExecution(bottomSpecs = "PlayCompositeBuildIntegrationTest")
     def "can build play app binary"() {
         when:
         succeeds("assemble")
@@ -31,25 +33,28 @@ abstract class PlayBinaryApplicationIntegrationTest extends PlayMultiVersionRunA
         verifyJars()
 
         when:
+        executer.noDeprecationChecks()
         succeeds("createPlayBinaryJar")
 
         then:
         skipped(":createPlayBinaryJar", ":compilePlayBinaryPlayTwirlTemplates")
     }
 
+    @ToBeFixedForInstantExecution
     def "can run play app"() {
         setup:
-        patchForPlay()
         run "assemble"
         buildFile << """
             model {
                 tasks.runPlayBinary {
                     httpPort = 0
+                    ${java9AddJavaSqlModuleArgs()}
                 }
             }
         """
 
         when:
+        executer.noDeprecationChecks()
         startBuild "runPlayBinary"
 
         then:

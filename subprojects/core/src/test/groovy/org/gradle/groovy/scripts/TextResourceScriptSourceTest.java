@@ -18,7 +18,7 @@ package org.gradle.groovy.scripts;
 
 import org.gradle.internal.resource.EmptyFileTextResource;
 import org.gradle.internal.resource.StringTextResource;
-import org.gradle.internal.resource.BasicTextResourceLoader;
+import org.gradle.internal.resource.DefaultTextFileResourceLoader;
 import org.gradle.internal.resource.UriTextResource;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
@@ -33,11 +33,11 @@ import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 
 import static org.gradle.util.Matchers.matchesRegexp;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 
 public class TextResourceScriptSourceTest {
-    private final BasicTextResourceLoader resourceLoader = new BasicTextResourceLoader();
+    private final DefaultTextFileResourceLoader resourceLoader = new DefaultTextFileResourceLoader();
     private TestFile testDir;
     private File scriptFile;
     private URI scriptFileUri;
@@ -225,7 +225,7 @@ public class TextResourceScriptSourceTest {
     }
 
     private ScriptSource forUri(URI scriptFileUri) {
-        return new TextResourceScriptSource(resourceLoader.loadUri("<file-type>", scriptFileUri));
+        return new TextResourceScriptSource(new UriTextResource("<file-type>", scriptFileUri));
     }
 
 }

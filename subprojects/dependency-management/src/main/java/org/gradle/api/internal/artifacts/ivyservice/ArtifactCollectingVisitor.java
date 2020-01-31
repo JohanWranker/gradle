@@ -18,13 +18,15 @@ package org.gradle.api.internal.artifacts.ivyservice;
 
 import com.google.common.collect.Sets;
 import org.gradle.api.artifacts.ResolvedArtifact;
-import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactVisitor;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.LocalDependencyFiles;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvableArtifact;
+import org.gradle.api.internal.file.FileCollectionInternal;
+import org.gradle.api.internal.file.FileCollectionStructureVisitor;
+import org.gradle.internal.DisplayName;
 import org.gradle.internal.UncheckedException;
 
-import java.io.File;
 import java.util.Set;
 
 public class ArtifactCollectingVisitor implements ArtifactVisitor {
@@ -39,7 +41,7 @@ public class ArtifactCollectingVisitor implements ArtifactVisitor {
     }
 
     @Override
-    public void visitArtifact(String variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
+    public void visitArtifact(DisplayName variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
         this.artifacts.add(artifact.toPublicView());
     }
 
@@ -49,18 +51,16 @@ public class ArtifactCollectingVisitor implements ArtifactVisitor {
     }
 
     @Override
-    public boolean includeFiles() {
-        return false;
+    public FileCollectionStructureVisitor.VisitType prepareForVisit(FileCollectionInternal.Source source) {
+        if (source instanceof LocalDependencyFiles) {
+            return FileCollectionStructureVisitor.VisitType.NoContents;
+        }
+        return FileCollectionStructureVisitor.VisitType.Visit;
     }
 
     @Override
     public boolean requireArtifactFiles() {
         return false;
-    }
-
-    @Override
-    public void visitFile(ComponentArtifactIdentifier artifactIdentifier, String variantName, AttributeContainer variantAttributes, File file) {
-        throw new UnsupportedOperationException();
     }
 
     public Set<ResolvedArtifact> getArtifacts() {

@@ -21,7 +21,9 @@ import org.gradle.api.GradleException
 import org.gradle.tooling.BuildAction
 import org.gradle.tooling.BuildActionFailureException
 import org.gradle.tooling.BuildController
+import org.gradle.tooling.UnsupportedVersionException
 import org.gradle.tooling.internal.adapter.ProtocolToModelAdapter
+import org.gradle.tooling.internal.consumer.PhasedBuildAction
 import org.gradle.tooling.internal.consumer.parameters.ConsumerOperationParameters
 import org.gradle.tooling.internal.consumer.versioning.ModelMapping
 import org.gradle.tooling.internal.protocol.BuildResult
@@ -45,7 +47,6 @@ import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.idea.BasicIdeaProject
 import org.gradle.tooling.model.idea.IdeaProject
-import org.gradle.tooling.model.internal.outcomes.ProjectOutcomes
 import spock.lang.Specification
 
 class ParameterAcceptingConsumerConnectionTest extends Specification {
@@ -65,7 +66,6 @@ class ParameterAcceptingConsumerConnectionTest extends Specification {
         def details = connection.versionDetails
 
         expect:
-        details.supportsCancellation()
         details.supportsEnvironmentVariablesCustomization()
         details.supportsRunTasksBeforeExecutingAction()
         details.supportsParameterizedToolingModels()
@@ -77,7 +77,6 @@ class ParameterAcceptingConsumerConnectionTest extends Specification {
         details.maySupportModel(BasicIdeaProject)
         details.maySupportModel(GradleProject)
         details.maySupportModel(BuildEnvironment)
-        details.maySupportModel(ProjectOutcomes)
         details.maySupportModel(Void)
         details.maySupportModel(GradleBuild)
         details.maySupportModel(BuildInvocations)
@@ -136,6 +135,20 @@ class ParameterAcceptingConsumerConnectionTest extends Specification {
 
         and:
         1 * target.run({it instanceof InternalBuildActionVersion2}, _, parameters) >> { throw new InternalBuildActionFailureException(failure) }
+    }
+
+    def "cannot run phased action"() {
+        def phasedAction = Stub(PhasedBuildAction)
+        def parameters = Stub(ConsumerOperationParameters) {
+            getEntryPointName() >> 'PhasedBuildActionExecuter API'
+        }
+
+        when:
+        connection.run(phasedAction, parameters)
+
+        then:
+        UnsupportedVersionException e = thrown()
+        e.message == 'The version of Gradle you are using (4.4) does not support the PhasedBuildActionExecuter API. Support for this is available in Gradle 4.8 and all later versions.'
     }
 
     interface TestModelBuilder extends ConnectionVersion4, ConfigurableConnection, InternalParameterAcceptingConnection, InternalTestExecutionConnection, StoppableConnection,

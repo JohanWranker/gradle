@@ -35,7 +35,10 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
-import static org.hamcrest.Matchers.*
+import static org.hamcrest.CoreMatchers.containsString
+import static org.hamcrest.CoreMatchers.equalTo
+import static org.hamcrest.CoreMatchers.not
+import static org.hamcrest.CoreMatchers.sameInstance
 import static org.junit.Assert.assertThat
 import static org.junit.Assert.fail
 

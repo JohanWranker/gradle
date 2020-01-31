@@ -18,7 +18,7 @@ package org.gradle.jvm.internal;
 
 import org.gradle.api.artifacts.ResolutionStrategy;
 import org.gradle.api.artifacts.ResolveException;
-import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
+import org.gradle.api.artifacts.component.BuildIdentifier;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.type.ArtifactTypeContainer;
 import org.gradle.api.attributes.AttributeContainer;
@@ -27,7 +27,6 @@ import org.gradle.api.internal.artifacts.GlobalDependencyResolutionRules;
 import org.gradle.api.internal.artifacts.ResolveContext;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactSet;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactVisitor;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.BuildDependenciesVisitor;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.DefaultResolvedArtifactsBuilder;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.DependencyArtifactsVisitor;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ParallelResolveArtifactSet;
@@ -39,15 +38,17 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.Dependen
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphNode;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphVisitor;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.RootGraphNode;
 import org.gradle.api.internal.artifacts.repositories.ResolutionAwareRepository;
 import org.gradle.api.internal.artifacts.transform.VariantSelector;
 import org.gradle.api.internal.artifacts.type.ArtifactTypeRegistry;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.api.internal.file.AbstractFileCollection;
-import org.gradle.api.internal.tasks.TaskDependencies;
+import org.gradle.api.internal.tasks.FailureCollectingTaskDependencyResolveContext;
+import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
 import org.gradle.api.specs.Specs;
-import org.gradle.api.tasks.TaskDependency;
+import org.gradle.internal.DisplayName;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.component.local.model.LocalFileDependencyMetadata;
 import org.gradle.internal.component.model.DependencyMetadata;
@@ -58,7 +59,6 @@ import org.gradle.language.base.internal.resolve.LibraryResolveException;
 import org.gradle.platform.base.internal.BinarySpecInternal;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -72,6 +72,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
     private final ResolveContext resolveContext;
     private final AttributesSchemaInternal attributesSchema;
     private final BuildOperationExecutor buildOperationExecutor;
+    private final BuildIdentifier thisBuild;
 
     private final String descriptor;
     private ResolveResult resolveResult;
@@ -83,7 +84,8 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
         List<ResolutionAwareRepository> remoteRepositories,
         ResolveContext resolveContext,
         AttributesSchemaInternal attributesSchema,
-        BuildOperationExecutor buildOperationExecutor) {
+        BuildOperationExecutor buildOperationExecutor,
+        BuildIdentifier thisBuild) {
         this.binary = binarySpec;
         this.descriptor = descriptor;
         this.dependencyResolver = dependencyResolver;
@@ -91,6 +93,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
         this.resolveContext = resolveContext;
         this.attributesSchema = attributesSchema;
         this.buildOperationExecutor = buildOperationExecutor;
+        this.thisBuild = thisBuild;
     }
 
     @Override
@@ -105,7 +108,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
         ParallelResolveArtifactSet artifacts = ParallelResolveArtifactSet.wrap(resolveResult.artifactsResults.getArtifacts(), buildOperationExecutor);
         artifacts.visit(new ArtifactVisitor() {
             @Override
-            public void visitArtifact(String variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
+            public void visitArtifact(DisplayName variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
                 result.add(artifact.getFile());
             }
 
@@ -115,44 +118,21 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
             }
 
             @Override
-            public boolean includeFiles() {
-                return true;
-            }
-
-            @Override
             public boolean requireArtifactFiles() {
                 return true;
-            }
-
-            @Override
-            public void visitFile(ComponentArtifactIdentifier artifactIdentifier, String variantName, AttributeContainer variantAttributes, File file) {
-                result.add(file);
             }
         });
         return result;
     }
 
     @Override
-    public TaskDependency getBuildDependencies() {
+    public void visitDependencies(TaskDependencyResolveContext context) {
         ensureResolved(false);
-
-        final List<Object> taskDependencies = new ArrayList<Object>();
-        final List<Throwable> failures = new ArrayList<Throwable>();
-        resolveResult.artifactsResults.getArtifacts().collectBuildDependencies(new BuildDependenciesVisitor() {
-            @Override
-            public void visitDependency(Object dep) {
-                taskDependencies.add(dep);
-            }
-
-            @Override
-            public void visitFailure(Throwable failure) {
-                failures.add(failure);
-            }
-        });
-        if (!failures.isEmpty()) {
-            throw new ResolveException(getDisplayName(), failures);
+        FailureCollectingTaskDependencyResolveContext collectingContext = new FailureCollectingTaskDependencyResolveContext(context);
+        resolveResult.artifactsResults.getArtifacts().visitDependencies(collectingContext);
+        if (!collectingContext.getFailures().isEmpty()) {
+            throw new ResolveException(getDisplayName(), collectingContext.getFailures());
         }
-        return TaskDependencies.of(taskDependencies);
     }
 
     private void ensureResolved(boolean failFast) {
@@ -193,11 +173,11 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
 
     class ResolveResult implements DependencyGraphVisitor, DependencyArtifactsVisitor {
         public final List<Throwable> notFound = new LinkedList<Throwable>();
-        public DefaultResolvedArtifactsBuilder artifactsBuilder = new DefaultResolvedArtifactsBuilder(true, ResolutionStrategy.SortOrder.DEFAULT);
+        public DefaultResolvedArtifactsBuilder artifactsBuilder = new DefaultResolvedArtifactsBuilder(thisBuild, true, ResolutionStrategy.SortOrder.DEFAULT);
         public SelectedArtifactResults artifactsResults;
 
         @Override
-        public void start(DependencyGraphNode root) {
+        public void start(RootGraphNode root) {
         }
 
         @Override
@@ -224,7 +204,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
         }
 
         @Override
-        public void startArtifacts(DependencyGraphNode root) {
+        public void startArtifacts(RootGraphNode root) {
         }
 
         @Override

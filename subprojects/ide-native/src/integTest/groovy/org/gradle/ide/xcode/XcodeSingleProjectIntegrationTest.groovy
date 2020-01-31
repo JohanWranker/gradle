@@ -17,20 +17,27 @@
 package org.gradle.ide.xcode
 
 import org.gradle.ide.xcode.fixtures.AbstractXcodeIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class XcodeSingleProjectIntegrationTest extends AbstractXcodeIntegrationSpec {
-    def "create empty xcode project when no language plugins are applied"() {
+
+    @ToBeFixedForInstantExecution
+    def "create xcode workspace when no language plugins are applied"() {
         when:
         succeeds("xcode")
 
         then:
-        executedAndNotSkipped(":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcode")
+        result.assertTasksExecuted(":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeWorkspaceWorkspaceSettings", ":xcodeWorkspace", ":xcode")
+
+        def workspace = rootXcodeWorkspace
+        workspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj")
 
         def project = rootXcodeProject.projectFile
         project.mainGroup.assertHasChildren(['build.gradle'])
         project.assertNoTargets()
     }
 
+    @ToBeFixedForInstantExecution
     def "cleanXcode remove all XCode generated project files"() {
         requireSwiftToolChain()
 

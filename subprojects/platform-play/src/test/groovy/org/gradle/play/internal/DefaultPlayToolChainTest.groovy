@@ -22,29 +22,36 @@ import org.gradle.api.artifacts.ConfigurationContainer
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ResolveException
 import org.gradle.api.artifacts.dsl.DependencyHandler
-import org.gradle.api.internal.changedetection.state.ClasspathSnapshotter
-import org.gradle.api.internal.file.FileResolver
-import org.gradle.internal.text.TreeFormatter
+import org.gradle.api.internal.ClassPathRegistry
+import org.gradle.initialization.ClassLoaderRegistry
+import org.gradle.internal.fingerprint.classpath.ClasspathFingerprinter
+import org.gradle.internal.logging.text.TreeFormatter
 import org.gradle.language.scala.ScalaPlatform
 import org.gradle.play.internal.toolchain.DefaultPlayToolChain
 import org.gradle.play.internal.twirl.TwirlCompileSpec
 import org.gradle.play.platform.PlayPlatform
+import org.gradle.process.internal.JavaForkOptionsFactory
 import org.gradle.process.internal.worker.WorkerProcessFactory
 import org.gradle.process.internal.worker.child.WorkerDirectoryProvider
+import org.gradle.util.TextUtil
+import org.gradle.workers.internal.ActionExecutionSpecFactory
 import org.gradle.workers.internal.WorkerDaemonFactory
 import spock.lang.Specification
 import spock.lang.Unroll
 
 class DefaultPlayToolChainTest extends Specification {
-    FileResolver fileResolver = Mock()
+    def forkOptionsFactory = Mock(JavaForkOptionsFactory)
     WorkerDaemonFactory workerDaemonFactory = Mock()
     ConfigurationContainer configurationContainer = Mock()
     DependencyHandler dependencyHandler = Mock()
     PlayPlatform playPlatform = Stub(PlayPlatform)
     WorkerProcessFactory workerProcessBuilderFactory = Mock()
     WorkerDirectoryProvider workerDirectoryProvider = Mock()
-    ClasspathSnapshotter snapshotter = Mock()
-    def toolChain = new DefaultPlayToolChain(fileResolver, workerDaemonFactory, configurationContainer, dependencyHandler, workerProcessBuilderFactory, workerDirectoryProvider, snapshotter)
+    ClasspathFingerprinter fingerprinter = Mock()
+    ClassPathRegistry classPathRegistry = Mock()
+    ClassLoaderRegistry classLoaderRegistry = Mock()
+    ActionExecutionSpecFactory actionExecutionSpecFactory = Mock()
+    def toolChain = new DefaultPlayToolChain(forkOptionsFactory, workerDaemonFactory, configurationContainer, dependencyHandler, workerProcessBuilderFactory, workerDirectoryProvider, fingerprinter, classPathRegistry, classLoaderRegistry, actionExecutionSpecFactory)
 
     def setup() {
         playPlatform.playVersion >> DefaultPlayPlatform.DEFAULT_PLAY_VERSION
@@ -92,21 +99,24 @@ class DefaultPlayToolChainTest extends Specification {
         and:
         TreeFormatter formatter = new TreeFormatter()
         toolprovider.explain(formatter)
-        formatter.toString() == "Cannot provide Play tool provider: Cannot resolve '${failedDependency}'."
+        formatter.toString() == TextUtil.toPlatformLineSeparators("""Cannot provide Play tool provider:
+  - Cannot resolve '${failedDependency}'.""")
 
         when:
         toolprovider.get(String.class)
 
         then:
         def e1 = thrown(GradleException)
-        e1.message == "Cannot provide Play tool provider: Cannot resolve '${failedDependency}'."
+        e1.message == TextUtil.toPlatformLineSeparators("""Cannot provide Play tool provider:
+  - Cannot resolve '${failedDependency}'.""")
 
         when:
         toolprovider.newCompiler(TwirlCompileSpec.class)
 
         then:
         def e2 = thrown(GradleException)
-        e2.message == "Cannot provide Play tool provider: Cannot resolve '${failedDependency}'."
+        e2.message == TextUtil.toPlatformLineSeparators("""Cannot provide Play tool provider:
+  - Cannot resolve '${failedDependency}'.""")
 
         where:
         failedDependency       | _
@@ -115,8 +125,8 @@ class DefaultPlayToolChainTest extends Specification {
         "closure-compiler"     | _
     }
 
-    private void dependencyAvailableIfNotFailed(String dependency, String failedDepenency) {
-        if (dependency == failedDepenency) {
+    private void dependencyAvailableIfNotFailed(String dependency, String failedDependency) {
+        if (dependency == failedDependency) {
             dependencyNotAvailable(dependency)
         } else {
             dependencyAvailable(dependency)

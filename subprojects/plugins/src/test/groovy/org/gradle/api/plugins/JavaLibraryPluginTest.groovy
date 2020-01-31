@@ -17,10 +17,10 @@
 package org.gradle.api.plugins
 
 import org.gradle.api.artifacts.Dependency
-import org.gradle.api.artifacts.DependencyConstraint
 import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.test.fixtures.AbstractProjectBuilderSpec
 import org.gradle.util.TestUtil
+import spock.lang.Unroll
 
 import static org.gradle.util.WrapUtil.toSet
 
@@ -184,7 +184,12 @@ class JavaLibraryPluginTest extends AbstractProjectBuilderSpec {
         defaultConfig.extendsFrom == toSet(runtimeElements)
     }
 
-    def "can declare API and implementation dependencies"() {
+    @Unroll
+    def "can declare API and implementation dependencies [compileClasspathPackaging=#compileClasspathPackaging]"() {
+        if (compileClasspathPackaging) {
+            System.setProperty(JavaBasePlugin.COMPILE_CLASSPATH_PACKAGING_SYSTEM_PROPERTY, "true")
+        }
+
         given:
         def commonProject = TestUtil.createChildProject(project, "common")
         def toolsProject = TestUtil.createChildProject(project, "tools")
@@ -207,13 +212,21 @@ class JavaLibraryPluginTest extends AbstractProjectBuilderSpec {
         def task = project.tasks.compileJava
 
         then:
-        task.taskDependencies.getDependencies(task)*.path as Set == [':common:compileJava', ':tools:compileJava'] as Set
+        task.taskDependencies.getDependencies(task)*.path as Set == [":common:$producingTask", ":tools:$producingTask"] as Set<String>
 
         when:
         task = commonProject.tasks.compileJava
 
         then:
-        task.taskDependencies.getDependencies(task)*.path as Set == [':tools:compileJava', ':internal:compileJava'] as Set
+        task.taskDependencies.getDependencies(task)*.path as Set == [":tools:$producingTask", ":internal:$producingTask"] as Set<String>
+
+        cleanup:
+        System.setProperty(JavaBasePlugin.COMPILE_CLASSPATH_PACKAGING_SYSTEM_PROPERTY, "")
+
+        where:
+        compileClasspathPackaging | producingTask
+        true                      | 'jar'
+        false                     | 'compileJava'
     }
 
     def "adds Java library component"() {
@@ -227,20 +240,21 @@ class JavaLibraryPluginTest extends AbstractProjectBuilderSpec {
         when:
         def jarTask = project.tasks.getByName(JavaPlugin.JAR_TASK_NAME)
         def javaLibrary = project.components.getByName("java")
-        def runtimeUsage = javaLibrary.usages[0]
-        def apiUsage = javaLibrary.usages[1]
+        def runtimeUsage = javaLibrary.usages.find { it.name == 'runtimeElements' }
+        def apiUsage = javaLibrary.usages.find { it.name == 'apiElements' }
 
         then:
-        javaLibrary.artifacts.collect {it.archiveTask} == [jarTask]
+        runtimeUsage.artifacts.collect {it.file} == [jarTask.archivePath]
         runtimeUsage.dependencies.size() == 2
         runtimeUsage.dependencies == project.configurations.getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME).allDependencies.withType(ModuleDependency)
         runtimeUsage.dependencyConstraints.size() == 2
-        runtimeUsage.dependencyConstraints == project.configurations.getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME).allDependencies.withType(DependencyConstraint)
+        runtimeUsage.dependencyConstraints == project.configurations.getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME).allDependencyConstraints
 
+        apiUsage.artifacts.collect {it.file} == [jarTask.archivePath]
         apiUsage.dependencies.size() == 1
         apiUsage.dependencies == project.configurations.getByName(JavaPlugin.API_CONFIGURATION_NAME).allDependencies.withType(ModuleDependency)
         apiUsage.dependencyConstraints.size() == 1
-        apiUsage.dependencyConstraints == project.configurations.getByName(JavaPlugin.API_CONFIGURATION_NAME).allDependencies.withType(DependencyConstraint)
+        apiUsage.dependencyConstraints == project.configurations.getByName(JavaPlugin.API_CONFIGURATION_NAME).allDependencyConstraints
     }
 
 }

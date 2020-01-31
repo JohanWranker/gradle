@@ -18,11 +18,14 @@ package org.gradle.language.scala.internal.toolchain;
 
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
+import org.gradle.api.internal.ClassPathRegistry;
 import org.gradle.api.internal.GradleInternal;
-import org.gradle.api.internal.file.FileResolver;
+import org.gradle.initialization.ClassLoaderRegistry;
 import org.gradle.internal.service.ServiceRegistration;
 import org.gradle.internal.service.scopes.AbstractPluginServiceRegistry;
+import org.gradle.process.internal.JavaForkOptionsFactory;
 import org.gradle.process.internal.worker.child.WorkerDirectoryProvider;
+import org.gradle.workers.internal.ActionExecutionSpecFactory;
 import org.gradle.workers.internal.WorkerDaemonFactory;
 
 public class ScalaToolChainServiceRegistry extends AbstractPluginServiceRegistry {
@@ -32,10 +35,9 @@ public class ScalaToolChainServiceRegistry extends AbstractPluginServiceRegistry
         registration.addProvider(new ProjectScopeCompileServices());
     }
 
-
     private static class ProjectScopeCompileServices {
-        ScalaToolChainInternal createScalaToolChain(GradleInternal gradle, WorkerDaemonFactory workerDaemonFactory, ConfigurationContainer configurationContainer, DependencyHandler dependencyHandler, FileResolver fileResolver, WorkerDirectoryProvider workerDirectoryProvider) {
-            return new DownloadingScalaToolChain(gradle.getGradleUserHomeDir(), workerDirectoryProvider.getIdleWorkingDirectory(), workerDaemonFactory, configurationContainer, dependencyHandler, fileResolver);
+        ScalaToolChainInternal createScalaToolChain(GradleInternal gradle, WorkerDaemonFactory workerDaemonFactory, ConfigurationContainer configurationContainer, DependencyHandler dependencyHandler, JavaForkOptionsFactory forkOptionsFactory, WorkerDirectoryProvider workerDirectoryProvider, ClassPathRegistry classPathRegistry, ClassLoaderRegistry classLoaderRegistry, ActionExecutionSpecFactory actionExecutionSpecFactory) {
+            return new DownloadingScalaToolChain(gradle.getGradleUserHomeDir(), workerDirectoryProvider.getWorkingDirectory(), workerDaemonFactory, configurationContainer, dependencyHandler, forkOptionsFactory, classPathRegistry, classLoaderRegistry, actionExecutionSpecFactory);
         }
     }
 }

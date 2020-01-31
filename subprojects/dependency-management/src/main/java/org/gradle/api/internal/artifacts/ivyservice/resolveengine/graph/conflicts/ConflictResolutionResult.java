@@ -18,9 +18,7 @@ package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflic
 
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.ModuleIdentifier;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.ComponentResolutionState;
-
-import java.util.Collection;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder.ComponentState;
 
 public interface ConflictResolutionResult {
 
@@ -28,12 +26,11 @@ public interface ConflictResolutionResult {
      * Performs an action on all conflicting modules.
      * @param action the action to execute on each participating module
      */
-    void withParticipatingModules(Action<ModuleIdentifier> action);
+    void withParticipatingModules(Action<? super ModuleIdentifier> action);
 
     /**
-     * The actual selected version.
+     * The actual selected component.
      */
-    <T extends ComponentResolutionState> T getSelected();
+    ComponentState getSelected();
 
-    Collection<? extends ComponentResolutionState> getCandidates();
 }

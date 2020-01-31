@@ -26,15 +26,16 @@ import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.artifacts.component.ProjectComponentSelector;
 import org.gradle.api.artifacts.result.ComponentSelectionDescriptor;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionDescriptorInternal;
-import org.gradle.api.initialization.IncludedBuild;
 import org.gradle.api.internal.artifacts.ComponentSelectorConverter;
 import org.gradle.api.internal.artifacts.DependencySubstitutionInternal;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory;
 import org.gradle.api.internal.artifacts.configurations.MutationValidator;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.VersionSelectionReasons;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionDescriptorInternal;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionReasons;
 import org.gradle.internal.Actions;
+import org.gradle.internal.Describables;
+import org.gradle.internal.build.IncludedBuildState;
 import org.gradle.internal.component.local.model.DefaultProjectComponentSelector;
 import org.gradle.internal.exceptions.DiagnosticsVisitor;
 import org.gradle.internal.typeconversion.NotationConvertResult;
@@ -42,6 +43,7 @@ import org.gradle.internal.typeconversion.NotationConverter;
 import org.gradle.internal.typeconversion.NotationParser;
 import org.gradle.internal.typeconversion.NotationParserBuilder;
 import org.gradle.internal.typeconversion.TypeConversionException;
+import org.gradle.util.Path;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -67,15 +69,15 @@ public class DefaultDependencySubstitutions implements DependencySubstitutionsIn
             .toType(ComponentSelector.class)
             .fromCharSequence(new ProjectPathConverter(componentIdentifierFactory))
             .toComposite();
-        return new DefaultDependencySubstitutions(VersionSelectionReasons.SELECTED_BY_RULE, projectSelectorNotationParser, moduleIdentifierFactory);
+        return new DefaultDependencySubstitutions(ComponentSelectionReasons.SELECTED_BY_RULE, projectSelectorNotationParser, moduleIdentifierFactory);
     }
 
-    public static DefaultDependencySubstitutions forIncludedBuild(IncludedBuild build, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
+    public static DefaultDependencySubstitutions forIncludedBuild(IncludedBuildState build, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
         NotationParser<Object, ComponentSelector> projectSelectorNotationParser = NotationParserBuilder
                 .toType(ComponentSelector.class)
                 .fromCharSequence(new CompositeProjectPathConverter(build))
                 .toComposite();
-        return new DefaultDependencySubstitutions(VersionSelectionReasons.COMPOSITE_BUILD, projectSelectorNotationParser, moduleIdentifierFactory);
+        return new DefaultDependencySubstitutions(ComponentSelectionReasons.COMPOSITE_BUILD, projectSelectorNotationParser, moduleIdentifierFactory);
     }
 
     private DefaultDependencySubstitutions(ComponentSelectionDescriptor reason, NotationParser<Object, ComponentSelector> projectSelectorNotationParser, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
@@ -100,6 +102,13 @@ public class DefaultDependencySubstitutions implements DependencySubstitutionsIn
     @Override
     public Action<DependencySubstitution> getRuleAction() {
         return Actions.composite(substitutionRules);
+    }
+
+    private void addSubstitution(Action<? super DependencySubstitution> rule, boolean projectInvolved) {
+        addRule(rule);
+        if (projectInvolved) {
+            hasDependencySubstitutionRule = true;
+        }
     }
 
     private void addRule(Action<? super DependencySubstitution> rule) {
@@ -136,7 +145,7 @@ public class DefaultDependencySubstitutions implements DependencySubstitutionsIn
             ComponentSelectionDescriptorInternal substitutionReason = (ComponentSelectionDescriptorInternal) reason;
             @Override
             public Substitution because(String description) {
-                substitutionReason = substitutionReason.withReason(description);
+                substitutionReason = substitutionReason.withDescription(Describables.of(description));
                 return this;
             }
 
@@ -144,11 +153,23 @@ public class DefaultDependencySubstitutions implements DependencySubstitutionsIn
             public void with(ComponentSelector substitute) {
                 DefaultDependencySubstitution.validateTarget(substitute);
 
+                boolean projectInvolved = false;
+                if (substituted instanceof ProjectComponentSelector || substitute instanceof ProjectComponentSelector) {
+                    // A project is involved, need to be aware of it
+                    projectInvolved = true;
+                }
+
                 if (substituted instanceof UnversionedModuleComponentSelector) {
                     final ModuleIdentifier moduleId = ((UnversionedModuleComponentSelector) substituted).getModuleIdentifier();
-                    all(new ModuleMatchDependencySubstitutionAction(substitutionReason, moduleId, substitute));
+                    if (substitute instanceof ModuleComponentSelector) {
+                        if (((ModuleComponentSelector) substitute).getModuleIdentifier().equals(moduleId)) {
+                            // This substitution is effectively a force
+                            substitutionReason = substitutionReason.markAsEquivalentToForce();
+                        }
+                    }
+                    addSubstitution(new ModuleMatchDependencySubstitutionAction(substitutionReason, moduleId, substitute), projectInvolved);
                 } else {
-                    all(new ExactMatchDependencySubstitutionAction(substitutionReason, substituted, substitute));
+                    addSubstitution(new ExactMatchDependencySubstitutionAction(substitutionReason, substituted, substitute), projectInvolved);
                 }
             }
         };
@@ -187,9 +208,9 @@ public class DefaultDependencySubstitutions implements DependencySubstitutionsIn
     }
 
     private static class CompositeProjectPathConverter implements NotationConverter<String, ProjectComponentSelector> {
-        private final IncludedBuild build;
+        private final IncludedBuildState build;
 
-        private CompositeProjectPathConverter(IncludedBuild build) {
+        private CompositeProjectPathConverter(IncludedBuildState build) {
             this.build = build;
         }
 
@@ -200,7 +221,7 @@ public class DefaultDependencySubstitutions implements DependencySubstitutionsIn
 
         @Override
         public void convert(String notation, NotationConvertResult<? super ProjectComponentSelector> result) throws TypeConversionException {
-            result.converted(DefaultProjectComponentSelector.newSelector(build, notation));
+            result.converted(DefaultProjectComponentSelector.newSelector(build.getIdentifierForProject(Path.path(notation))));
         }
     }
 
@@ -238,7 +259,7 @@ public class DefaultDependencySubstitutions implements DependencySubstitutionsIn
         public void execute(DependencySubstitution dependencySubstitution) {
             if (dependencySubstitution.getRequested() instanceof ModuleComponentSelector) {
                 ModuleComponentSelector requested = (ModuleComponentSelector) dependencySubstitution.getRequested();
-                if (moduleId.getGroup().equals(requested.getGroup()) && moduleId.getName().equals(requested.getModule())) {
+                if (moduleId.equals(requested.getModuleIdentifier())) {
                     ((DependencySubstitutionInternal) dependencySubstitution).useTarget(substitute, selectionReason);
                 }
             }
@@ -259,6 +280,7 @@ public class DefaultDependencySubstitutions implements DependencySubstitutionsIn
             ModuleVersionSelector requested = componentSelectorConverter.getSelector(substitution.getRequested());
             DefaultDependencyResolveDetails details = new DefaultDependencyResolveDetails((DependencySubstitutionInternal) substitution, requested);
             delegate.execute(details);
+            details.complete();
         }
     }
 }

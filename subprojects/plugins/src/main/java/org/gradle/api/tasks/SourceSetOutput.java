@@ -16,9 +16,10 @@
 
 package org.gradle.api.tasks;
 
+import org.gradle.api.Incubating;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.file.SourceDirectorySet;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Map;
 
@@ -42,7 +43,7 @@ import java.util.Map;
  *
  * Working with generated resources.
  * <p>
- * In general, we recommend generating resources into folders different than the regular resourcesDir and classesDir.
+ * In general, we recommend generating resources into folders different than the regular resourcesDir and classesDirs.
  * Usually, it makes the build easier to understand and maintain. Also it gives some additional benefits
  * because other Gradle plugins can take advantage of the output dirs 'registered' in the SourceSet.output.
  * For example: Java plugin will use those dirs in calculating class paths and for jarring the content;
@@ -65,6 +66,7 @@ import java.util.Map;
  *
  * //a task that generates the resources:
  * task generateMyResources {
+ *   outputs.dir generatedResources
  *   doLast {
  *     def generated = new File(generatedResources, "myGeneratedResource.properties")
  *     generated.text = "message=Stay happy!"
@@ -83,40 +85,6 @@ import java.util.Map;
 public interface SourceSetOutput extends FileCollection {
 
     /**
-     * Returns the directory to assemble the compiled classes into.
-     * <p>
-     * See example at {@link SourceSetOutput}
-     *
-     * @return The classes dir.
-     * @deprecated Use {@link #getClassesDirs()} or {@link SourceDirectorySet#getOutputDir()}
-     */
-    @Deprecated
-    File getClassesDir();
-
-    /**
-     * Sets the directory to assemble the compiled classes into.
-     * <p>
-     * See example at {@link SourceSetOutput}
-     *
-     * @param classesDir the classes dir. Should not be null.
-     * @deprecated Set the output directory for the particular {@link org.gradle.api.tasks.compile.AbstractCompile} task
-     * @since 4.0
-     */
-    @Deprecated
-    void setClassesDir(File classesDir);
-
-    /**
-     * Sets the directory to assemble the compiled classes into.
-     * <p>
-     * See example at {@link SourceSetOutput}
-     *
-     * @param classesDir the classes dir. Should not be null.
-     * @deprecated Set the output directory for the particular {@link org.gradle.api.tasks.compile.AbstractCompile} task
-     */
-    @Deprecated
-    void setClassesDir(Object classesDir);
-
-    /**
      * Returns the directories containing compiled classes.
      *
      * @return The classes directories. Never returns null.
@@ -125,19 +93,13 @@ public interface SourceSetOutput extends FileCollection {
     FileCollection getClassesDirs();
 
     /**
-     * Source set uses the legacy layout (single classes directory for the entire source set).
-     * @return true if the source set has a single classes directory
-     * @since 4.0
-     */
-    boolean isLegacyLayout();
-
-    /**
      * Returns the output directory for resources
      * <p>
      * See example at {@link SourceSetOutput}
      *
      * @return The dir resources are copied to.
      */
+    @Nullable
     File getResourcesDir();
 
     /**
@@ -187,4 +149,13 @@ public interface SourceSetOutput extends FileCollection {
      * @return a new instance of registered dirs with resolved files
      */
     FileCollection getDirs();
+
+    /**
+     * Returns the directories containing generated source files (e.g. by annotation processors during compilation).
+     *
+     * @return The generated sources directories. Never returns null.
+     * @since 5.2
+     */
+    @Incubating
+    FileCollection getGeneratedSourcesDirs();
 }

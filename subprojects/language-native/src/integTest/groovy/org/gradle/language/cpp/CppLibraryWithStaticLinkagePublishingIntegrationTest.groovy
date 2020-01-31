@@ -16,14 +16,16 @@
 
 package org.gradle.language.cpp
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraryAndOptionalFeature
 import org.gradle.nativeplatform.fixtures.app.CppLib
 import org.gradle.test.fixtures.archive.ZipTestFixture
 import org.gradle.test.fixtures.maven.MavenFileRepository
 
-
 class CppLibraryWithStaticLinkagePublishingIntegrationTest extends AbstractInstalledToolChainIntegrationSpec implements CppTaskNames {
+
+    @ToBeFixedForInstantExecution
     def "can publish the binaries and headers of a library to a Maven repository"() {
         def lib = new CppLib()
         assert !lib.publicHeaders.files.empty
@@ -51,18 +53,18 @@ class CppLibraryWithStaticLinkagePublishingIntegrationTest extends AbstractInsta
 
         then:
         result.assertTasksExecuted(
-            compileAndStaticLinkTasks(debug),
-            compileAndStaticLinkTasks(release),
-            ":generatePomFileForDebugPublication",
-            ":generateMetadataFileForDebugPublication",
-            ":publishDebugPublicationToMavenRepository",
+            tasks.debug.allToCreate,
+            tasks.release.allToCreate,
+            ":generatePomFileForMainDebugPublication",
+            ":generateMetadataFileForMainDebugPublication",
+            ":publishMainDebugPublicationToMavenRepository",
             ":cppHeaders",
             ":generatePomFileForMainPublication",
             ":generateMetadataFileForMainPublication",
             ":publishMainPublicationToMavenRepository",
-            ":generatePomFileForReleasePublication",
-            ":generateMetadataFileForReleasePublication",
-            ":publishReleasePublicationToMavenRepository",
+            ":generatePomFileForMainReleasePublication",
+            ":generateMetadataFileForMainReleasePublication",
+            ":publishMainReleasePublicationToMavenRepository",
             ":publish"
         )
 
@@ -85,10 +87,10 @@ class CppLibraryWithStaticLinkagePublishingIntegrationTest extends AbstractInsta
         api.files.size() == 1
         api.files[0].name == 'cpp-api-headers.zip'
         api.files[0].url == 'test-1.2-cpp-api-headers.zip'
-        mainMetadata.variant("debug-link").availableAt.coords == "some.group:test_debug:1.2"
-        mainMetadata.variant("debug-runtime").availableAt.coords == "some.group:test_debug:1.2"
-        mainMetadata.variant("release-link").availableAt.coords == "some.group:test_release:1.2"
-        mainMetadata.variant("release-runtime").availableAt.coords == "some.group:test_release:1.2"
+        mainMetadata.variant("debugLink").availableAt.coords == "some.group:test_debug:1.2"
+        mainMetadata.variant("debugRuntime").availableAt.coords == "some.group:test_debug:1.2"
+        mainMetadata.variant("releaseLink").availableAt.coords == "some.group:test_release:1.2"
+        mainMetadata.variant("releaseRuntime").availableAt.coords == "some.group:test_release:1.2"
 
         def debug = repo.module('some.group', 'test_debug', '1.2')
         debug.assertPublished()
@@ -99,12 +101,12 @@ class CppLibraryWithStaticLinkagePublishingIntegrationTest extends AbstractInsta
 
         def debugMetadata = debug.parsedModuleMetadata
         debugMetadata.variants.size() == 2
-        def debugLink = debugMetadata.variant('debug-link')
+        def debugLink = debugMetadata.variant('debugLink')
         debugLink.dependencies.empty
         debugLink.files.size() == 1
         debugLink.files[0].name == staticLibraryName('test')
         debugLink.files[0].url == withStaticLibrarySuffix("test_debug-1.2")
-        def debugRuntime = debugMetadata.variant('debug-runtime')
+        def debugRuntime = debugMetadata.variant('debugRuntime')
         debugRuntime.dependencies.empty
         debugRuntime.files.empty
 
@@ -117,16 +119,17 @@ class CppLibraryWithStaticLinkagePublishingIntegrationTest extends AbstractInsta
 
         def releaseMetadata = release.parsedModuleMetadata
         releaseMetadata.variants.size() == 2
-        def releaseLink = releaseMetadata.variant('release-link')
+        def releaseLink = releaseMetadata.variant('releaseLink')
         releaseLink.dependencies.empty
         releaseLink.files.size() == 1
         releaseLink.files[0].name == staticLibraryName('test')
         releaseLink.files[0].url == withStaticLibrarySuffix("test_release-1.2")
-        def releaseRuntime = releaseMetadata.variant('release-runtime')
+        def releaseRuntime = releaseMetadata.variant('releaseRuntime')
         releaseRuntime.dependencies.empty
         releaseRuntime.files.empty
     }
 
+    @ToBeFixedForInstantExecution
     def "correct variant of published library is selected when resolving"() {
         def app = new CppAppWithLibraryAndOptionalFeature()
 
@@ -157,6 +160,7 @@ class CppLibraryWithStaticLinkagePublishingIntegrationTest extends AbstractInsta
         run('publish')
 
         def consumer = file("consumer").createDir()
+        consumer.file("settings.gradle") << ""
         consumer.file("build.gradle") << """
             apply plugin: 'cpp-application'
             repositories { maven { url '${repoDir.toURI()}' } }

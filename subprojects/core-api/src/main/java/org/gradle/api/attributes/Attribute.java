@@ -17,7 +17,6 @@
 package org.gradle.api.attributes;
 
 import org.apache.commons.lang.WordUtils;
-import org.gradle.api.Incubating;
 import org.gradle.api.Named;
 
 /**
@@ -30,7 +29,6 @@ import org.gradle.api.Named;
  *
  * @since 3.3
  */
-@Incubating
 public class Attribute<T> implements Named {
     private final String name;
     private final Class<T> type;
@@ -51,8 +49,8 @@ public class Attribute<T> implements Named {
     }
 
     /**
-     * Creates a new attribute of  the given type, inferring the name of the attribute from the simple type name.
-     * This method is useful when there's supposely only one attribute of a specific type in a container, so there's
+     * Creates a new attribute of the given type, inferring the name of the attribute from the simple type name.
+     * This method is useful when there's supposedly only one attribute of a specific type in a container, so there's
      * no need to distinguish by name (but the returned type doesn't enforce it_. There's no guarantee that subsequent
      * calls to this method with the same attributes would either return the same instance or different instances
      * of {@link Attribute}, so consumers are required to compare the attributes with the {@link #equals(Object)}

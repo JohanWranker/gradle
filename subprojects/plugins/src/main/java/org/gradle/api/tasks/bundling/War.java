@@ -17,11 +17,9 @@ package org.gradle.api.tasks.bundling;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Transformer;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.file.copy.DefaultCopySpec;
-import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.Internal;
@@ -30,6 +28,7 @@ import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.util.ConfigureUtil;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,18 +39,6 @@ import java.util.concurrent.Callable;
  */
 public class War extends Jar {
     public static final String WAR_EXTENSION = "war";
-    private static final Spec<File> IS_DIRECTORY = new Spec<File>() {
-        @Override
-        public boolean isSatisfiedBy(File element) {
-            return element.isDirectory();
-        }
-    };
-    private static final Spec<File> IS_FILE = new Spec<File>() {
-        @Override
-        public boolean isSatisfiedBy(File element) {
-            return element.isFile();
-        }
-    };
 
     private File webXml;
     private FileCollection classpath;
@@ -59,46 +46,22 @@ public class War extends Jar {
 
 
     public War() {
-        setExtension(WAR_EXTENSION);
+        getArchiveExtension().set(WAR_EXTENSION);
         setMetadataCharset("UTF-8");
         // Add these as separate specs, so they are not affected by the changes to the main spec
 
         webInf = (DefaultCopySpec) getRootSpec().addChildBeforeSpec(getMainSpec()).into("WEB-INF");
-        webInf.into("classes", new Action<CopySpec>() {
-            @Override
-            public void execute(CopySpec copySpec) {
-                copySpec.from(new Callable<Iterable<File>>() {
-                    public Iterable<File> call() {
-                        FileCollection classpath = getClasspath();
-                        return classpath != null ? classpath.filter(IS_DIRECTORY) : Collections.<File>emptyList();
-                    }
-                });
-            }
-        });
-        webInf.into("lib", new Action<CopySpec>() {
-            public void execute(CopySpec it) {
-                it.from(new Callable<Iterable<File>>() {
-                    public Iterable<File> call() {
-                        FileCollection classpath = getClasspath();
-                        return classpath != null ? classpath.filter(IS_FILE) : Collections.<File>emptyList();
-                    }
-                });
-            }
-
-        });
-        webInf.into("", new Action<CopySpec>() {
-            public void execute(CopySpec it) {
-                it.from(new Callable<File>() {
-                    public File call() {
-                        return getWebXml();
-                    }
-                });
-                it.rename(new Transformer<String, String>() {
-                    public String transform(String it) {
-                        return "web.xml";
-                    }
-                });
-            }
+        webInf.into("classes", spec -> spec.from((Callable<Iterable<File>>) () -> {
+            FileCollection classpath = getClasspath();
+            return classpath != null ? classpath.filter(File::isDirectory) : Collections.<File>emptyList();
+        }));
+        webInf.into("lib", spec -> spec.from((Callable<Iterable<File>>) () -> {
+            FileCollection classpath = getClasspath();
+            return classpath != null ? classpath.filter(File::isFile) : Collections.<File>emptyList();
+        }));
+        webInf.into("", spec -> {
+            spec.from((Callable<File>) War.this::getWebXml);
+            spec.rename(name -> "web.xml");
         });
     }
 
@@ -140,6 +103,7 @@ public class War extends Jar {
      *
      * @return The classpath. Returns an empty collection when there is no classpath to include in the WAR.
      */
+    @Nullable
     @Optional
     @Classpath
     public FileCollection getClasspath() {
@@ -180,9 +144,10 @@ public class War extends Jar {
      *
      * @return The {@code web.xml} file.
      */
-    @InputFile
-    @PathSensitive(PathSensitivity.NONE)
+    @Nullable
     @Optional
+    @PathSensitive(PathSensitivity.NONE)
+    @InputFile
     public File getWebXml() {
         return webXml;
     }
@@ -192,7 +157,7 @@ public class War extends Jar {
      *
      * @param webXml The {@code web.xml} file. Maybe null.
      */
-    public void setWebXml(File webXml) {
+    public void setWebXml(@Nullable File webXml) {
         this.webXml = webXml;
     }
 

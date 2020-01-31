@@ -29,8 +29,10 @@ import org.gradle.internal.nativeintegration.services.NativeServices;
 import org.gradle.internal.remote.Address;
 import org.gradle.internal.serialize.kryo.KryoBackedDecoder;
 import org.gradle.internal.service.scopes.GradleUserHomeScopeServiceRegistry;
+import org.gradle.internal.stream.EncodedStream;
 import org.gradle.launcher.bootstrap.EntryPoint;
 import org.gradle.launcher.bootstrap.ExecutionListener;
+import org.gradle.launcher.daemon.configuration.DaemonParameters;
 import org.gradle.launcher.daemon.configuration.DaemonServerConfiguration;
 import org.gradle.launcher.daemon.configuration.DefaultDaemonServerConfiguration;
 import org.gradle.launcher.daemon.context.DaemonContext;
@@ -39,8 +41,7 @@ import org.gradle.launcher.daemon.server.Daemon;
 import org.gradle.launcher.daemon.server.DaemonServices;
 import org.gradle.launcher.daemon.server.MasterExpirationStrategy;
 import org.gradle.launcher.daemon.server.expiry.DaemonExpirationStrategy;
-import org.gradle.process.internal.shutdown.ShutdownHookActionRegister;
-import org.gradle.process.internal.streams.EncodedStream;
+import org.gradle.process.internal.shutdown.ShutdownHooks;
 
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
@@ -79,6 +80,7 @@ public class DaemonMain extends EntryPoint {
         int periodicCheckIntervalMs;
         boolean singleUse;
         String daemonUid;
+        DaemonParameters.Priority priority;
         List<File> additionalClassPath;
 
         KryoBackedDecoder decoder = new KryoBackedDecoder(new EncodedStream.EncodedInput(System.in));
@@ -89,6 +91,7 @@ public class DaemonMain extends EntryPoint {
             periodicCheckIntervalMs = decoder.readSmallInt();
             singleUse = decoder.readBoolean();
             daemonUid = decoder.readString();
+            priority = DaemonParameters.Priority.values()[decoder.readSmallInt()];
             int argCount = decoder.readSmallInt();
             startupOpts = new ArrayList<String>(argCount);
             for (int i = 0; i < argCount; i++) {
@@ -104,11 +107,11 @@ public class DaemonMain extends EntryPoint {
         }
 
         NativeServices.initialize(gradleHomeDir);
-        DaemonServerConfiguration parameters = new DefaultDaemonServerConfiguration(daemonUid, daemonBaseDir, idleTimeoutMs, periodicCheckIntervalMs, singleUse, startupOpts);
+        DaemonServerConfiguration parameters = new DefaultDaemonServerConfiguration(daemonUid, daemonBaseDir, idleTimeoutMs, periodicCheckIntervalMs, singleUse, priority, startupOpts);
         LoggingServiceRegistry loggingRegistry = LoggingServiceRegistry.newCommandLineProcessLogging();
         LoggingManagerInternal loggingManager = loggingRegistry.newInstance(LoggingManagerInternal.class);
 
-        DaemonServices daemonServices = new DaemonServices(parameters, loggingRegistry, loggingManager, new DefaultClassPath(additionalClassPath));
+        DaemonServices daemonServices = new DaemonServices(parameters, loggingRegistry, loggingManager, DefaultClassPath.of(additionalClassPath));
         File daemonLog = daemonServices.getDaemonLogFile();
 
         // Any logging prior to this point will not end up in the daemon log file.
@@ -135,7 +138,7 @@ public class DaemonMain extends EntryPoint {
             CompositeStoppable.stoppable(daemonServices.get(GradleUserHomeScopeServiceRegistry.class)).stop();
         }
     }
-    
+
     private static void invalidArgs(String message) {
         System.out.println("USAGE: <gradle version>");
         System.out.println(message);
@@ -168,7 +171,8 @@ public class DaemonMain extends EntryPoint {
         }
         final PrintStream log = result;
 
-        ShutdownHookActionRegister.addAction(new Runnable() {
+        ShutdownHooks.addShutdownHook(new Runnable() {
+            @Override
             public void run() {
                 //just in case we have a bug related to logging,
                 //printing some exit info directly to file:

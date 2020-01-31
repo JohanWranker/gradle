@@ -17,14 +17,14 @@
 package org.gradle.api.internal.artifacts.ivyservice.ivyresolve;
 
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
-import org.gradle.api.internal.artifacts.ComponentMetadataProcessor;
 import org.gradle.api.internal.artifacts.repositories.resolver.MetadataFetchingCost;
 import org.gradle.api.internal.component.ArtifactType;
 import org.gradle.internal.component.external.model.ModuleDependencyMetadata;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ComponentOverrideMetadata;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
-import org.gradle.internal.component.model.ModuleSource;
+import org.gradle.internal.component.model.ConfigurationMetadata;
+import org.gradle.internal.component.model.ModuleSources;
 import org.gradle.internal.resolve.result.BuildableArtifactResolveResult;
 import org.gradle.internal.resolve.result.BuildableArtifactSetResolveResult;
 import org.gradle.internal.resolve.result.BuildableComponentArtifactsResolveResult;
@@ -39,19 +39,19 @@ import org.gradle.internal.resolve.result.BuildableModuleVersionListingResolveRe
  * be considered local.
  */
 public class LocalModuleComponentRepository extends BaseModuleComponentRepository {
-    private final ComponentMetadataProcessor metadataProcessor;
     private final LocalAccess localAccess = new LocalAccess();
     private final RemoteAccess remoteAccess = new RemoteAccess();
 
-    public LocalModuleComponentRepository(ModuleComponentRepository delegate, ComponentMetadataProcessor metadataProcessor) {
+    public LocalModuleComponentRepository(ModuleComponentRepository delegate) {
         super(delegate);
-        this.metadataProcessor = metadataProcessor;
     }
 
+    @Override
     public ModuleComponentRepositoryAccess getLocalAccess() {
         return localAccess;
     }
 
+    @Override
     public ModuleComponentRepositoryAccess getRemoteAccess() {
         return remoteAccess;
     }
@@ -76,10 +76,6 @@ public class LocalModuleComponentRepository extends BaseModuleComponentRepositor
             if (!result.hasResult()) {
                 delegate.getRemoteAccess().resolveComponentMetaData(moduleComponentIdentifier, requestMetaData, result);
             }
-
-            if (result.getState() == BuildableModuleComponentMetaDataResolveResult.State.Resolved) {
-                result.setMetadata(metadataProcessor.processMetadata(result.getMetaData()));
-            }
         }
 
         @Override
@@ -91,18 +87,18 @@ public class LocalModuleComponentRepository extends BaseModuleComponentRepositor
         }
 
         @Override
-        public void resolveArtifacts(ComponentResolveMetadata component, BuildableComponentArtifactsResolveResult result) {
-            delegate.getLocalAccess().resolveArtifacts(component, result);
+        public void resolveArtifacts(ComponentResolveMetadata component, ConfigurationMetadata variant, BuildableComponentArtifactsResolveResult result) {
+            delegate.getLocalAccess().resolveArtifacts(component, variant, result);
             if(!result.hasResult()) {
-                delegate.getRemoteAccess().resolveArtifacts(component, result);
+                delegate.getRemoteAccess().resolveArtifacts(component, variant, result);
             }
         }
 
         @Override
-        public void resolveArtifact(ComponentArtifactMetadata artifact, ModuleSource moduleSource, BuildableArtifactResolveResult result) {
-            delegate.getLocalAccess().resolveArtifact(artifact, moduleSource, result);
+        public void resolveArtifact(ComponentArtifactMetadata artifact, ModuleSources moduleSources, BuildableArtifactResolveResult result) {
+            delegate.getLocalAccess().resolveArtifact(artifact, moduleSources, result);
             if(!result.hasResult()) {
-                delegate.getRemoteAccess().resolveArtifact(artifact, moduleSource, result);
+                delegate.getRemoteAccess().resolveArtifact(artifact, moduleSources, result);
             }
         }
 
@@ -131,11 +127,11 @@ public class LocalModuleComponentRepository extends BaseModuleComponentRepositor
         }
 
         @Override
-        public void resolveArtifacts(ComponentResolveMetadata component, BuildableComponentArtifactsResolveResult result) {
+        public void resolveArtifacts(ComponentResolveMetadata component, ConfigurationMetadata variant, BuildableComponentArtifactsResolveResult result) {
         }
 
         @Override
-        public void resolveArtifact(ComponentArtifactMetadata artifact, ModuleSource moduleSource, BuildableArtifactResolveResult result) {
+        public void resolveArtifact(ComponentArtifactMetadata artifact, ModuleSources moduleSources, BuildableArtifactResolveResult result) {
         }
 
         @Override

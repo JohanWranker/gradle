@@ -148,9 +148,6 @@
                 <td>org.gradle.api.Script</td>
             </tr>
             <tr>
-                <td>org.gradle.jvm.toolchain.JavaToolChain</td>
-            </tr>
-            <tr>
                 <td>org.gradle.api.tasks.SourceSet</td>
             </tr>
             <tr>
@@ -184,6 +181,35 @@
                 <td>org.gradle.api.plugins.ExtraPropertiesExtension</td>
             </tr>
             <tr>
+                <td>org.gradle.plugin.use.PluginDependenciesSpec</td>
+            </tr>
+            <tr>
+                <td>org.gradle.plugin.use.PluginDependencySpec</td>
+            </tr>
+            <tr>
+                <td>org.gradle.plugin.management.PluginManagementSpec</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.resources.ResourceHandler</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.resources.TextResourceFactory</td>
+            </tr>
+            <tr>
+                <td>org.gradle.work.InputChanges</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.distribution.Distribution</td>
+            </tr>
+        </table>
+    </section>
+
+    <section>
+        <title>Publishing types</title>
+        <para>Listed below are the types used to configure publishing:</para>
+        <table>
+            <title>Publishing types</title>
+            <tr>
                 <td>org.gradle.api.publish.PublishingExtension</td>
             </tr>
             <tr>
@@ -199,6 +225,15 @@
                 <td>org.gradle.api.publish.ivy.IvyModuleDescriptorSpec</td>
             </tr>
             <tr>
+                <td>org.gradle.api.publish.ivy.IvyModuleDescriptorAuthor</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.ivy.IvyModuleDescriptorLicense</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.ivy.IvyModuleDescriptorDescription</td>
+            </tr>
+            <tr>
                 <td>org.gradle.api.publish.maven.MavenPublication</td>
             </tr>
             <tr>
@@ -211,28 +246,58 @@
                 <td>org.gradle.api.publish.maven.MavenPom</td>
             </tr>
             <tr>
-                <td>org.gradle.plugin.use.PluginDependenciesSpec</td>
+                <td>org.gradle.api.publish.maven.MavenPomCiManagement</td>
             </tr>
             <tr>
-                <td>org.gradle.plugin.use.PluginDependencySpec</td>
+                <td>org.gradle.api.publish.maven.MavenPomContributor</td>
             </tr>
             <tr>
-                <td>org.gradle.plugin.management.PluginManagementSpec</td>
+                <td>org.gradle.api.publish.maven.MavenPomContributorSpec</td>
             </tr>
             <tr>
-                <td>org.gradle.api.resources.ResourceHandler</td>
+                <td>org.gradle.api.publish.maven.MavenPomDeveloper</td>
             </tr>
             <tr>
-                <td>org.gradle.api.resources.TextResourceFactory</td>
+                <td>org.gradle.api.publish.maven.MavenPomDeveloperSpec</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomDistributionManagement</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomIssueManagement</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomLicense</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomLicenseSpec</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomMailingList</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomMailingListSpec</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomOrganization</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomRelocation</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.publish.maven.MavenPomScm</td>
             </tr>
         </table>
     </section>
 
     <section>
         <title>Container types</title>
-        <para>Container types that handle various declarative elements (e.g. dependencies, configurations, artifacts, etc.):</para>
+        <para>Container types that handle various declarative elements (e.g. dependencies, configurations, artifacts, tasks, etc.):</para>
         <table>
             <title>Container types</title>
+            <tr>
+                <td>org.gradle.api.tasks.TaskContainer</td>
+            </tr>
             <tr>
                 <td>org.gradle.api.artifacts.ConfigurationContainer</td>
             </tr>
@@ -266,6 +331,9 @@
                 <td>org.gradle.api.credentials.AwsCredentials</td>
             </tr>
             <tr>
+                <td>org.gradle.api.credentials.HttpHeaderCredentials</td>
+            </tr>
+            <tr>
                 <td>org.gradle.api.artifacts.repositories.AuthenticationContainer</td>
             </tr>
             <tr>
@@ -273,6 +341,9 @@
             </tr>
             <tr>
                 <td>org.gradle.authentication.http.BasicAuthentication</td>
+            </tr>
+            <tr>
+                <td>org.gradle.authentication.http.HttpHeaderAuthentication</td>
             </tr>
             <tr>
                 <td>org.gradle.authentication.http.DigestAuthentication</td>
@@ -366,9 +437,6 @@
                 <td>org.gradle.api.plugins.quality.CodeNarc</td>
             </tr>
             <tr>
-                <td>org.gradle.api.plugins.buildcomparison.gradle.CompareGradleBuilds</td>
-            </tr>
-            <tr>
                 <td>org.gradle.api.tasks.Copy</td>
             </tr>
             <tr>
@@ -382,9 +450,6 @@
             </tr>
             <tr>
                 <td>org.gradle.api.tasks.Exec</td>
-            </tr>
-            <tr>
-                <td>org.gradle.api.plugins.quality.FindBugs</td>
             </tr>
             <tr>
                 <td>org.gradle.api.publish.ivy.tasks.GenerateIvyDescriptor</td>
@@ -427,9 +492,6 @@
             </tr>
             <tr>
                 <td>org.gradle.api.tasks.JavaExec</td>
-            </tr>
-            <tr>
-                <td>org.gradle.api.plugins.quality.JDepend</td>
             </tr>
             <tr>
                 <td>org.gradle.api.plugins.quality.Pmd</td>
@@ -498,9 +560,6 @@
             </tr>
             <tr>
                 <td>org.gradle.api.reporting.DirectoryReport</td>
-            </tr>
-            <tr>
-                <td>org.gradle.api.plugins.quality.FindBugsXmlReport</td>
             </tr>
             <tr>
                 <td>org.gradle.api.reporting.Report</td>
@@ -597,6 +656,80 @@
     </section>
 
     <section>
+        <title>Xcode task types</title>
+        <para>Tasks contributed by Xcode IDE plugins. To configure IDE plugins please use IDE model types.</para>
+        <table>
+            <title>Xcode task types</title>
+            <tr>
+                <td>org.gradle.ide.xcode.tasks.GenerateSchemeFileTask</td>
+            </tr>
+            <tr>
+                <td>org.gradle.ide.xcode.tasks.GenerateWorkspaceSettingsFileTask</td>
+            </tr>
+            <tr>
+                <td>org.gradle.ide.xcode.tasks.GenerateXcodeProjectFileTask</td>
+            </tr>
+            <tr>
+                <td>org.gradle.ide.xcode.tasks.GenerateXcodeWorkspaceFileTask</td>
+            </tr>
+        </table>
+    </section>
+
+    <section>
+        <title>Visual Studio task types</title>
+        <para>Tasks contributed by Visual Studio IDE plugins. To configure IDE plugins please use IDE model types.</para>
+        <table>
+            <title>Visual Studio task types</title>
+            <tr>
+                <td>org.gradle.ide.visualstudio.tasks.GenerateSolutionFileTask</td>
+            </tr>
+            <tr>
+                <td>org.gradle.ide.visualstudio.tasks.GenerateProjectFileTask</td>
+            </tr>
+            <tr>
+                <td>org.gradle.ide.visualstudio.tasks.GenerateFiltersFileTask</td>
+            </tr>
+        </table>
+    </section>
+
+    <section>
+        <title>Artifact transform types</title>
+        <para>Used to define artifact transforms.</para>
+        <table>
+            <title>Artifact transform types</title>
+            <tr>
+                <td>org.gradle.api.artifacts.transform.TransformAction</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.artifacts.transform.TransformOutputs</td>
+            </tr>
+            <tr>
+                <td>org.gradle.api.artifacts.transform.TransformSpec</td>
+            </tr>
+        </table>
+    </section>
+
+    <section>
+        <title>Native tool chains model types</title>
+        <para>Used to configure tool chains for building C++ and Swift components.</para>
+        <table>
+            <title>Native tool chain types</title>
+            <tr>
+                <td>org.gradle.nativeplatform.toolchain.Gcc</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.toolchain.Clang</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.toolchain.VisualCpp</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.toolchain.Swiftc</td>
+            </tr>
+        </table>
+    </section>
+
+    <section condition="noNavBar">
         <title>Native software model types</title>
         <para>Used to configure software components developed with native code.</para>
         <table>
@@ -662,15 +795,6 @@
                 <td>org.gradle.nativeplatform.Flavor</td>
             </tr>
             <tr>
-                <td>org.gradle.nativeplatform.toolchain.Gcc</td>
-            </tr>
-            <tr>
-                <td>org.gradle.nativeplatform.toolchain.Clang</td>
-            </tr>
-            <tr>
-                <td>org.gradle.nativeplatform.toolchain.VisualCpp</td>
-            </tr>
-            <tr>
                 <td>org.gradle.language.assembler.AssemblerSourceSet</td>
             </tr>
             <tr>
@@ -714,6 +838,41 @@
             </tr>
         </table>
     </section>
+
+    <section>
+        <title>C++ component model types</title>
+        <para>Used to configure C++ components.</para>
+        <table>
+            <title>C++ component types</title>
+            <tr>
+                <td>org.gradle.language.cpp.CppApplication</td>
+            </tr>
+            <tr>
+                <td>org.gradle.language.cpp.CppLibrary</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.test.cpp.CppTestSuite</td>
+            </tr>
+        </table>
+    </section>
+
+    <section>
+        <title>Swift component model types</title>
+        <para>Used to configure Swift components.</para>
+        <table>
+            <title>Swift component types</title>
+            <tr>
+                <td>org.gradle.language.swift.SwiftApplication</td>
+            </tr>
+            <tr>
+                <td>org.gradle.language.swift.SwiftLibrary</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.test.xctest.SwiftXCTestSuite</td>
+            </tr>
+        </table>
+    </section>
+
     <section>
         <title>Native binary task types</title>
         <para>Tasks used to build native binaries.</para>
@@ -722,6 +881,41 @@
             <tr>
                 <td>org.gradle.language.cpp.tasks.CppCompile</td>
             </tr>
+            <tr>
+                <td>org.gradle.language.swift.tasks.SwiftCompile</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.tasks.LinkExecutable</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.tasks.LinkSharedLibrary</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.tasks.CreateStaticLibrary</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.tasks.LinkMachOBundle</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.tasks.InstallExecutable</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.test.xctest.tasks.InstallXCTestBundle</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.test.tasks.RunTestExecutable</td>
+            </tr>
+            <tr>
+                <td>org.gradle.nativeplatform.test.xctest.tasks.XCTest</td>
+            </tr>
+        </table>
+    </section>
+
+    <section condition="noNavBar">
+        <title>Native binary task types</title>
+        <para>Tasks used to build native binaries.</para>
+        <table>
+            <title>Native component task types</title>
             <tr>
                 <td>org.gradle.language.c.tasks.CCompile</td>
             </tr>
@@ -737,80 +931,6 @@
             <tr>
                 <td>org.gradle.language.rc.tasks.WindowsResourceCompile</td>
             </tr>
-            <tr>
-                <td>org.gradle.nativeplatform.tasks.LinkExecutable</td>
-            </tr>
-            <tr>
-                <td>org.gradle.nativeplatform.tasks.LinkSharedLibrary</td>
-            </tr>
-            <tr>
-                <td>org.gradle.nativeplatform.tasks.CreateStaticLibrary</td>
-            </tr>
-            <tr>
-                <td>org.gradle.nativeplatform.tasks.InstallExecutable</td>
-            </tr>
-            <tr>
-                <td>org.gradle.nativeplatform.test.tasks.RunTestExecutable</td>
-            </tr>
-        </table>
-    </section>
-
-    <section condition="noNavBar">
-        <title>Play Framework model types</title>
-        <para>Used to configure software components developed with the Play Framework.</para>
-        <table>
-            <title>Play Framework model types</title>
-            <tr>
-                <td>org.gradle.play.PlayApplicationBinarySpec</td>
-            </tr>
-            <tr>
-                <td>org.gradle.play.PlayApplicationSpec</td>
-            </tr>
-            <tr>
-                <td>org.gradle.play.platform.PlayPlatform</td>
-            </tr>
-            <tr>
-                <td>org.gradle.play.JvmClasses</td>
-            </tr>
-            <tr>
-                <td>org.gradle.play.PublicAssets</td>
-            </tr>
-            <tr>
-                <td>org.gradle.play.distribution.PlayDistributionContainer</td>
-            </tr>
-            <tr>
-                <td>org.gradle.language.twirl.TwirlSourceSet</td>
-            </tr>
-            <tr>
-                <td>org.gradle.language.routes.RoutesSourceSet</td>
-            </tr>
-            <tr>
-                <td>org.gradle.language.coffeescript.CoffeeScriptSourceSet</td>
-            </tr>
-            <tr>
-                <td>org.gradle.language.javascript.JavaScriptSourceSet</td>
-            </tr>
-        </table>
-    </section>
-
-    <section condition="noNavBar">
-        <title>Play Framework task types</title>
-        <para>Tasks used to build applications using the Play Framework.</para>
-        <table>
-            <title>Play Framework task types</title>
-            <tr>
-                <td>org.gradle.play.tasks.JavaScriptMinify</td>
-            </tr>
-            <tr>
-                <td>org.gradle.play.tasks.PlayRun</td>
-            </tr>
-            <tr>
-                <td>org.gradle.play.tasks.RoutesCompile</td>
-            </tr>
-            <tr>
-                <td>org.gradle.play.tasks.TwirlCompile</td>
-            </tr>
-            <!-- add PlatformScalaCompile -->
         </table>
     </section>
 

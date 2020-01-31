@@ -17,16 +17,20 @@
 package org.gradle.plugins.ide.idea
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
-import static org.gradle.plugins.ide.fixtures.IdeaFixtures.*
+import static org.gradle.plugins.ide.fixtures.IdeaFixtures.parseIml
+import static org.gradle.plugins.ide.fixtures.IdeaFixtures.parseIpr
 
 class IdeaCompositeBuildIntegrationTest extends AbstractIntegrationSpec {
-    def "handle composite build"() {
+    @ToBeFixedForInstantExecution
+    def "includes module for each project in each build"() {
         given:
         settingsFile << """
             include 'api'
             include 'shared:api', 'shared:model'
             includeBuild 'util'
+            includeBuild 'other'
             rootProject.name = 'root'
         """
 
@@ -38,14 +42,14 @@ class IdeaCompositeBuildIntegrationTest extends AbstractIntegrationSpec {
 
             project(':api') {
                 dependencies {
-                    compile project(':shared:api')
-                    testCompile project(':shared:model')
+                    implementation project(':shared:api')
+                    testImplementation project(':shared:model')
                 }
             }
 
             project(':shared:model') {
                 dependencies {
-                    testCompile "test:util:1.3"
+                    testImplementation "test:util:1.3"
                 }
             }
         """
@@ -59,11 +63,36 @@ class IdeaCompositeBuildIntegrationTest extends AbstractIntegrationSpec {
                 version = '1.3'
             """
         }
+        singleProjectBuild("other") {
+            settingsFile << "rootProject.name = '${rootProjectName}'"
+            buildFile << """
+                apply plugin: 'java'
+                apply plugin: 'idea'
+            """
+        }
 
         when:
-        succeeds 'idea'
+        succeeds ":idea"
 
         then:
+        result.assertTasksExecuted(":ideaModule", ":ideaProject", ":ideaWorkspace",
+            ":api:ideaModule",
+            ":shared:ideaModule",
+            ":shared:api:ideaModule",
+            ":shared:model:ideaModule",
+            ":util:ideaModule",
+            ":other:ideaModule",
+            ":idea")
+
+        def ipr = parseIpr(file('root.ipr'))
+        ipr.modules.assertHasModules('$PROJECT_DIR$/root.iml',
+            '$PROJECT_DIR$/api/root-api.iml',
+            '$PROJECT_DIR$/shared/shared.iml',
+            '$PROJECT_DIR$/shared/api/shared-api.iml',
+            '$PROJECT_DIR$/shared/model/model.iml',
+            '$PROJECT_DIR$/util/util.iml',
+            '$PROJECT_DIR$/other/other.iml')
+
         def apiDependencies = parseIml(file('api/root-api.iml')).dependencies
         apiDependencies.modules.size() == 2
         apiDependencies.assertHasModule('COMPILE', 'shared-api')
@@ -73,8 +102,10 @@ class IdeaCompositeBuildIntegrationTest extends AbstractIntegrationSpec {
         modelDependencies.modules.size() == 1
         modelDependencies.assertHasModule('TEST', 'util')
 
-        def ipr = parseIpr(file('root.ipr'))
-        ipr.modules.assertHasModules('$PROJECT_DIR$/root.iml', '$PROJECT_DIR$/api/root-api.iml', '$PROJECT_DIR$/shared/shared.iml',
-            '$PROJECT_DIR$/shared/api/shared-api.iml', '$PROJECT_DIR$/shared/model/model.iml', '$PROJECT_DIR$/util/util.iml')
+        parseIml(file('root.iml'))
+        parseIml(file('shared/shared.iml'))
+        parseIml(file('shared/api/shared-api.iml'))
+        parseIml(file('util/util.iml'))
+        parseIml(file('other/other.iml'))
     }
 }

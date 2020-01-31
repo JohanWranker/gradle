@@ -32,51 +32,97 @@ package org.gradle.api.internal.tasks.scala;
  * limitations under the License.
  */
 
-import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.internal.ClassPathRegistry;
 import org.gradle.api.internal.tasks.compile.BaseForkOptionsConverter;
 import org.gradle.api.internal.tasks.compile.daemon.AbstractDaemonCompiler;
-import org.gradle.process.JavaForkOptions;
-import org.gradle.workers.internal.DaemonForkOptionsBuilder;
-import org.gradle.workers.internal.KeepAliveMode;
-import org.gradle.workers.internal.WorkerDaemonFactory;
-import org.gradle.workers.internal.DaemonForkOptions;
 import org.gradle.api.tasks.compile.ForkOptions;
 import org.gradle.api.tasks.scala.ScalaForkOptions;
+import org.gradle.initialization.ClassLoaderRegistry;
+import org.gradle.internal.classloader.FilteringClassLoader;
+import org.gradle.internal.classloader.VisitableURLClassLoader;
+import org.gradle.internal.classpath.ClassPath;
+import org.gradle.internal.classpath.DefaultClassPath;
 import org.gradle.language.base.internal.compile.Compiler;
+import org.gradle.process.JavaForkOptions;
+import org.gradle.process.internal.JavaForkOptionsFactory;
+import org.gradle.workers.internal.ActionExecutionSpecFactory;
+import org.gradle.workers.internal.DaemonForkOptions;
+import org.gradle.workers.internal.DaemonForkOptionsBuilder;
+import org.gradle.workers.internal.HierarchicalClassLoaderStructure;
+import org.gradle.workers.internal.KeepAliveMode;
+import org.gradle.workers.internal.WorkerDaemonFactory;
 
 import java.io.File;
-import java.util.Arrays;
 
 public class DaemonScalaCompiler<T extends ScalaJavaJointCompileSpec> extends AbstractDaemonCompiler<T> {
-    private static final Iterable<String> SHARED_PACKAGES =
-            Arrays.asList("scala", "com.typesafe.zinc", "xsbti", "com.sun.tools.javac", "sbt");
+    private final Class<? extends Compiler<T>> compilerClass;
+    private final Object[] compilerConstructorArguments;
     private final Iterable<File> zincClasspath;
-    private final FileResolver fileResolver;
+    private final JavaForkOptionsFactory forkOptionsFactory;
     private final File daemonWorkingDir;
+    private final ClassPathRegistry classPathRegistry;
+    private final ClassLoaderRegistry classLoaderRegistry;
 
-    public DaemonScalaCompiler(File daemonWorkingDir, Compiler<T> delegate, WorkerDaemonFactory workerDaemonFactory, Iterable<File> zincClasspath, FileResolver fileResolver) {
-        super(delegate, workerDaemonFactory);
+    public DaemonScalaCompiler(File daemonWorkingDir, Class<? extends Compiler<T>> compilerClass, Object[] compilerConstructorArguments, WorkerDaemonFactory workerDaemonFactory, Iterable<File> zincClasspath, JavaForkOptionsFactory forkOptionsFactory, ClassPathRegistry classPathRegistry, ClassLoaderRegistry classLoaderRegistry, ActionExecutionSpecFactory actionExecutionSpecFactory) {
+        super(workerDaemonFactory, actionExecutionSpecFactory);
+        this.compilerClass = compilerClass;
+        this.compilerConstructorArguments = compilerConstructorArguments;
         this.zincClasspath = zincClasspath;
-        this.fileResolver = fileResolver;
+        this.forkOptionsFactory = forkOptionsFactory;
         this.daemonWorkingDir = daemonWorkingDir;
+        this.classPathRegistry = classPathRegistry;
+        this.classLoaderRegistry = classLoaderRegistry;
     }
 
     @Override
-    protected InvocationContext toInvocationContext(T spec) {
+    protected CompilerParameters getCompilerParameters(T spec) {
+        return new ScalaCompilerParameters<T>(compilerClass.getName(), compilerConstructorArguments, spec);
+    }
+
+    @Override
+    protected DaemonForkOptions toDaemonForkOptions(T spec) {
         ForkOptions javaOptions = spec.getCompileOptions().getForkOptions();
         ScalaForkOptions scalaOptions = spec.getScalaCompileOptions().getForkOptions();
-        JavaForkOptions javaForkOptions = new BaseForkOptionsConverter(fileResolver).transform(mergeForkOptions(javaOptions, scalaOptions));
-        File invocationWorkingDir = javaForkOptions.getWorkingDir();
+        JavaForkOptions javaForkOptions = new BaseForkOptionsConverter(forkOptionsFactory).transform(mergeForkOptions(javaOptions, scalaOptions));
         javaForkOptions.setWorkingDir(daemonWorkingDir);
 
-        DaemonForkOptions daemonForkOptions = new DaemonForkOptionsBuilder(fileResolver)
+        ClassPath compilerClasspath = classPathRegistry.getClassPath("SCALA-COMPILER").plus(DefaultClassPath.of(zincClasspath));
+
+        HierarchicalClassLoaderStructure classLoaderStructure = new HierarchicalClassLoaderStructure(classLoaderRegistry.getGradleWorkerExtensionSpec())
+                .withChild(getScalaFilterSpec())
+                .withChild(new VisitableURLClassLoader.Spec("compiler", compilerClasspath.getAsURLs()));
+
+        return new DaemonForkOptionsBuilder(forkOptionsFactory)
             .javaForkOptions(javaForkOptions)
-            .classpath(zincClasspath)
-            .sharedPackages(SHARED_PACKAGES)
+            .withClassLoaderStructure(classLoaderStructure)
             .keepAliveMode(KeepAliveMode.SESSION)
             .build();
+    }
 
-        return new InvocationContext(invocationWorkingDir, daemonForkOptions);
+    private FilteringClassLoader.Spec getScalaFilterSpec() {
+        FilteringClassLoader.Spec gradleApiAndScalaSpec = classLoaderRegistry.getGradleApiFilterSpec();
+
+        // These should come from the compiler classloader
+        gradleApiAndScalaSpec.disallowPackage("org.gradle.api.internal.tasks.scala");
+
+        // Guava
+        gradleApiAndScalaSpec.allowPackage("com.google");
+
+        return gradleApiAndScalaSpec;
+    }
+
+    public static class ScalaCompilerParameters<T extends ScalaJavaJointCompileSpec> extends CompilerParameters {
+        private final T compileSpec;
+
+        public ScalaCompilerParameters(String compilerClassName, Object[] compilerInstanceParameters, T compileSpec) {
+            super(compilerClassName, compilerInstanceParameters);
+            this.compileSpec = compileSpec;
+        }
+
+        @Override
+        public T getCompileSpec() {
+            return compileSpec;
+        }
     }
 }
 

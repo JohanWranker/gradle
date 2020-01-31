@@ -26,7 +26,7 @@ import org.gradle.api.tasks.bundling.Zip
 import org.gradle.test.fixtures.AbstractProjectBuilderSpec
 
 class ApplicationPluginTest extends AbstractProjectBuilderSpec {
-    private final ApplicationPlugin plugin = new ApplicationPlugin();
+    private final ApplicationPlugin plugin = new ApplicationPlugin()
 
     def "applies JavaPlugin and adds convention object with default values"() {
         when:
@@ -34,11 +34,17 @@ class ApplicationPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         project.plugins.hasPlugin(JavaPlugin.class)
+
         project.convention.getPlugin(ApplicationPluginConvention.class) != null
         project.applicationName == project.name
         project.mainClassName == null
         project.applicationDefaultJvmArgs == []
         project.applicationDistribution instanceof CopySpec
+
+        def application = project.extensions.getByName('application')
+        application instanceof JavaApplication
+        application.applicationName == project.name
+        application.applicationDistribution.is(project.applicationDistribution)
     }
 
     def "adds run task to project"() {
@@ -48,7 +54,7 @@ class ApplicationPluginTest extends AbstractProjectBuilderSpec {
         then:
         def task = project.tasks[ApplicationPlugin.TASK_RUN_NAME]
         task instanceof JavaExec
-        task.classpath == project.sourceSets[SourceSet.MAIN_SOURCE_SET_NAME].runtimeClasspath
+        task.classpath.from as List == [project.sourceSets[SourceSet.MAIN_SOURCE_SET_NAME].runtimeClasspath]
         task TaskDependencyMatchers.dependsOn('classes')
     }
 

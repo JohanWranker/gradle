@@ -16,55 +16,102 @@
 
 package org.gradle.api.internal.project;
 
+import org.gradle.api.ProjectConfigurationException;
 import org.gradle.api.ProjectState;
-import org.gradle.internal.UncheckedException;
+import org.gradle.util.CollectionUtils;
 
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Represents the lifecycle state of a project, with regard to configuration.
+ *
+ * There are three synonymous terms mixed in here (configure, evaluate, execute) for legacy reasons.
+ * Where not bound to backwards compatibility constraints, we use the term “configure”.
+ *
+ * @see org.gradle.configuration.project.LifecycleProjectEvaluator
+ */
 public class ProjectStateInternal implements ProjectState {
-    private boolean executing;
-    private boolean executed;
-    private Throwable failure;
 
+    enum State {
+        UNCONFIGURED,
+        IN_BEFORE_EVALUATE,
+        IN_EVALUATE,
+        IN_AFTER_EVALUATE,
+        CONFIGURED
+    }
+
+    private State state = State.UNCONFIGURED;
+    private ProjectConfigurationException failure;
+
+    @Override
     public boolean getExecuted() {
-        return executed;
+        // We intentionally consider “execution” done before doing afterEvaluate.
+        // The Android plugin relies on this behaviour.
+        return state.ordinal() > State.IN_EVALUATE.ordinal();
     }
 
-    public void executed() {
-        executed = true;
+    public boolean isConfiguring() {
+        // Intentionally asymmetrical to getExecuted()
+        // This prevents recursion on `project.afterEvaluate { project.evaluate() }`
+        return state == State.IN_BEFORE_EVALUATE || state == State.IN_EVALUATE || state == State.IN_AFTER_EVALUATE;
     }
 
-    public void executed(Throwable failure) {
-        assert this.failure == null;
-        this.failure = failure;
-        executed = true;
+    public boolean isUnconfigured() {
+        return state == State.UNCONFIGURED;
     }
 
-    public boolean getExecuting() {
-        return executing;
+    public void toBeforeEvaluate() {
+        assert state == State.UNCONFIGURED;
+        state = State.IN_BEFORE_EVALUATE;
     }
 
-    public void setExecuting(boolean executing) {
-        this.executing = executing;
+    public void toEvaluate() {
+        assert state == State.IN_BEFORE_EVALUATE;
+        state = State.IN_EVALUATE;
+    }
+
+    public void toAfterEvaluate() {
+        assert state == State.IN_EVALUATE;
+        state = State.IN_AFTER_EVALUATE;
+    }
+
+    public void configured() {
+        assert state != State.CONFIGURED;
+        state = State.CONFIGURED;
+    }
+
+    public void failed(ProjectConfigurationException failure) {
+        if (this.failure == null) {
+            this.failure = failure;
+        } else {
+            List<Throwable> causes = new ArrayList<Throwable>(this.failure.getCauses());
+            CollectionUtils.addAll(causes, failure.getCauses());
+            this.failure.initCauses(causes);
+        }
     }
 
     public boolean hasFailure() {
         return failure != null;
     }
 
+    @Override
     public Throwable getFailure() {
         return failure;
     }
 
+    @Override
     public void rethrowFailure() {
-        if (failure == null) {
-            return;
+        if (failure != null) {
+            throw failure;
         }
-        throw UncheckedException.throwAsUncheckedException(failure);
     }
-    
+
+    @Override
     public String toString() {
         String state;
-        
-        if (getExecuting()) {
+
+        if (isConfiguring()) {
             state = "EXECUTING";
         } else if (getExecuted()) {
             if (failure == null) {
@@ -75,7 +122,7 @@ public class ProjectStateInternal implements ProjectState {
         } else {
             state = "NOT EXECUTED";
         }
-        
+
         return String.format("project state '%s'", state);
     }
 }

@@ -19,6 +19,7 @@ package org.gradle.ide.xcode
 import org.gradle.ide.xcode.fixtures.AbstractXcodeIntegrationSpec
 import org.gradle.ide.xcode.fixtures.XcodebuildExecutor
 import org.gradle.ide.xcode.internal.DefaultXcodeProject
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.app.CppGreeterFunction
 import org.gradle.nativeplatform.fixtures.app.SwiftAppWithDep
 import org.gradle.nativeplatform.fixtures.app.SwiftAppWithLibraries
@@ -28,6 +29,7 @@ import org.gradle.nativeplatform.fixtures.app.SwiftGreeterUsingCppFunction
 import org.gradle.nativeplatform.fixtures.app.SwiftSum
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
+import spock.lang.Ignore
 
 import static org.gradle.ide.xcode.internal.XcodeUtils.toSpaceSeparatedList
 
@@ -41,6 +43,8 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         useXcodebuildTool()
     }
 
+    @ToBeFixedForInstantExecution
+    @Ignore("https://github.com/gradle/gradle-native-private/issues/273")
     def "can create xcode project for Swift application"() {
         given:
         buildFile << """
@@ -80,7 +84,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
 
         then:
         resultDebugApp.assertTasksExecuted(':greeter:compileDebugSwift', ':greeter:linkDebug',
-            ':app:compileDebugSwift', ':app:linkDebug', ':app:_xcode___App_Debug')
+            ':app:compileDebugSwift', ':app:linkDebug', ':app:installDebug', ':app:_xcode___App_Debug')
 
         when:
         def resultReleaseApp = xcodebuild
@@ -91,9 +95,11 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
 
         then:
         resultReleaseApp.assertTasksExecuted(':greeter:compileReleaseSwift', ':greeter:linkRelease', ':greeter:stripSymbolsRelease',
-            ':app:compileReleaseSwift', ':app:linkRelease', ':app:_xcode___App_Release')
+            ':app:compileReleaseSwift', ':app:linkRelease', ':app:stripSymbolsRelease', ':app:installRelease', ':app:_xcode___App_Release')
     }
 
+    @ToBeFixedForInstantExecution
+    @Ignore("https://github.com/gradle/gradle-native-private/issues/273")
     def "can create xcode project for Swift application with transitive dependencies"() {
         def app = new SwiftAppWithLibraries()
 
@@ -148,7 +154,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         then:
         resultDebugApp.assertTasksExecuted(':log:compileDebugSwift', ':log:linkDebug',
             ':hello:compileDebugSwift', ':hello:linkDebug',
-            ':app:compileDebugSwift', ':app:linkDebug', ':app:_xcode___App_Debug')
+            ':app:compileDebugSwift', ':app:linkDebug', ':app:installDebug', ':app:_xcode___App_Debug')
 
         when:
         def resultReleaseHello = xcodebuild
@@ -163,6 +169,8 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             ':hello:_xcode___Hello_Release')
     }
 
+    @ToBeFixedForInstantExecution
+    @Ignore("https://github.com/gradle/gradle-native-private/issues/273")
     def "can create xcode project for Swift application with binary-specific dependencies"() {
         def app = new SwiftAppWithLibraries()
 
@@ -177,7 +185,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
                 application {
                     binaries.configureEach {
                         dependencies {
-                            if (targetPlatform.operatingSystem.macOsX) {
+                            if (targetMachine.operatingSystemFamily.macOs) {
                                 implementation project(':hello')
                             }
                         }
@@ -223,7 +231,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         then:
         resultDebugApp.assertTasksExecuted(':log:compileDebugSwift', ':log:linkDebug',
             ':hello:compileDebugSwift', ':hello:linkDebug',
-            ':app:compileDebugSwift', ':app:linkDebug', ':app:_xcode___App_Debug')
+            ':app:compileDebugSwift', ':app:linkDebug', ':app:installDebug', ':app:_xcode___App_Debug')
 
         when:
         def resultReleaseHello = xcodebuild
@@ -238,6 +246,8 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             ':hello:_xcode___Hello_Release')
     }
 
+    @ToBeFixedForInstantExecution
+    @Ignore("https://github.com/gradle/gradle-native-private/issues/273")
     def "can create xcode project for Swift application with dependency on c++ library"() {
         def cppGreeter = new CppGreeterFunction()
         def swiftGreeter = new SwiftGreeterUsingCppFunction(cppGreeter)
@@ -302,7 +312,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         then:
         resultDebugApp.assertTasksExecuted(":cppGreeter:compileDebugCpp", ":cppGreeter:linkDebug",
             ':hello:compileDebugSwift', ':hello:linkDebug',
-            ':app:compileDebugSwift', ':app:linkDebug', ':app:_xcode___App_Debug')
+            ':app:compileDebugSwift', ':app:linkDebug', ':app:installDebug', ':app:_xcode___App_Debug')
 
         when:
         def resultReleaseHello = xcodebuild
@@ -317,6 +327,8 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             ':hello:_xcode___Hello_Release')
     }
 
+    @ToBeFixedForInstantExecution
+    @Ignore("https://github.com/gradle/gradle-native-private/issues/273")
     def "can create xcode project for Swift application with dependency on a static c++ library"() {
         def cppGreeter = new CppGreeterFunction()
         def swiftGreeter = new SwiftGreeterUsingCppFunction(cppGreeter)
@@ -385,7 +397,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         then:
         resultDebugApp.assertTasksExecuted(":cppGreeter:compileDebugCpp", ":cppGreeter:createDebug",
             ':hello:compileDebugSwift', ':hello:linkDebug',
-            ':app:compileDebugSwift', ':app:linkDebug', ':app:_xcode___App_Debug')
+            ':app:compileDebugSwift', ':app:linkDebug', ':app:installDebug', ':app:_xcode___App_Debug')
 
         when:
         def resultReleaseHello = xcodebuild
@@ -400,6 +412,8 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             ':hello:_xcode___Hello_Release')
     }
 
+    @ToBeFixedForInstantExecution
+    @Ignore("https://github.com/gradle/gradle-native-private/issues/273")
     def "can clean xcode project with transitive dependencies"() {
         def app = new SwiftAppWithLibraries()
 
@@ -464,6 +478,8 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         sharedLib("log/build/lib/main/debug/Log").assertExists()
     }
 
+    @Ignore("https://github.com/gradle/gradle-native-private/issues/274")
+    @ToBeFixedForInstantExecution
     def "can create xcode project for Swift application inside composite build"() {
         requireSwiftToolChain()
 
@@ -513,7 +529,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             .succeeds()
 
         then:
-        resultDebugApp.assertTasksExecuted(':greeter:compileDebugSwift', ':greeter:linkDebug', ':compileDebugSwift', ':linkDebug', ':_xcode___App_Debug')
+        resultDebugApp.assertTasksExecuted(':greeter:compileDebugSwift', ':greeter:linkDebug', ':compileDebugSwift', ':linkDebug', ':installDebug', ':_xcode___App_Debug')
 
         when:
         def resultReleaseGreeter = xcodebuild
@@ -526,6 +542,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         resultReleaseGreeter.assertTasksExecuted(':compileReleaseSwift', ':linkRelease', ':stripSymbolsRelease', ':_xcode___Greeter_Release')
     }
 
+    @ToBeFixedForInstantExecution
     def "can run tests for Swift library within multi-project from xcode"() {
         given:
         buildFile << """
@@ -555,8 +572,8 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         resultTestRunner.assertTasksExecuted(':greeter:compileDebugSwift', ':greeter:compileTestSwift', ':greeter:linkTest',
             ':greeter:installTest', ':greeter:syncBundleToXcodeBuiltProductDir', ':greeter:_xcode__build_GreeterTest___GradleTestRunner_Debug')
 
-        resultTestRunner.assertOutputContains("Test Case '-[GreeterTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
-        resultTestRunner.assertOutputContains("Test Case '-[GreeterTest.SumTestSuite testCanAddSumOf42]' passed")
-        resultTestRunner.assertOutputContains("** TEST SUCCEEDED **")
+        resultTestRunner.assertHasPostBuildOutput("Test Case '-[GreeterTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
+        resultTestRunner.assertHasPostBuildOutput("Test Case '-[GreeterTest.SumTestSuite testCanAddSumOf42]' passed")
+        resultTestRunner.assertHasPostBuildOutput("** TEST SUCCEEDED **")
     }
 }

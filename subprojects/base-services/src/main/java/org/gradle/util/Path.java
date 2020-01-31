@@ -20,6 +20,7 @@ import com.google.common.base.Strings;
 import org.apache.commons.lang.StringUtils;
 import org.gradle.api.InvalidUserDataException;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Comparator;
 
@@ -105,7 +106,7 @@ public class Path implements Comparable<Path> {
     }
 
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(@Nullable Object o) {
         if (this == o) {
             return true;
         }
@@ -128,6 +129,7 @@ public class Path implements Comparable<Path> {
         return result;
     }
 
+    @Override
     public int compareTo(Path other) {
         if (absolute && !other.absolute) {
             return 1;
@@ -156,6 +158,7 @@ public class Path implements Comparable<Path> {
      *
      * @return The parent of this path.
      */
+    @Nullable
     public Path getParent() {
         if (segments.length == 0) {
             return null;
@@ -173,6 +176,7 @@ public class Path implements Comparable<Path> {
      *
      * @return The base name,
      */
+    @Nullable
     public String getName() {
         if (segments.length == 0) {
             return null;

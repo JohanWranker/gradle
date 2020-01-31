@@ -72,7 +72,7 @@ class TestManagedExecutor extends AbstractExecutorService implements ManagedExec
     }
 
     void stop(int timeoutValue, TimeUnit timeoutUnits) throws IllegalStateException {
-        throw new UnsupportedOperationException()
+        stop()
     }
 
     void shutdown() {
@@ -97,6 +97,11 @@ class TestManagedExecutor extends AbstractExecutorService implements ManagedExec
 
     @Override
     void setFixedPoolSize(int numThreads) {
+        throw new UnsupportedOperationException()
+    }
+
+    @Override
+    void setKeepAlive(int timeout, TimeUnit timeUnit) {
         throw new UnsupportedOperationException()
     }
 }

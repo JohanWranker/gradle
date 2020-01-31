@@ -16,14 +16,19 @@
 
 package org.gradle.launcher.daemon.server.scaninfo
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.daemon.DaemonIntegrationSpec
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
 import org.gradle.launcher.daemon.client.SingleUseDaemonClient
 import org.gradle.util.GFileUtils
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 import spock.lang.IgnoreIf
 import spock.lang.Unroll
 
+@IntegrationTestTimeout(300)
 class DaemonScanInfoIntegrationSpec extends DaemonIntegrationSpec {
     static final EXPIRATION_CHECK_FREQUENCY = 50
     public static final String EXPIRATION_EVENT = "expiration_event.txt"
@@ -48,9 +53,12 @@ class DaemonScanInfoIntegrationSpec extends DaemonIntegrationSpec {
         """
 
         expect:
-        executer.withArguments('help', '--continuous', '-i').run().getExecutedTasks().contains(':help')
+        executer.withArguments('help', '--continuous', '-i').run().assertTasksExecuted(':help')
     }
 
+    //IBM JDK adds a bunch of environment variables that make the foreground daemon not match
+    //Java 9 and above needs --add-opens to make environment variable mutation work
+    @Requires([TestPrecondition.NOT_JDK_IBM, TestPrecondition.JDK8_OR_EARLIER])
     def "should capture basic data when a foreground daemon runs multiple builds"() {
         given:
         buildFile << """
@@ -68,8 +76,8 @@ class DaemonScanInfoIntegrationSpec extends DaemonIntegrationSpec {
         captureResults << executer.withTasks('capture2').run()
 
         then:
-        captureResults[0].getExecutedTasks().contains(':capture1')
-        captureResults[1].getExecutedTasks().contains(':capture2')
+        captureResults[0].assertTaskExecuted(':capture1')
+        captureResults[1].assertTaskExecuted(':capture2')
 
         cleanup:
         daemon?.abort()
@@ -95,6 +103,7 @@ class DaemonScanInfoIntegrationSpec extends DaemonIntegrationSpec {
         continuous << [true, false]
     }
 
+    @ToBeFixedForInstantExecution
     def "daemon expiration listener is implicitly for the current build only"() {
         given:
         buildFile << """
@@ -157,8 +166,8 @@ class DaemonScanInfoIntegrationSpec extends DaemonIntegrationSpec {
         result = executer.withArgument('--no-daemon').withTasks('capture').run()
 
         then:
-        executedTasks.contains(':capture')
-        result.output.contains(SingleUseDaemonClient.MESSAGE)
+        executed(':capture')
+        outputContains(SingleUseDaemonClient.MESSAGE)
 
         and:
         daemons.daemon.stops()

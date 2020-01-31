@@ -18,6 +18,7 @@ package org.gradle.performance.regression.buildcache
 
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import org.gradle.internal.hash.Hashing
 import org.gradle.performance.fixture.BuildExperimentInvocationInfo
 import org.gradle.performance.fixture.BuildExperimentListenerAdapter
 import org.gradle.performance.fixture.GradleInvocationSpec
@@ -39,10 +40,10 @@ import static org.gradle.performance.generator.JavaTestProject.LARGE_MONOLITHIC_
 class TaskOutputCachingJavaPerformanceTest extends AbstractTaskOutputCachingPerformanceTest {
 
     def setup() {
-        runner.warmUpRuns = 5
-        runner.runs = 13
-        runner.minimumVersion = "3.5"
-        runner.targetVersions = ["4.6-20180125002142+0000"]
+        runner.warmUpRuns = 11
+        runner.runs = 21
+        runner.minimumBaseVersion = "3.5"
+        runner.targetVersions = ["6.2-20200108160029+0000"]
     }
 
     def "clean #tasks on #testProject with remote http cache"() {
@@ -223,7 +224,7 @@ class TaskOutputCachingJavaPerformanceTest extends AbstractTaskOutputCachingPerf
         def startTime = System.currentTimeMillis()
         int count = 0
         dir.eachFile { File cacheArchiveFile ->
-            if (cacheArchiveFile.name ==~ /[a-z0-9]{32}/) {
+            if (cacheArchiveFile.name ==~ /[a-z0-9]{${Hashing.defaultFunction().hexDigits}}/) {
                 def tempFile = temporaryFolder.file("re-tar-temp")
                 tempFile.withOutputStream { outputStream ->
                     def tarOutput = new TarArchiveOutputStream(new GZIPOutputStream(outputStream))
@@ -238,7 +239,7 @@ class TaskOutputCachingJavaPerformanceTest extends AbstractTaskOutputCachingPerf
                                 break
                             }
 
-                            tarEntry.setModTime(tarEntry.modTime + 3743)
+                            tarEntry.setModTime(tarEntry.modTime.time + 3743)
                             tarOutput.putArchiveEntry(tarEntry)
                             if (!tarEntry.directory) {
                                 tarOutput << tarInput

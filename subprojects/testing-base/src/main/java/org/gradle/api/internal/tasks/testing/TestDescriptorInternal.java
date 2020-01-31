@@ -35,4 +35,10 @@ public interface TestDescriptorInternal extends TestDescriptor {
      */
     @Nullable
     Object getOwnerBuildOperationId();
+
+    /**
+     * The class name for display. It may be the same as or different from {@link #getClassName()}
+     * @return the class name for display.
+     */
+    String getClassDisplayName();
 }

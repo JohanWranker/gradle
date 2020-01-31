@@ -16,42 +16,31 @@
 package org.gradle.plugins.ide.internal;
 
 import com.google.common.base.Optional;
-import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
-import org.gradle.BuildAdapter;
 import org.gradle.api.Action;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
-import org.gradle.api.Transformer;
-import org.gradle.api.artifacts.PublishArtifact;
-import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
-import org.gradle.api.file.ConfigurableFileCollection;
-import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.artifacts.ivyservice.projectmodule.LocalComponentRegistry;
-import org.gradle.api.internal.artifacts.ivyservice.projectmodule.ProjectLocalComponentProvider;
-import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.UncheckedIOException;
 import org.gradle.api.invocation.Gradle;
-import org.gradle.api.plugins.ExtraPropertiesExtension;
+import org.gradle.api.logging.Logger;
+import org.gradle.api.logging.Logging;
 import org.gradle.api.tasks.Delete;
-import org.gradle.initialization.ProjectPathRegistry;
-import org.gradle.internal.component.local.model.LocalComponentArtifactMetadata;
-import org.gradle.internal.component.local.model.PublishArtifactLocalArtifactMetadata;
+import org.gradle.api.tasks.TaskProvider;
+import org.gradle.internal.logging.ConsoleRenderer;
 import org.gradle.internal.os.OperatingSystem;
-import org.gradle.internal.service.ServiceRegistry;
-import org.gradle.util.CollectionUtils;
-import org.gradle.util.Path;
+import org.gradle.plugins.ide.IdeWorkspace;
+import org.gradle.process.ExecSpec;
 
+import java.awt.*;
 import java.io.File;
-import java.util.List;
-import java.util.concurrent.Callable;
+import java.io.IOException;
 
-import static org.gradle.internal.component.local.model.DefaultProjectComponentIdentifier.newProjectId;
+public abstract class IdePlugin implements Plugin<Project> {
+    private static final Logger LOGGER = Logging.getLogger(IdePlugin.class);
 
-public abstract class IdePlugin implements Plugin<Project>, IdeArtifactRegistry {
-
-    private Task lifecycleTask;
-    private Task cleanTask;
+    private TaskProvider<Task> lifecycleTask;
+    private TaskProvider<Delete> cleanTask;
     protected Project project;
 
     /**
@@ -85,23 +74,29 @@ public abstract class IdePlugin implements Plugin<Project>, IdeArtifactRegistry 
     public void apply(Project target) {
         project = target;
         String lifecycleTaskName = getLifecycleTaskName();
-        lifecycleTask = target.task(lifecycleTaskName);
-        lifecycleTask.setGroup("IDE");
-        cleanTask = target.getTasks().create(cleanName(lifecycleTaskName), Delete.class);
-        cleanTask.setGroup("IDE");
+        lifecycleTask = target.getTasks().register(lifecycleTaskName);
+        cleanTask = target.getTasks().register(cleanName(lifecycleTaskName), Delete.class, new Action<Delete>() {
+            @Override
+            public void execute(Delete task) {
+                task.setGroup("IDE");
+            }
+        });
+        lifecycleTask.configure(new Action<Task>() {
+            @Override
+            public void execute(Task task) {
+                task.setGroup("IDE");
+                task.shouldRunAfter(cleanTask);
+            }
+        });
         onApply(target);
     }
 
-    public Task getLifecycleTask() {
+    public TaskProvider<? extends Task> getLifecycleTask() {
         return lifecycleTask;
     }
 
-    public Task getCleanTask() {
+    public TaskProvider<? extends Task> getCleanTask() {
         return cleanTask;
-    }
-
-    public Task getCleanTask(Task worker) {
-        return project.getTasks().getByName(cleanName(worker.getName()));
     }
 
     protected String cleanName(String taskName) {
@@ -109,88 +104,112 @@ public abstract class IdePlugin implements Plugin<Project>, IdeArtifactRegistry 
     }
 
     public void addWorker(Task worker) {
-        addWorker(worker, true);
+        addWorker(project.getTasks().named(worker.getName()), worker.getName());
+    }
+
+    public void addWorker(TaskProvider<? extends Task> worker, String workerName) {
+        addWorker(worker, workerName, true);
     }
 
     public void addWorker(Task worker, boolean includeInClean) {
-        lifecycleTask.dependsOn(worker);
-        Delete cleanWorker = project.getTasks().create(cleanName(worker.getName()), Delete.class);
-        cleanWorker.delete(worker.getOutputs().getFiles());
+        addWorker(project.getTasks().named(worker.getName()), worker.getName(), includeInClean);
+    }
+
+    public void addWorker(final TaskProvider<? extends Task> worker, String workerName, boolean includeInClean) {
+        lifecycleTask.configure(dependsOn(worker));
+        final TaskProvider<Delete> cleanWorker = project.getTasks().register(cleanName(workerName), Delete.class, new Action<Delete>() {
+            @Override
+            public void execute(Delete cleanWorker) {
+                cleanWorker.delete(worker);
+            }
+        });
+
         if (includeInClean) {
-            cleanTask.dependsOn(cleanWorker);
+            cleanTask.configure(dependsOn(cleanWorker));
         }
+
+        // Always schedule the generation task after the clean task
+        worker.configure(new Action<Task>() {
+            @Override
+            public void execute(Task task) {
+                task.shouldRunAfter(cleanWorker);
+            }
+        });
+    }
+
+    protected static Action<? super Task> dependsOn(final Task taskDependency) {
+        return new Action<Task>() {
+            @Override
+            public void execute(Task task) {
+                task.dependsOn(taskDependency);
+            }
+        };
+    }
+
+    protected static Action<? super Task> dependsOn(final TaskProvider<? extends Task> taskProvider) {
+        return new Action<Task>() {
+            @Override
+            public void execute(Task task) {
+                task.dependsOn(taskProvider);
+            }
+        };
+    }
+
+    protected static Action<? super Task> withDescription(final String description) {
+        return new Action<Task>() {
+            @Override
+            public void execute(Task task) {
+                task.setDescription(description);
+            }
+        };
     }
 
     protected void onApply(Project target) {
     }
 
-    protected abstract String getLifecycleTaskName();
-
-    /**
-     * Executes the provided Action after all projects have been evaluated.
-     * Action will only be added once per provided key. Any subsequent calls for the same key will be ignored.
-     * This permits the plugin to be applied in multiple subprojects, with the postprocess action executed once only.
-     */
-    protected void postProcess(String key, final Action<? super Gradle> action) {
-        Project rootProject = project.getRootProject();
-        ExtraPropertiesExtension rootExtraProperties = rootProject.getExtensions().getByType(ExtraPropertiesExtension.class);
-        String extraPropertyName = "org.gradle." + key + ".postprocess.applied";
-        if (!rootExtraProperties.has(extraPropertyName)) {
-            project.getGradle().addBuildListener(new BuildAdapter() {
-                @Override
-                public void projectsEvaluated(Gradle gradle) {
-                    action.execute(gradle);
-                }
-            });
-            rootExtraProperties.set(extraPropertyName, true);
-        }
-    }
-
-    @Override
-    public void registerIdeArtifact(PublishArtifact ideArtifact) {
-        ProjectLocalComponentProvider projectComponentProvider = ((ProjectInternal) project).getServices().get(ProjectLocalComponentProvider.class);
-        ProjectComponentIdentifier projectId = newProjectId(project);
-        projectComponentProvider.registerAdditionalArtifact(projectId, new PublishArtifactLocalArtifactMetadata(projectId, ideArtifact));
-    }
-
-    @Override
-    public List<LocalComponentArtifactMetadata> getIdeArtifactMetadata(String type) {
-        ServiceRegistry serviceRegistry = ((ProjectInternal)project).getServices();
-        List<LocalComponentArtifactMetadata> result = Lists.newArrayList();
-        ProjectPathRegistry projectPathRegistry = serviceRegistry.get(ProjectPathRegistry.class);
-        LocalComponentRegistry localComponentRegistry = serviceRegistry.get(LocalComponentRegistry.class);
-
-        for (Path projectPath : projectPathRegistry.getAllExplicitProjectPaths()) {
-            ProjectComponentIdentifier projectId = projectPathRegistry.getProjectComponentIdentifier(projectPath);
-            Iterable<LocalComponentArtifactMetadata> additionalArtifacts = localComponentRegistry.getAdditionalArtifacts(projectId);
-            for (LocalComponentArtifactMetadata artifactMetadata : additionalArtifacts) {
-                if (artifactMetadata.getName().getType().equals(type)) {
-                    result.add(artifactMetadata);
-                }
-            }
-        }
-
-        return result;
-    }
-
-    @Override
-    public FileCollection getIdeArtifacts(final String type) {
-        return project.files(new Callable<List<FileCollection>>() {
+    protected void addWorkspace(final IdeWorkspace workspace) {
+        lifecycleTask.configure(new Action<Task>() {
             @Override
-            public List<FileCollection> call() throws Exception {
-                return CollectionUtils.collect(
-                    getIdeArtifactMetadata(type),
-                    new Transformer<FileCollection, LocalComponentArtifactMetadata>() {
-                        @Override
-                        public FileCollection transform(LocalComponentArtifactMetadata metadata) {
-                            ConfigurableFileCollection result = project.files(metadata.getFile());
-                            result.builtBy(metadata.getBuildDependencies());
-                            return result;
+            public void execute(Task lifecycleTask) {
+                lifecycleTask.doLast(new Action<Task>() {
+                    @Override
+                    public void execute(Task task) {
+                        LOGGER.lifecycle(String.format("Generated %s at %s", workspace.getDisplayName(), new ConsoleRenderer().asClickableFileUrl(workspace.getLocation().get().getAsFile())));
+                    }
+                });
+            }
+        });
+
+        project.getTasks().register("open" + StringUtils.capitalize(getLifecycleTaskName()), new Action<Task>() {
+            @Override
+            public void execute(Task openTask) {
+                openTask.dependsOn(lifecycleTask);
+                openTask.setGroup("IDE");
+                openTask.setDescription("Opens the " + workspace.getDisplayName());
+                openTask.doLast(new Action<Task>() {
+                    @Override
+                    public void execute(Task task) {
+                        if (OperatingSystem.current().isMacOsX()) {
+                            project.exec(new Action<ExecSpec>() {
+                                @Override
+                                public void execute(ExecSpec execSpec) {
+                                    execSpec.commandLine("open", workspace.getLocation().get());
+                                }
+                            });
+                        } else {
+                            try {
+                                Desktop.getDesktop().open(workspace.getLocation().get().getAsFile());
+                            } catch (IOException e) {
+                                throw new UncheckedIOException(e);
+                            }
                         }
-                    });
+                    }
+                });
             }
         });
     }
+
+    protected abstract String getLifecycleTaskName();
 
     public boolean isRoot() {
         return project.getParent() == null;

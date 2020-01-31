@@ -17,13 +17,29 @@
 package org.gradle.api.internal.artifacts.repositories.resolver;
 
 import org.gradle.api.artifacts.DirectDependencyMetadata;
+import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.internal.component.external.model.ModuleDependencyMetadata;
 
 import java.util.List;
 
 public class DirectDependencyMetadataAdapter extends AbstractDependencyMetadataAdapter<DirectDependencyMetadata> implements DirectDependencyMetadata {
 
-    public DirectDependencyMetadataAdapter(List<ModuleDependencyMetadata> container, int originalIndex) {
-        super(container, originalIndex);
+    public DirectDependencyMetadataAdapter(ImmutableAttributesFactory attributesFactory, List<ModuleDependencyMetadata> container, int originalIndex) {
+        super(attributesFactory, container, originalIndex);
+    }
+
+    @Override
+    public void endorseStrictVersions() {
+        updateMetadata(getOriginalMetadata().withEndorseStrictVersions(true));
+    }
+
+    @Override
+    public void doNotEndorseStrictVersions() {
+        updateMetadata(getOriginalMetadata().withEndorseStrictVersions(false));
+    }
+
+    @Override
+    public boolean isEndorsingStrictVersions() {
+        return getOriginalMetadata().isEndorsingStrictVersions();
     }
 }

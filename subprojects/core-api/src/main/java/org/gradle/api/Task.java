@@ -22,8 +22,12 @@ import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.LoggingManager;
 import org.gradle.api.plugins.Convention;
 import org.gradle.api.plugins.ExtensionAware;
+import org.gradle.api.provider.Property;
+import org.gradle.api.provider.Provider;
+import org.gradle.api.services.BuildService;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.TaskDependency;
 import org.gradle.api.tasks.TaskDestroyables;
 import org.gradle.api.tasks.TaskInputs;
@@ -33,6 +37,7 @@ import org.gradle.api.tasks.TaskState;
 
 import javax.annotation.Nullable;
 import java.io.File;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 
@@ -90,20 +95,27 @@ import java.util.Set;
  *
  * <li>A {@link Task}.</li>
  *
- * <li>A closure. The closure may take a {@code Task} as parameter. It may return any of the types listed here. Its
- * return value is recursively converted to tasks. A {@code null} return value is treated as an empty collection.</li>
- *
  * <li>A {@link TaskDependency} object.</li>
+ *
+ * <li>A {@link org.gradle.api.tasks.TaskReference} object.</li>
  *
  * <li>A {@link Buildable} object.</li>
  *
  * <li>A {@link org.gradle.api.file.RegularFileProperty} or {@link org.gradle.api.file.DirectoryProperty}.</li>
+ *
+ * <li>A {@link Provider} object. May contain any of the types listed here.</li>
  *
  * <li>A {@code Iterable}, {@code Collection}, {@code Map} or array. May contain any of the types listed here. The elements of the
  * iterable/collection/map/array are recursively converted to tasks.</li>
  *
  * <li>A {@code Callable}. The {@code call()} method may return any of the types listed here. Its return value is
  * recursively converted to tasks. A {@code null} return value is treated as an empty collection.</li>
+ *
+ * <li>A Groovy {@code Closure} or Kotlin function. The closure may take a {@code Task} as parameter. 
+ * The closure or function may return any of the types listed here. Its return value is
+ * recursively converted to tasks. A {@code null} return value is treated as an empty collection.</li>
+ *
+ * <li>Anything else is treated as an error.</li>
  *
  * </ul>
  *
@@ -160,6 +172,13 @@ public interface Task extends Comparable<Task>, ExtensionAware {
     String TASK_ACTION = "action";
 
     /**
+     * Constructor arguments for the Task
+     *
+     * @since 4.7
+     */
+    String TASK_CONSTRUCTOR_ARGS = "constructorArgs";
+
+    /**
      * <p>Returns the name of this task. The name uniquely identifies the task within its {@link Project}.</p>
      *
      * @return The name of the task. Never returns null.
@@ -171,6 +190,7 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      * A {@link org.gradle.api.Namer} namer for tasks that returns {@link #getName()}.
      */
     class Namer implements org.gradle.api.Namer<Task> {
+        @Override
         public String determineName(Task c) {
             return c.getName();
         }
@@ -228,32 +248,7 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      * <p>Adds the given dependencies to this task. See <a href="#dependencies">here</a> for a description of the types
      * of objects which can be used as task dependencies.</p>
      *
-     * @param paths The dependencies to add to this task. The path can be defined by:
-     * <ul>
-     * <li>A {@code String}, {@code CharSequence} or {@code groovy.lang.GString} task path or name. A relative path is interpreted relative to the task's {@link Project}. This
-     * allows you to refer to tasks in other projects.</li>
-     *
-     * <li>A {@link Task}.</li>
-     *
-     * <li>A closure. The closure may take a {@code Task} as parameter. It may return any of the types listed here. Its
-     * return value is recursively converted to tasks. A {@code null} return value is treated as an empty collection.</li>
-     *
-     * <li>A {@link TaskDependency} object.</li>
-     *
-     * <li>A {@link org.gradle.api.tasks.TaskReference} object.</li>
-     *
-     * <li>A {@link Buildable} object.</li>
-     *
-     * <li>A {@link org.gradle.api.file.RegularFileProperty} or {@link org.gradle.api.file.DirectoryProperty}.</li>
-     *
-     * <li>A {@code Iterable}, {@code Collection}, {@code Map} or array. May contain any of the types listed here. The elements of the
-     * iterable/collection/map/array are recursively converted to tasks.</li>
-     *
-     * <li>A {@code Callable}. The {@code call()} method may return any of the types listed here. Its return value is
-     * recursively converted to tasks. A {@code null} return value is treated as an empty collection.</li>
-     *
-     * <li>Anything else is treated as a failure.</li>
-     * </ul>
+     * @param paths The dependencies to add to this task.
      *
      * @return the task object this method is applied to
      */
@@ -266,7 +261,7 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * <p>You may add multiple such predicates. The task is skipped if any of the predicates return false.</p>
      *
-     * <p>Typical usage:<code>myTask.onlyIf{ dependsOnTaskDidWork() } </code></p>
+     * <p>Typical usage:<code>myTask.onlyIf { isProductionEnvironment() }</code></p>
      *
      * @param onlyIfClosure code to execute to determine if task should be run
      */
@@ -281,7 +276,7 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      * <p>Typical usage (from Java):</p>
      * <pre>myTask.onlyIf(new Spec&lt;Task&gt;() {
      *    boolean isSatisfiedBy(Task task) {
-     *       return task.dependsOnTaskDidWork();
+     *       return isProductionEnvironment();
      *    }
      * });
      * </pre>
@@ -323,7 +318,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
     /**
      * Sets whether the task actually did any work.  Most built-in tasks will set this automatically, but
      * it may be useful to manually indicate this for custom user tasks.
-     * <p>This is useful when combined with onlyIf { dependsOnTaskDidWork() }.
      * @param didWork indicates if the task did any work
      */
     void setDidWork(boolean didWork);
@@ -373,7 +367,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @since 4.2
      */
-    @Incubating
     Task doFirst(String actionName, Action<? super Task> action);
 
     /**
@@ -393,7 +386,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @since 4.2
      */
-    @Incubating
     Task doLast(String actionName, Action<? super Task> action);
 
     /**
@@ -404,25 +396,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      * @return This task.
      */
     Task doLast(Closure action);
-
-    /**
-     * <p>Adds the given closure to the end of this task's action list.  The closure is passed this task as a parameter
-     * when executed. You can call this method from your build script using the &lt;&lt; left shift operator.</p>
-     *
-     * @param action The action closure to execute.
-     * @return This task.
-     *
-     * @deprecated Use {@link #doLast(Closure action)}
-     */
-    @Deprecated
-    Task leftShift(Closure action);
-
-    /**
-     * <p>Removes all the actions of this task.</p>
-     *
-     * @return the task object this method is applied to
-     */
-    Task deleteAllActions();
 
     /**
      * <p>Returns if this task is enabled or not.</p>
@@ -575,17 +548,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
     void setGroup(@Nullable String group);
 
     /**
-     * <p>Checks if any of the tasks that this task depends on {@link Task#getDidWork() didWork}.</p>
-     *
-     * @return true if any task this task depends on did work.
-     *
-     * @deprecated Build logic should not depend on this information about a task. Instead, declare
-     * task inputs and outputs to allow Gradle to optimize task execution.
-     */
-    @Deprecated
-    boolean dependsOnTaskDidWork();
-
-    /**
      * <p>Returns the inputs of this task.</p>
      *
      * @return The inputs. Never returns null.
@@ -607,7 +569,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @since 4.0
      */
-    @Incubating
     @Internal
     TaskDestroyables getDestroyables();
 
@@ -616,7 +577,7 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @since 4.3
      */
-    @Incubating
+    @Internal
     TaskLocalState getLocalState();
 
     /**
@@ -648,7 +609,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @return the task object this method is applied to
      */
-    @Incubating
     Task mustRunAfter(Object... paths);
 
     /**
@@ -668,7 +628,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @param mustRunAfter The set of task paths this task must run after.
      */
-    @Incubating
     void setMustRunAfter(Iterable<?> mustRunAfter);
 
     /**
@@ -676,7 +635,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @return The tasks that this task must run after. Returns an empty set if this task has no tasks it must run after.
      */
-    @Incubating
     @Internal
     TaskDependency getMustRunAfter();
 
@@ -696,7 +654,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @return the task object this method is applied to
      */
-    @Incubating
     Task finalizedBy(Object... paths);
 
     /**
@@ -713,7 +670,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @param finalizedBy The tasks that finalize this task.
      */
-    @Incubating
     void setFinalizedBy(Iterable<?> finalizedBy);
 
     /**
@@ -721,7 +677,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @return The tasks that finalize this task. Returns an empty set if there are no finalising tasks for this task.
      */
-    @Incubating
     @Internal
     TaskDependency getFinalizedBy();
 
@@ -744,7 +699,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @return the task object this method is applied to
      */
-    @Incubating
     TaskDependency shouldRunAfter(Object... paths);
 
     /**
@@ -764,7 +718,6 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @param shouldRunAfter The set of task paths this task should run after.
      */
-    @Incubating
     void setShouldRunAfter(Iterable<?> shouldRunAfter);
 
     /**
@@ -772,7 +725,37 @@ public interface Task extends Comparable<Task>, ExtensionAware {
      *
      * @return The tasks that this task should run after. Returns an empty set if this task has no tasks it must run after.
      */
-    @Incubating
     @Internal
     TaskDependency getShouldRunAfter();
+
+    /**
+     * <p>The timeout of this task.</p>
+     *
+     * <pre class='autoTested'>
+     *   task myTask {
+     *       timeout = Duration.ofMinutes(10)
+     *   }
+     * </pre>
+     *
+     * <p>
+     * The Thread executing this task will be interrupted if the task takes longer than the specified amount of time to run.
+     * In order for a task to work properly with this feature, it needs to react to interrupts and must clean up any resources it opened.
+     * </p>
+     * <p>By default, tasks never time out.</p>
+     *
+     * @since 5.0
+     */
+    @Internal
+    @Optional
+    @Incubating
+    Property<Duration> getTimeout();
+
+    /**
+     * Registers a {@link BuildService} that is used by this task.
+     *
+     * @param service The service provider.
+     * @since 6.1
+     */
+    @Incubating
+    void usesService(Provider<? extends BuildService<?>> service);
 }

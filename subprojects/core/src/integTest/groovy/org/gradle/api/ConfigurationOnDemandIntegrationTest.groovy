@@ -17,6 +17,7 @@
 package org.gradle.api
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.FluidDependenciesResolveRunner
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.integtests.fixtures.executer.ProjectLifecycleFixture
@@ -56,7 +57,7 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         fixture.assertProjectsConfigured(":")
-        output.count("Parallel execution with configuration on demand is an incubating feature") == 1
+        output.count("Configuration on demand is an incubating feature") == 1
     }
 
     def "can be enabled from command line for a single module build"() {
@@ -93,12 +94,13 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
         !output.contains("Configuration on demand is incubating")
     }
 
+    @ToBeFixedForInstantExecution
     def "follows java project dependencies"() {
         settingsFile << "include 'api', 'impl', 'util'"
-        buildFile << "allprojects { apply plugin: 'java' } "
+        buildFile << "allprojects { apply plugin: 'java-library' } "
 
-        file("impl/build.gradle") << "dependencies { compile project(':api') } "
-        file("util/build.gradle") << "dependencies { compile project(':impl') } "
+        file("impl/build.gradle") << "dependencies { api project(':api') } "
+        file("util/build.gradle") << "dependencies { implementation project(':impl') } "
         //util -> impl -> api
 
         file("api/src/main/java/Person.java") << """public interface Person {
@@ -142,13 +144,13 @@ class ConfigurationOnDemandIntegrationTest extends AbstractIntegrationSpec {
     def "can have cycles in project dependencies"() {
         settingsFile << "include 'api', 'impl', 'util'"
         buildFile << """
-allprojects { apply plugin: 'java' }
+allprojects { apply plugin: 'java-library' }
 project(':impl') {
-    dependencies { compile project(path: ':api', configuration: 'archives') }
+    dependencies { implementation project(path: ':api', configuration: 'archives') }
 }
 project(':api') {
-    dependencies { runtime project(':impl') }
-    task run(dependsOn: configurations.runtime)
+    dependencies { runtimeOnly project(':impl') }
+    task run(dependsOn: configurations.runtimeClasspath)
 }
 """
 
@@ -206,6 +208,7 @@ project(':api') {
         fixture.assertProjectsConfigured(":", ":impl", ":impl:one", ":impl:two", ":impl:two:abc")
     }
 
+    @ToBeFixedForInstantExecution
     def "may run implicit tasks from root"() {
         settingsFile << "include 'api', 'impl'"
 
@@ -216,6 +219,7 @@ project(':api') {
         fixture.assertProjectsConfigured(":")
     }
 
+    @ToBeFixedForInstantExecution
     def "may run implicit tasks for subproject"() {
         settingsFile << "include 'api', 'impl'"
 
@@ -242,6 +246,7 @@ project(':api') {
         result.assertTasksExecuted(':api:foo')
     }
 
+    @ToBeFixedForInstantExecution
     def "respects evaluationDependsOn"() {
         settingsFile << "include 'api', 'impl', 'other'"
         file("api/build.gradle") << """
@@ -255,11 +260,12 @@ project(':api') {
         fixture.assertProjectsConfigured(":", ":impl", ":api")
     }
 
+    @ToBeFixedForInstantExecution
     def "respects buildProjectDependencies setting"() {
         settingsFile << "include 'api', 'impl', 'other'"
         file("impl/build.gradle") << """
-            apply plugin: 'java'
-            dependencies { compile project(":api") }
+            apply plugin: 'java-library'
+            dependencies { implementation project(":api") }
         """
         file("api/build.gradle") << "apply plugin: 'java'"
         // Provide a source file so that the compile task doesn't skip resolving inputs
@@ -273,13 +279,12 @@ project(':api') {
         fixture.assertProjectsConfigured(":", ":impl", ":api")
 
         when:
-        executer.expectDeprecationWarning()
         run("impl:build", "--no-rebuild") // impl -> api
 
         then:
         executed ":impl:jar"
         notExecuted ":api:jar"
-        // :api is configured to resolve impl.compile configuration
+        // :api is configured to resolve impl.compileClasspath configuration
         fixture.assertProjectsConfigured(":", ":impl", ":api")
     }
 
@@ -348,7 +353,7 @@ project(':api') {
         file("b/build.gradle") << """
             apply plugin: 'java'
             project(':b') {
-                dependencies { compile project(':a') }
+                dependencies { implementation project(':a') }
             }
         """
 
@@ -356,7 +361,7 @@ project(':api') {
         run(":b:buildNeeded")
 
         then:
-        result.executedTasks.containsAll ':b:buildNeeded', ':a:buildNeeded'
+        executed ':b:buildNeeded', ':a:buildNeeded'
         fixture.assertProjectsConfigured(":", ":b", ":a")
     }
 
@@ -366,7 +371,7 @@ project(':api') {
         file("b/build.gradle") << """
             apply plugin: 'java'
             project(':b') {
-                dependencies { compile project(':a') }
+                dependencies { implementation project(':a') }
             }
         """
 
@@ -374,7 +379,7 @@ project(':api') {
         run(":a:buildDependents")
 
         then:
-        result.executedTasks.containsAll ':b:buildDependents', ':a:buildDependents'
+        executed ':b:buildDependents', ':a:buildDependents'
         //unfortunately buildDependents requires all projects to be configured
         fixture.assertProjectsConfigured(":", ":a", ":b", ":c")
     }

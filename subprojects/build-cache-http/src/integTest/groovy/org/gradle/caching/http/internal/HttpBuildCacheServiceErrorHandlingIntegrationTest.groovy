@@ -55,8 +55,8 @@ class HttpBuildCacheServiceErrorHandlingIntegrationTest extends AbstractIntegrat
 
     def "build does not fail if connection drops during store"() {
         httpBuildCacheServer.dropConnectionForPutAfterBytes(1024)
-        startServer()
-        String errorPattern = /(Broken pipe|Connection reset|Software caused connection abort: socket write error|Connection refused)/
+        settingsFile << withHttpBuildCacheServer()
+        String errorPattern = /(Broken pipe|Connection reset|Software caused connection abort: socket write error|An established connection was aborted by the software in your host machine|127.0.0.1:.+ failed to respond)/
 
         when:
         executer.withStackTraceChecksDisabled()
@@ -64,13 +64,12 @@ class HttpBuildCacheServiceErrorHandlingIntegrationTest extends AbstractIntegrat
         withBuildCache().run "customTask"
 
         then:
-        output =~ /Could not store entry .* for task ':customTask' in remote build cache/
-        output =~ /Unable to store entry at .*: ${errorPattern}/
+        output =~ /Could not store entry .* in remote build cache: ${errorPattern}/
     }
 
     def "build cache is deactivated for the build if the connection times out"() {
         httpBuildCacheServer.blockIncomingConnectionsForSeconds = 10
-        startServer()
+        settingsFile << withHttpBuildCacheServer()
 
         when:
         executer.withArgument("-D${SOCKET_TIMEOUT_SYSTEM_PROPERTY}=1000")
@@ -78,12 +77,6 @@ class HttpBuildCacheServiceErrorHandlingIntegrationTest extends AbstractIntegrat
         withBuildCache().run("customTask")
 
         then:
-        output =~ /Could not load entry .* for task ':customTask' from remote build cache/
-        output =~ /Read timed out/
-    }
-
-    private void startServer() {
-        httpBuildCacheServer.start()
-        settingsFile << useHttpBuildCache(httpBuildCacheServer.uri)
+        output =~ /Could not load entry .* from remote build cache: Read timed out/
     }
 }

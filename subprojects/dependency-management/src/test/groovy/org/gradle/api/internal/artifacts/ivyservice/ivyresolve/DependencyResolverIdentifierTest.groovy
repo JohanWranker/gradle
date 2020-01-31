@@ -15,18 +15,18 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.ivyresolve
 
-import org.gradle.api.artifacts.ComponentMetadataSupplier
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.repositories.metadata.ImmutableMetadataSources
 import org.gradle.api.internal.artifacts.repositories.metadata.MetadataArtifactProvider
 import org.gradle.api.internal.artifacts.repositories.resolver.ExternalResourceResolver
 import org.gradle.api.internal.artifacts.repositories.resolver.ResourcePattern
 import org.gradle.api.internal.component.ArtifactType
-import org.gradle.caching.internal.BuildCacheHasher
+import org.gradle.internal.hash.Hasher
 import org.gradle.internal.resource.ExternalResourceRepository
 import org.gradle.internal.resource.local.FileStore
 import org.gradle.internal.resource.local.LocallyAvailableResourceFinder
 import org.gradle.internal.resource.transfer.CacheAwareExternalResourceAccessor
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 import java.lang.reflect.Field
@@ -76,11 +76,11 @@ class DependencyResolverIdentifierTest extends Specification {
     static class TestResolver extends ExternalResourceResolver {
 
         protected TestResolver(String name, boolean local, ExternalResourceRepository repository, CacheAwareExternalResourceAccessor cachingResourceAccessor, LocallyAvailableResourceFinder locallyAvailableResourceFinder, FileStore artifactFileStore, ImmutableModuleIdentifierFactory moduleIdentifierFactory, ImmutableMetadataSources metadataSources, MetadataArtifactProvider metadataArtifactProvider) {
-            super(name, local, repository, cachingResourceAccessor, locallyAvailableResourceFinder, artifactFileStore, moduleIdentifierFactory, metadataSources, metadataArtifactProvider)
+            super(name, local, repository, cachingResourceAccessor, locallyAvailableResourceFinder, artifactFileStore, metadataSources, metadataArtifactProvider, null, null, null, TestUtil.checksumService)
         }
 
         @Override
-        protected void appendId(BuildCacheHasher hasher) {
+        protected void appendId(Hasher hasher) {
             super.appendId(hasher)
         }
 
@@ -104,9 +104,5 @@ class DependencyResolverIdentifierTest extends Specification {
             throw new UnsupportedOperationException()
         }
 
-        @Override
-        ComponentMetadataSupplier createMetadataSupplier() {
-            throw new UnsupportedOperationException()
-        }
     }
 }

@@ -17,14 +17,15 @@
 package org.gradle.api.internal.artifacts;
 
 import com.google.common.collect.ImmutableSet;
-import org.gradle.api.Buildable;
 import org.gradle.api.artifacts.ResolvedArtifact;
 import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactVisitor;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.BuildDependenciesVisitor;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvableArtifact;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvedArtifactSet;
+import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
+import org.gradle.internal.Describables;
+import org.gradle.internal.DisplayName;
 import org.gradle.internal.operations.BuildOperationQueue;
 import org.gradle.internal.operations.RunnableBuildOperation;
 
@@ -33,12 +34,12 @@ import java.util.Collection;
 
 public class TestArtifactSet implements ResolvedArtifactSet {
     public static final String DEFAULT_TEST_VARIANT = "test variant";
-    private final String variantName;
+    private final DisplayName variantName;
     private final AttributeContainer variant;
     private final ImmutableSet<ResolvedArtifact> artifacts;
 
     private TestArtifactSet(String variantName, AttributeContainer variant, Collection<? extends ResolvedArtifact> artifacts) {
-        this.variantName = variantName;
+        this.variantName = Describables.of(variantName);
         this.variant = variant;
         this.artifacts = ImmutableSet.copyOf(artifacts);
     }
@@ -64,9 +65,13 @@ public class TestArtifactSet implements ResolvedArtifactSet {
     }
 
     @Override
-    public void collectBuildDependencies(BuildDependenciesVisitor visitor) {
+    public void visitLocalArtifacts(LocalArtifactVisitor listener) {
+    }
+
+    @Override
+    public void visitDependencies(TaskDependencyResolveContext context) {
         for (ResolvedArtifact artifact : artifacts) {
-            visitor.visitDependency(((Buildable) artifact).getBuildDependencies());
+            context.add(artifact);
         }
     }
 
@@ -78,18 +83,27 @@ public class TestArtifactSet implements ResolvedArtifactSet {
         }
 
         @Override
+        public void visitDependencies(TaskDependencyResolveContext context) {
+        }
+
+        @Override
         public ComponentArtifactIdentifier getId() {
             return artifact.getId();
         }
 
         @Override
-        public boolean isResolved() {
+        public boolean isResolveSynchronously() {
             return false;
         }
 
         @Override
         public File getFile() {
             return artifact.getFile();
+        }
+
+        @Override
+        public ResolvableArtifact transformedTo(File file) {
+            throw new UnsupportedOperationException();
         }
 
         @Override

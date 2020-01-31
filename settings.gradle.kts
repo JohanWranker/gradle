@@ -1,3 +1,5 @@
+import org.gradle.api.internal.FeaturePreviews
+
 /*
  * Copyright 2010 the original author or authors.
  *
@@ -14,10 +16,23 @@
  * limitations under the License.
  */
 
-apply {
-    from("gradle/remoteHttpCacheSettings.gradle")
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = uri("https://repo.gradle.org/gradle/libs-releases") }
+    }
 }
 
+plugins {
+    id("com.gradle.enterprise").version("3.1")
+}
+
+apply(from = "gradle/build-cache-configuration.settings.gradle.kts")
+apply(from = "gradle/shared-with-buildSrc/mirrors.settings.gradle.kts")
+
+include("instantExecution")
+include("instantExecutionReport")
+include("apiMetadata")
 include("distributionsDependencies")
 include("distributions")
 include("baseServices")
@@ -30,6 +45,7 @@ include("dependencyManagement")
 include("wrapper")
 include("cli")
 include("launcher")
+include("bootstrap")
 include("messaging")
 include("resources")
 include("resourcesHttp")
@@ -41,12 +57,11 @@ include("scala")
 include("ide")
 include("ideNative")
 include("idePlay")
-include("osgi")
 include("maven")
-include("announce")
 include("codeQuality")
 include("antlr")
 include("toolingApi")
+include("buildEvents")
 include("toolingApiBuilders")
 include("docs")
 include("integTest")
@@ -60,7 +75,6 @@ include("internalAndroidPerformanceTesting")
 include("performance")
 include("buildScanPerformance")
 include("javascript")
-include("buildComparison")
 include("reporting")
 include("diagnostics")
 include("publish")
@@ -75,6 +89,7 @@ include("languageJvm")
 include("languageJava")
 include("languageGroovy")
 include("languageNative")
+include("toolingNative")
 include("languageScala")
 include("pluginUse")
 include("pluginDevelopment")
@@ -84,6 +99,7 @@ include("buildCacheHttp")
 include("testingBase")
 include("testingNative")
 include("testingJvm")
+include("testingJunitPlatform")
 include("platformPlay")
 include("testKit")
 include("installationBeacon")
@@ -93,9 +109,30 @@ include("compositeBuilds")
 include("workers")
 include("runtimeApiInfo")
 include("persistentCache")
+include("buildCacheBase")
 include("buildCache")
 include("coreApi")
 include("versionControl")
+include("fileCollections")
+include("files")
+include("hashing")
+include("snapshots")
+include("architectureTest")
+include("buildCachePackaging")
+include("execution")
+include("buildProfile")
+include("kotlinCompilerEmbeddable")
+include("kotlinDsl")
+include("kotlinDslProviderPlugins")
+include("kotlinDslPlugins")
+include("kotlinDslToolingModels")
+include("kotlinDslToolingBuilders")
+include("kotlinDslTestFixtures")
+include("kotlinDslIntegTests")
+include("workerProcesses")
+include("baseAnnotations")
+include("samples")
+include("security")
 
 val upperCaseLetters = "\\p{Upper}".toRegex()
 
@@ -104,83 +141,13 @@ fun String.toKebabCase() =
 
 rootProject.name = "gradle"
 
-// List of subprojects that have a Groovy DSL build script.
+// List of sub-projects that have a Groovy DSL build script.
 // The intent is for this list to diminish until it disappears.
-val groovyBuildScriptProjects = listOf(
-    "distributions-dependencies",
+val groovyBuildScriptProjects = hashSetOf(
     "distributions",
-    "base-services",
-    "base-services-groovy",
-    "logging",
-    "process-services",
-    "jvm-services",
-    "core",
-    "dependency-management",
-    "wrapper",
-    "cli",
-    "launcher",
-    "messaging",
-    "resources",
-    "resources-http",
-    "resources-gcs",
-    "resources-s3",
-    "resources-sftp",
-    "plugins",
-    "scala",
-    "ide",
-    "ide-native",
-    "ide-play",
-    "osgi",
-    "maven",
-    "code-quality",
-    "antlr",
-    "tooling-api",
-    "tooling-api-builders",
     "docs",
-    "integ-test",
-    "signing",
-    "ear",
-    "native",
-    "internal-testing",
-    "internal-integ-testing",
-    "internal-performance-testing",
-    "internal-android-performance-testing",
-    "performance",
-    "build-scan-performance",
-    "javascript",
-    "build-comparison",
-    "reporting",
-    "diagnostics",
-    "publish",
-    "ivy",
-    "jacoco",
-    "build-init",
-    "build-option",
-    "platform-base",
-    "platform-native",
-    "platform-jvm",
-    "language-jvm",
-    "language-java",
-    "language-groovy",
-    "language-native",
-    "language-scala",
-    "plugin-use",
-    "model-core",
-    "model-groovy",
-    "build-cache-http",
-    "testing-base",
-    "testing-native",
-    "testing-jvm",
-    "platform-play",
-    "test-kit",
-    "soak",
-    "smoke-test",
-    "composite-builds",
-    "workers",
-    "persistent-cache",
-    "build-cache",
-    "core-api",
-    "version-control")
+    "performance"
+)
 
 fun buildFileNameFor(projectDirName: String) =
     "$projectDirName${buildFileExtensionFor(projectDirName)}"
@@ -192,6 +159,19 @@ for (project in rootProject.children) {
     val projectDirName = project.name.toKebabCase()
     project.projectDir = file("subprojects/$projectDirName")
     project.buildFileName = buildFileNameFor(projectDirName)
-    assert(project.projectDir.isDirectory)
-    assert(project.buildFile.isFile)
+    require(project.projectDir.isDirectory) {
+        "Project directory ${project.projectDir} for project ${project.name} does not exist."
+    }
+    require(project.buildFile.isFile) {
+        "Build file ${project.buildFile} for project ${project.name} does not exist."
+    }
 }
+
+val ignoredFeatures = setOf<FeaturePreviews.Feature>()
+
+FeaturePreviews.Feature.values().forEach { feature ->
+    if (feature.isActive && feature !in ignoredFeatures) {
+        enableFeaturePreview(feature.name)
+    }
+}
+

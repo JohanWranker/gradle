@@ -16,10 +16,13 @@
 
 package org.gradle.integtests.fixtures.logging;
 
-import org.gradle.util.CollectionUtils;
+import org.gradle.api.specs.Spec;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static org.gradle.util.CollectionUtils.filter;
+import static org.gradle.util.CollectionUtils.join;
 
 public class GroupedTaskFixture {
 
@@ -53,10 +56,20 @@ public class GroupedTaskFixture {
     }
 
     public String getOutput() {
-        return CollectionUtils.join("\n", outputs);
+        List<String> nonEmptyOutputs = filter(outputs, new Spec<String>() {
+            @Override
+            public boolean isSatisfiedBy(String string) {
+                return !string.equals("");
+            }
+        });
+        return join("\n", nonEmptyOutputs);
     }
 
-    public List<String> getOutputs() {
-        return outputs;
+    public GroupedTaskFixture assertOutputContains(String... text) {
+        String output = getOutput();
+        for (String s : text) {
+            assert output.contains(s);
+        }
+        return this;
     }
 }

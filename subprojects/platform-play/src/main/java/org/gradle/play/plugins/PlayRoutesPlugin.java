@@ -20,7 +20,8 @@ import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Incubating;
 import org.gradle.api.Task;
-import org.gradle.api.internal.file.SourceDirectorySetFactory;
+import org.gradle.api.model.ObjectFactory;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.language.base.LanguageSourceSet;
 import org.gradle.language.base.internal.SourceTransformTaskConfig;
@@ -49,19 +50,21 @@ import java.util.Map;
  */
 @SuppressWarnings("UnusedDeclaration")
 @Incubating
+@Deprecated
 public class PlayRoutesPlugin extends RuleSource {
 
     @ComponentType
     void registerRoutesLanguageType(TypeBuilder<RoutesSourceSet> builder) {
+        DeprecationLogger.deprecatePlugin("Play Routes").replaceWithExternalPlugin("org.gradle.playframework-routes").withUserManual("play_plugin").nagUser();
     }
 
     @Mutate
-    void createGeneratedScalaSourceSets(@Path("binaries") ModelMap<PlayApplicationBinarySpecInternal> binaries, final SourceDirectorySetFactory sourceDirectorySetFactory) {
+    void createGeneratedScalaSourceSets(@Path("binaries") ModelMap<PlayApplicationBinarySpecInternal> binaries, final ObjectFactory objectFactory) {
         binaries.all(new Action<PlayApplicationBinarySpecInternal>() {
             @Override
             public void execute(PlayApplicationBinarySpecInternal playApplicationBinarySpec) {
                 for (LanguageSourceSet languageSourceSet : playApplicationBinarySpec.getInputs().withType(RoutesSourceSet.class)) {
-                    playApplicationBinarySpec.addGeneratedScala(languageSourceSet, sourceDirectorySetFactory);
+                    playApplicationBinarySpec.addGeneratedScala(languageSourceSet, objectFactory);
                 }
             }
         });
@@ -96,14 +99,17 @@ public class PlayRoutesPlugin extends RuleSource {
         @Override
         public SourceTransformTaskConfig getTransformTask() {
             return new SourceTransformTaskConfig() {
+                @Override
                 public String getTaskPrefix() {
                     return "compile";
                 }
 
+                @Override
                 public Class<? extends DefaultTask> getTaskType() {
                     return RoutesCompile.class;
                 }
 
+                @Override
                 public void configureTask(Task task, BinarySpec binarySpec, LanguageSourceSet sourceSet, ServiceRegistry serviceRegistry) {
                     PlayApplicationBinarySpecInternal binary = (PlayApplicationBinarySpecInternal) binarySpec;
                     RoutesSourceSet routesSourceSet = (RoutesSourceSet) sourceSet;

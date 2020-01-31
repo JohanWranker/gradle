@@ -17,6 +17,7 @@
 package org.gradle.internal.logging
 
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.integtests.fixtures.UsesSample
@@ -148,51 +149,46 @@ class LoggingIntegrationTest extends AbstractIntegrationTest {
         }
     }}
 
-    private final LogOutput brokenBuild = new LogOutput() {{
-        error('FAILURE: Build failed with an exception.')
-    }}
-
     @Test
+    @ToBeFixedForInstantExecution(skip = ToBeFixedForInstantExecution.Skip.FAILS_TO_CLEANUP)
     public void quietLogging() {
         checkOutput(this.&run, logOutput.quiet)
     }
 
     @Test
+    @ToBeFixedForInstantExecution(skip = ToBeFixedForInstantExecution.Skip.FAILS_TO_CLEANUP)
     public void lifecycleLogging() {
         checkOutput(this.&run, logOutput.lifecycle)
     }
 
     @Test
+    @ToBeFixedForInstantExecution(skip = ToBeFixedForInstantExecution.Skip.FAILS_TO_CLEANUP)
     public void infoLogging() {
         checkOutput(this.&run, logOutput.info)
     }
 
     @Test
+    @ToBeFixedForInstantExecution(skip = ToBeFixedForInstantExecution.Skip.FAILS_TO_CLEANUP)
     public void debugLogging() {
         checkOutput(this.&run, logOutput.debug)
     }
 
-    @Test
-    public void lifecycleLoggingForBrokenBuild() {
-        checkOutput(this.&runBroken, brokenBuild.lifecycle)
-    }
-
-    @Test @UsesSample('userguide/tutorial/logging')
+    @Test @UsesSample('userguide/tutorial/logging/groovy')
     public void sampleQuietLogging() {
         checkOutput(this.&runSample, sample.quiet)
     }
 
-    @Test @UsesSample('userguide/tutorial/logging')
+    @Test @UsesSample('userguide/tutorial/logging/groovy')
     public void sampleLifecycleLogging() {
         checkOutput(this.&runSample, sample.lifecycle)
     }
 
-    @Test @UsesSample('userguide/tutorial/logging')
+    @Test @UsesSample('userguide/tutorial/logging/groovy')
     public void sampleInfoLogging() {
         checkOutput(this.&runSample, sample.info)
     }
 
-    @Test @UsesSample('userguide/tutorial/logging')
+    @Test @UsesSample('userguide/tutorial/logging/groovy')
     public void sampleDebugLogging() {
         checkOutput(this.&runSample, sample.debug)
     }

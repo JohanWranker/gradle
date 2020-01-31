@@ -16,15 +16,15 @@
 
 package org.gradle.api.reporting;
 
-import org.gradle.api.Incubating;
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.OutputDirectory;
 
 import java.io.File;
 
 /**
  * A directory based report to be created.
  */
-@Incubating
 public interface DirectoryReport extends ConfigurableReport {
 
     /**
@@ -40,8 +40,9 @@ public interface DirectoryReport extends ConfigurableReport {
     @Internal
     File getEntryPoint();
 
+    @OutputDirectory
     @Override
-    File getDestination();
+    DirectoryProperty getOutputLocation();
 
     /**
      * Always returns {@link Report.OutputType#DIRECTORY}

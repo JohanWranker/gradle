@@ -17,11 +17,11 @@ package org.gradle.launcher.daemon.configuration;
 
 import com.google.common.collect.ImmutableList;
 import org.gradle.api.JavaVersion;
-import org.gradle.api.internal.file.IdentityFileResolver;
+import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.initialization.BuildLayoutParameters;
+import org.gradle.internal.jvm.GroovyJpmsWorkarounds;
 import org.gradle.internal.jvm.JavaInfo;
 import org.gradle.internal.jvm.Jvm;
-import org.gradle.internal.logging.sink.ConsoleStateUtil;
 import org.gradle.util.GUtil;
 
 import javax.annotation.Nullable;
@@ -35,8 +35,9 @@ public class DaemonParameters {
     static final int DEFAULT_IDLE_TIMEOUT = 3 * 60 * 60 * 1000;
     public static final int DEFAULT_PERIODIC_CHECK_INTERVAL_MILLIS = 10 * 1000;
 
-    public static final List<String> DEFAULT_JVM_ARGS = ImmutableList.of("-Xmx1024m", "-XX:MaxPermSize=256m", "-XX:+HeapDumpOnOutOfMemoryError");
-    public static final List<String> DEFAULT_JVM_8_ARGS = ImmutableList.of("-Xmx1024m", "-XX:+HeapDumpOnOutOfMemoryError");
+    public static final List<String> DEFAULT_JVM_ARGS = ImmutableList.of("-Xmx512m", "-Xms256m", "-XX:MaxPermSize=256m", "-XX:+HeapDumpOnOutOfMemoryError");
+    public static final List<String> DEFAULT_JVM_8_ARGS = ImmutableList.of("-Xmx512m", "-Xms256m", "-XX:MaxMetaspaceSize=256m", "-XX:+HeapDumpOnOutOfMemoryError");
+    public static final List<String> ALLOW_ENVIRONMENT_VARIABLE_OVERWRITE = ImmutableList.of("--add-opens", "java.base/java.util=ALL-UNNAMED");
 
     private final File gradleUserHomeDir;
 
@@ -44,7 +45,7 @@ public class DaemonParameters {
     private int idleTimeout = DEFAULT_IDLE_TIMEOUT;
 
     private int periodicCheckInterval = DEFAULT_PERIODIC_CHECK_INTERVAL_MILLIS;
-    private final DaemonJvmOptions jvmOptions = new DaemonJvmOptions(new IdentityFileResolver());
+    private final DaemonJvmOptions jvmOptions;
     private Map<String, String> envVariables;
     private boolean enabled = true;
     private boolean hasJvmArgs;
@@ -52,14 +53,15 @@ public class DaemonParameters {
     private boolean foreground;
     private boolean stop;
     private boolean status;
-    private boolean interactive = ConsoleStateUtil.isInteractive();
+    private Priority priority = Priority.NORMAL;
     private JavaInfo jvm = Jvm.current();
 
-    public DaemonParameters(BuildLayoutParameters layout) {
-        this(layout, Collections.<String, String>emptyMap());
+    public DaemonParameters(BuildLayoutParameters layout, FileCollectionFactory fileCollectionFactory) {
+        this(layout, fileCollectionFactory, Collections.<String, String>emptyMap());
     }
 
-    public DaemonParameters(BuildLayoutParameters layout, Map<String, String> extraSystemProperties) {
+    public DaemonParameters(BuildLayoutParameters layout, FileCollectionFactory fileCollectionFactory, Map<String, String> extraSystemProperties) {
+        jvmOptions = new DaemonJvmOptions(fileCollectionFactory);
         if (!extraSystemProperties.isEmpty()) {
             List<String> immutableBefore = jvmOptions.getAllImmutableJvmArgs();
             jvmOptions.systemProperties(extraSystemProperties);
@@ -69,10 +71,6 @@ public class DaemonParameters {
         baseDir = new File(layout.getGradleUserHomeDir(), "daemon");
         gradleUserHomeDir = layout.getGradleUserHomeDir();
         envVariables = new HashMap<String, String>(System.getenv());
-    }
-
-    public boolean isInteractive() {
-        return interactive;
     }
 
     public boolean isEnabled() {
@@ -126,6 +124,10 @@ public class DaemonParameters {
     }
 
     public void applyDefaultsFor(JavaVersion javaVersion) {
+        if (javaVersion.compareTo(JavaVersion.VERSION_1_9) >= 0) {
+            jvmOptions.jvmArgs(ALLOW_ENVIRONMENT_VARIABLE_OVERWRITE);
+            jvmOptions.jvmArgs(GroovyJpmsWorkarounds.SUPPRESS_COMMON_GROOVY_WARNINGS);
+        }
         if (hasJvmArgs) {
             return;
         }
@@ -206,5 +208,18 @@ public class DaemonParameters {
 
     public Map<String, String> getEnvironmentVariables() {
         return envVariables;
+    }
+
+    public Priority getPriority() {
+        return priority;
+    }
+
+    public void setPriority(Priority priority) {
+        this.priority = priority;
+    }
+
+    public enum Priority {
+        LOW,
+        NORMAL,
     }
 }

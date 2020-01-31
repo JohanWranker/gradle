@@ -18,6 +18,7 @@
 package org.gradle.api
 
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.executer.ArtifactBuilder
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.test.fixtures.file.TestFile
@@ -27,16 +28,13 @@ import org.gradle.util.GradleVersion
 import org.junit.Rule
 import org.junit.Test
 
-import static org.hamcrest.Matchers.containsString
-import static org.hamcrest.Matchers.not
-import static org.junit.Assert.assertThat
-
-public class ExternalScriptExecutionIntegrationTest extends AbstractIntegrationTest {
+@SuppressWarnings("IntegrationTestFixtures")
+class ExternalScriptExecutionIntegrationTest extends AbstractIntegrationTest {
     @Rule
     public final HttpServer server = new HttpServer()
 
     @Test
-    public void executesExternalScriptAgainstAProjectWithCorrectEnvironment() {
+    void executesExternalScriptAgainstAProjectWithCorrectEnvironment() {
         createExternalJar()
         createBuildSrc()
 
@@ -78,14 +76,12 @@ assert 'value' == someProp
 '''
 
         ExecutionResult result = inTestDirectory().withTasks('doStuff').run()
-        assertThat(result.output, containsString('quiet message'))
-        assertThat(result.output, not(containsString('error message')))
-        assertThat(result.error, containsString('error message'))
-        assertThat(result.error, not(containsString('quiet message')))
+        result.assertOutputContains('quiet message')
+        result.assertHasErrorOutput('error message')
     }
 
     @Test
-    public void canExecuteExternalScriptAgainstAnArbitraryObject() {
+    void canExecuteExternalScriptAgainstAnArbitraryObject() {
         createBuildSrc()
 
         testFile('external.gradle') << '''
@@ -108,14 +104,14 @@ assert 'value' == doStuff.someProp
 '''
 
         ExecutionResult result = inTestDirectory().withTasks('doStuff').run()
-        assertThat(result.output, containsString('quiet message'))
-        assertThat(result.output, not(containsString('error message')))
-        assertThat(result.error, containsString('error message'))
-        assertThat(result.error, not(containsString('quiet message')))
+        result.assertOutputContains('quiet message')
+        result.assertHasErrorOutput('error message')
     }
 
     @Test
-    public void canExecuteExternalScriptFromSettingsScript() {
+    @ToBeFixedForInstantExecution
+    void canExecuteExternalScriptFromSettingsScript() {
+
         testFile('settings.gradle') << ''' apply { from 'other.gradle' } '''
         testFile('other.gradle') << ''' include 'child' '''
         testFile('build.gradle') << ''' assert ['child'] == subprojects*.name '''
@@ -124,7 +120,7 @@ assert 'value' == doStuff.someProp
     }
 
     @Test
-    public void canExecuteExternalScriptFromInitScript() {
+    void canExecuteExternalScriptFromInitScript() {
         TestFile initScript = testFile('init.gradle') << ''' apply { from 'other.gradle' } '''
         testFile('other.gradle') << '''
 addListener(new ListenerImpl())
@@ -138,7 +134,7 @@ class ListenerImpl extends BuildAdapter {
     }
 
     @Test
-    public void canExecuteExternalScriptFromExternalScript() {
+    void canExecuteExternalScriptFromExternalScript() {
         testFile('build.gradle') << ''' apply { from 'other1.gradle' } '''
         testFile('other1.gradle') << ''' apply { from 'other2.gradle' } '''
         testFile('other2.gradle') << ''' task doStuff '''
@@ -147,7 +143,7 @@ class ListenerImpl extends BuildAdapter {
     }
 
     @Test
-    public void canFetchScriptViaHttp() {
+    void canFetchScriptViaHttp() {
         executer.requireOwnGradleUserHomeDir() //we need an empty external resource cache
 
         TestFile script = testFile('external.gradle')
@@ -158,11 +154,11 @@ class ListenerImpl extends BuildAdapter {
         script << """
             task doStuff
             assert buildscript.sourceFile == null
-            assert "http://localhost:$server.port/external.gradle" == buildscript.sourceURI as String
+            assert "${server.uri}/external.gradle" == buildscript.sourceURI as String
 """
 
         testFile('build.gradle') << """
-            apply from: 'http://localhost:$server.port/external.gradle'
+            apply from: '${server.uri}/external.gradle'
             defaultTasks 'doStuff'
 """
 
@@ -170,7 +166,7 @@ class ListenerImpl extends BuildAdapter {
     }
 
     @Test
-    public void cachesScriptClassForAGivenScript() {
+    void cachesScriptClassForAGivenScript() {
         testFile('settings.gradle') << 'include \'a\', \'b\''
         testFile('external.gradle') << 'ext.appliedScript = this'
         testFile('build.gradle') << '''
@@ -192,7 +188,7 @@ task doStuff
     }
 
     private def createExternalJar() {
-        ArtifactBuilder builder = artifactBuilder();
+        ArtifactBuilder builder = artifactBuilder()
         builder.sourceFile('org/gradle/test/BuildClass.java') << '''
             package org.gradle.test;
             public class BuildClass { }

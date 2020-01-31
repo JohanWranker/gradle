@@ -16,23 +16,34 @@
 
 package org.gradle.api.internal.tasks;
 
-import org.gradle.api.internal.changedetection.state.InMemoryCacheDecoratorFactory;
+import org.gradle.api.internal.cache.StringInterner;
 import org.gradle.api.internal.jvm.JvmBinaryRenderer;
 import org.gradle.api.internal.tasks.compile.incremental.cache.DefaultGeneralCompileCaches;
-import org.gradle.api.internal.tasks.compile.incremental.cache.GeneralCompileCaches;
+import org.gradle.api.internal.tasks.compile.incremental.cache.DefaultUserHomeScopedCompileCaches;
+import org.gradle.api.internal.tasks.compile.incremental.cache.UserHomeScopedCompileCaches;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.cache.CacheRepository;
+import org.gradle.cache.internal.InMemoryCacheDecoratorFactory;
 import org.gradle.initialization.JdkToolsInitializer;
 import org.gradle.internal.service.ServiceRegistration;
 import org.gradle.internal.service.scopes.AbstractPluginServiceRegistry;
+import org.gradle.internal.vfs.AdditiveCacheLocations;
+import org.gradle.internal.vfs.VirtualFileSystem;
 
 public class CompileServices extends AbstractPluginServiceRegistry {
+    @Override
     public void registerGlobalServices(ServiceRegistration registration) {
         registration.add(JvmBinaryRenderer.class);
     }
 
+    @Override
     public void registerGradleServices(ServiceRegistration registration) {
         registration.addProvider(new GradleScopeCompileServices());
+    }
+
+    @Override
+    public void registerGradleUserHomeServices(ServiceRegistration registration) {
+        registration.addProvider(new UserHomeScopeServices());
     }
 
     private static class GradleScopeCompileServices {
@@ -41,8 +52,30 @@ public class CompileServices extends AbstractPluginServiceRegistry {
             initializer.initializeJdkTools();
         }
 
-        GeneralCompileCaches createGeneralCompileCaches(CacheRepository cacheRepository, Gradle gradle, InMemoryCacheDecoratorFactory inMemoryCacheDecoratorFactory) {
-            return new DefaultGeneralCompileCaches(cacheRepository, gradle, inMemoryCacheDecoratorFactory);
+        DefaultGeneralCompileCaches createGeneralCompileCaches(
+            AdditiveCacheLocations additiveCacheLocations,
+            CacheRepository cacheRepository,
+            Gradle gradle,
+            InMemoryCacheDecoratorFactory inMemoryCacheDecoratorFactory,
+            StringInterner interner,
+            UserHomeScopedCompileCaches userHomeScopedCompileCaches,
+            VirtualFileSystem virtualFileSystem
+        ) {
+            return new DefaultGeneralCompileCaches(
+                additiveCacheLocations,
+                cacheRepository,
+                gradle,
+                inMemoryCacheDecoratorFactory,
+                interner,
+                userHomeScopedCompileCaches,
+                virtualFileSystem
+            );
+        }
+    }
+
+    private static class UserHomeScopeServices {
+        DefaultUserHomeScopedCompileCaches createCompileCaches(CacheRepository cacheRepository, InMemoryCacheDecoratorFactory inMemoryCacheDecoratorFactory, VirtualFileSystem virtualFileSystem, StringInterner interner) {
+            return new DefaultUserHomeScopedCompileCaches(virtualFileSystem, cacheRepository, inMemoryCacheDecoratorFactory, interner);
         }
     }
 }

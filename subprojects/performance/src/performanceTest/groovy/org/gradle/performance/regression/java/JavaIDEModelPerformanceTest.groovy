@@ -27,12 +27,16 @@ import static org.gradle.performance.generator.JavaTestProject.LARGE_MONOLITHIC_
 
 class JavaIDEModelPerformanceTest extends AbstractToolingApiCrossVersionPerformanceTest {
 
+    private static final BASELINE_VERSION = "6.2-20200114230021+0000"
+
     @Unroll
     def "get IDE model on #testProject for Eclipse"() {
         given:
         experiment(testProject.projectName) {
-            minimumVersion = "2.11"
-            targetVersions = ["4.6-20180125002142+0000"]
+            minimumBaseVersion = "2.11"
+            targetVersions = [BASELINE_VERSION]
+            invocationCount = iterations
+            warmUpCount = iterations
             action {
                 def model = model(tapiClass(EclipseProject)).setJvmArguments("-Xms${testProject.daemonMemory}", "-Xmx${testProject.daemonMemory}").get()
                 // we must actually do something to highlight some performance issues
@@ -80,17 +84,19 @@ class JavaIDEModelPerformanceTest extends AbstractToolingApiCrossVersionPerforma
         results.assertCurrentVersionHasNotRegressed()
 
         where:
-        testProject                   | _
-        LARGE_MONOLITHIC_JAVA_PROJECT | _
-        LARGE_JAVA_MULTI_PROJECT      | _
+        testProject                   | iterations
+        LARGE_MONOLITHIC_JAVA_PROJECT | 200
+        LARGE_JAVA_MULTI_PROJECT      | 40
     }
 
     @Unroll
     def "get IDE model on #testProject for IDEA"() {
         given:
         experiment(testProject.projectName) {
-            minimumVersion = "2.11"
-            targetVersions = ["4.6-20180125002142+0000"]
+            minimumBaseVersion = "2.11"
+            targetVersions = [BASELINE_VERSION]
+            invocationCount = iterations
+            warmUpCount = iterations
             action {
                 def model = model(tapiClass(IdeaProject)).setJvmArguments("-Xms${testProject.daemonMemory}", "-Xmx${testProject.daemonMemory}").get()
                 // we must actually do something to highlight some performance issues
@@ -135,9 +141,9 @@ class JavaIDEModelPerformanceTest extends AbstractToolingApiCrossVersionPerforma
         results.assertCurrentVersionHasNotRegressed()
 
         where:
-        testProject                   | _
-        LARGE_MONOLITHIC_JAVA_PROJECT | _
-        LARGE_JAVA_MULTI_PROJECT      | _
+        testProject                   | iterations
+        LARGE_MONOLITHIC_JAVA_PROJECT | 200
+        LARGE_JAVA_MULTI_PROJECT      | 40
     }
 
     private static void forEachEclipseProject(def elm, @DelegatesTo(value=EclipseProject) Closure<?> action) {

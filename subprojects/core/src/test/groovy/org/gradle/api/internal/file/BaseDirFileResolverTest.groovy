@@ -17,8 +17,6 @@ package org.gradle.api.internal.file
 
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.PathValidation
-import org.gradle.api.file.FileCollection
-import org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.PreconditionVerifier
 import org.junit.Before
@@ -27,9 +25,10 @@ import org.junit.Test
 
 import java.util.concurrent.Callable
 
-import static org.gradle.api.internal.file.TestFiles.resolver
-import static org.hamcrest.Matchers.*
-import static org.junit.Assert.*
+import static org.hamcrest.CoreMatchers.equalTo
+import static org.junit.Assert.assertEquals
+import static org.junit.Assert.assertThat
+import static org.junit.Assert.fail
 
 class BaseDirFileResolverTest {
     static final String TEST_PATH = 'testpath'
@@ -44,7 +43,7 @@ class BaseDirFileResolverTest {
 
     @Before public void setUp() {
         baseDir = rootDir.testDirectory
-        baseDirConverter = new BaseDirFileResolver(TestFiles.fileSystem(), baseDir, resolver().getPatternSetFactory())
+        baseDirConverter = new BaseDirFileResolver(baseDir, TestFiles.getPatternSetFactory())
         testFile = new File(baseDir, 'testfile')
         testDir = new File(baseDir, 'testdir')
     }
@@ -59,7 +58,7 @@ class BaseDirFileResolverTest {
         baseDirConverter.resolve(TEST_PATH, PathValidation.NONE)
     }
 
-    @Test public void testPathValidationWithNonExistingFile() {
+    @Test public void testPathValidationWithNonexistentFile() {
         try {
             baseDirConverter.resolve(testFile.name, PathValidation.FILE)
             fail()
@@ -83,7 +82,7 @@ class BaseDirFileResolverTest {
         baseDirConverter.resolve(testFile.name, PathValidation.FILE)
     }
 
-    @Test public void testPathValidationWithNonExistingDirectory() {
+    @Test public void testPathValidationWithNonexistentDirectory() {
         try {
             baseDirConverter.resolve(testDir.name, PathValidation.DIRECTORY)
             fail()
@@ -114,7 +113,7 @@ class BaseDirFileResolverTest {
         baseDirConverter.resolve(testFile.name, PathValidation.EXISTS)
     }
 
-    @Test public void testExistsPathValidationWithNonExistingDir() {
+    @Test public void testExistsPathValidationWithNonexistentDir() {
         try {
             baseDirConverter.resolve(testDir.name, PathValidation.EXISTS)
             fail()
@@ -123,7 +122,7 @@ class BaseDirFileResolverTest {
         }
     }
 
-    @Test public void testExistsPathValidationWithNonExistingFile() {
+    @Test public void testExistsPathValidationWithNonexistentFile() {
         try {
             baseDirConverter.resolve(testFile.name, PathValidation.EXISTS)
             fail()
@@ -219,18 +218,6 @@ class BaseDirFileResolverTest {
         Callable callable = {'relative'} as Callable
         Closure closure = {callable}
         assertEquals(new File(baseDir, 'relative'), baseDirConverter.resolve(closure))
-    }
-
-    @Test public void testFiles() {
-        FileCollection collection = baseDirConverter.resolveFiles('a', 'b')
-        assertThat(collection, instanceOf(DefaultConfigurableFileCollection))
-        assertThat(collection.from, equalTo(['a', 'b'] as LinkedHashSet))
-    }
-
-    @Test public void testFilesReturnsSourceFileCollection() {
-        FileCollection source = baseDirConverter.resolveFiles('a')
-        FileCollection collection = baseDirConverter.resolveFiles(source)
-        assertThat(collection, sameInstance(source))
     }
 
     @Test public void testResolveAbsolutePathToUri() {

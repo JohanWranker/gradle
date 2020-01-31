@@ -16,8 +16,9 @@
 
 package org.gradle.integtests
 
-import org.gradle.api.internal.tasks.compile.processing.AnnotationProcessorPathFactory
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.test.fixtures.file.TestFile
 import spock.lang.Issue
 
 import static org.gradle.util.TextUtil.escapeString
@@ -36,13 +37,12 @@ class ScalaAnnotationProcessingIntegrationTest extends AbstractIntegrationSpec {
         then:
         skipped(':compileJava')
         executedAndNotSkipped(':compileScala')
-        errorOutput.contains('error: package org.gradle does not exist')
-        errorOutput.contains('javac returned nonzero exit code')
+        result.assertHasErrorOutput('error: package org.gradle does not exist')
+        failure.assertHasCause('javac returned non-zero exit code')
     }
 
-    def "processes annotation for Java class if annotation processor is available on classpath"() {
-        executer.requireGradleDistribution()
-
+    @ToBeFixedForInstantExecution
+    def "does not process annotation for Java class if annotation processor is only available on classpath"() {
         when:
         AnnotationProcessorPublisher annotationProcessorPublisher = new AnnotationProcessorPublisher()
         annotationProcessorPublisher.writeSourceFiles()
@@ -57,19 +57,16 @@ class ScalaAnnotationProcessingIntegrationTest extends AbstractIntegrationSpec {
         buildFile << annotationProcessorDependency(annotationProcessorPublisher.repoDir, annotationProcessorPublisher.dependencyCoordinates)
         file('src/main/scala/MyClass.java') << javaClassWithCustomAnnotation()
 
-        executer.expectDeprecationWarning()
         succeeds 'compileScala'
 
         then:
         skipped(':compileJava')
         executedAndNotSkipped(':compileScala')
-        new File(testDirectory, 'generated.txt').exists()
-        outputContains(AnnotationProcessorPathFactory.COMPILE_CLASSPATH_DEPRECATION_MESSAGE)
+        new TestFile(testDirectory, 'generated.txt').assertDoesNotExist()
     }
 
+    @ToBeFixedForInstantExecution
     def "processes annotation for Java class if annotation processor is available on processor path"() {
-        executer.requireGradleDistribution()
-
         when:
         AnnotationProcessorPublisher annotationProcessorPublisher = new AnnotationProcessorPublisher()
         annotationProcessorPublisher.writeSourceFiles()
@@ -95,20 +92,18 @@ class ScalaAnnotationProcessingIntegrationTest extends AbstractIntegrationSpec {
         new File(testDirectory, 'generated.txt').exists()
     }
 
-    def "can use external annotation processor for Java class, from classpath"() {
+    def "cannot use external annotation processor for Java class, from classpath"() {
         given:
         buildFile << basicScalaProject()
         buildFile << lombokDependency()
         file('src/main/scala/Test.java') << javaClassWithLombokAnnotation()
 
         when:
-        executer.expectDeprecationWarning()
-        succeeds 'compileScala'
+        fails 'compileScala'
 
         then:
         skipped(':compileJava')
         executedAndNotSkipped(':compileScala')
-        outputContains(AnnotationProcessorPathFactory.COMPILE_CLASSPATH_DEPRECATION_MESSAGE)
     }
 
     def "can use external annotation processor for Java class, from processor path"() {
@@ -135,7 +130,7 @@ class ScalaAnnotationProcessingIntegrationTest extends AbstractIntegrationSpec {
             ${mavenCentralRepository()}
             
             dependencies {
-                compile 'org.scala-lang:scala-library:2.11.8'
+                implementation 'org.scala-lang:scala-library:2.11.12'
             }
         """
     }
@@ -159,7 +154,7 @@ class ScalaAnnotationProcessingIntegrationTest extends AbstractIntegrationSpec {
     static String lombokDependency() {
         """
             dependencies {
-                compileOnly 'org.projectlombok:lombok:1.16.16'
+                compileOnly 'org.projectlombok:lombok:1.16.22'
             }
         """
     }

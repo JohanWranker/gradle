@@ -20,24 +20,27 @@ import com.google.common.io.Files;
 import org.apache.commons.io.FilenameUtils;
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
-import org.gradle.api.Incubating;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.DirectoryProperty;
+import org.gradle.api.file.FileSystemOperations;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
-import org.gradle.api.internal.file.FileOperations;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SkipWhenEmpty;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.internal.nativeintegration.filesystem.FileSystem;
-import org.gradle.language.swift.internal.SwiftStdlibToolLocator;
+import org.gradle.nativeplatform.toolchain.internal.xcode.SwiftStdlibToolLocator;
 import org.gradle.process.ExecSpec;
 import org.gradle.util.GFileUtils;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.io.IOException;
@@ -49,10 +52,17 @@ import java.util.concurrent.Callable;
  *
  * @since 4.4
  */
-@Incubating
 public class InstallXCTestBundle extends DefaultTask {
-    private final DirectoryProperty installDirectory = newOutputDirectory();
-    private final RegularFileProperty bundleBinaryFile = newInputFile();
+    private final DirectoryProperty installDirectory;
+    private final RegularFileProperty bundleBinaryFile;
+
+    public InstallXCTestBundle() {
+        ObjectFactory objectFactory = getProject().getObjects();
+        installDirectory = objectFactory.directoryProperty();
+        bundleBinaryFile = objectFactory.fileProperty();
+        // A work around for not being able to skip the task when an input _file_ does not exist
+        dependsOn(bundleBinaryFile);
+    }
 
     @Inject
     protected SwiftStdlibToolLocator getSwiftStdlibToolLocator() {
@@ -65,12 +75,12 @@ public class InstallXCTestBundle extends DefaultTask {
     }
 
     @Inject
-    protected FileOperations getFileOperations() {
+    protected FileSystemOperations getFileSystemOperations() {
         throw new UnsupportedOperationException();
     }
 
     @TaskAction
-    void install() throws IOException {
+    protected void install() throws IOException {
         File bundleFile = bundleBinaryFile.get().getAsFile();
         File bundleDir = installDirectory.get().file(bundleFile.getName() + ".xctest").getAsFile();
         installToDir(bundleDir, bundleFile);
@@ -88,7 +98,7 @@ public class InstallXCTestBundle extends DefaultTask {
     }
 
     private void installToDir(final File bundleDir, final File bundleFile) throws IOException {
-        getFileOperations().sync(new Action<CopySpec>() {
+        getFileSystemOperations().sync(new Action<CopySpec>() {
             @Override
             public void execute(CopySpec copySpec) {
                 copySpec.from(bundleFile, new Action<CopySpec>() {
@@ -104,11 +114,11 @@ public class InstallXCTestBundle extends DefaultTask {
 
         File outputFile = new File(bundleDir, "Contents/Info.plist");
 
-        Files.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        Files.asCharSink(outputFile, Charset.forName("UTF-8")).write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
             + "<plist version=\"1.0\">\n"
             + "<dict/>\n"
-            + "</plist>", outputFile, Charset.forName("UTF-8"));
+            + "</plist>");
 
         getProject().exec(new Action<ExecSpec>() {
             @Override
@@ -148,8 +158,10 @@ public class InstallXCTestBundle extends DefaultTask {
     }
 
     @SkipWhenEmpty
-    @InputFile
+    @Nullable
     @Optional
+    @PathSensitive(PathSensitivity.NAME_ONLY)
+    @InputFile
     protected File getBundleBinary() {
         RegularFile bundle = getBundleBinaryFile().get();
         File bundleFile = bundle.getAsFile();

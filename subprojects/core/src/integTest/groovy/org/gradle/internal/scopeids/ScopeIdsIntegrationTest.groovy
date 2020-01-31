@@ -17,6 +17,7 @@
 package org.gradle.internal.scopeids
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.ScopeIdsFixture
 import org.gradle.internal.scan.scopeids.BuildScanScopeIds
 import org.gradle.util.TextUtil
@@ -42,6 +43,7 @@ class ScopeIdsIntegrationTest extends AbstractIntegrationSpec {
         scopeIds.lastBuildPaths() == [":", ":buildSrc"]
     }
 
+    @ToBeFixedForInstantExecution
     def "composite participants inherit the same ids"() {
         when:
         settingsFile << """
@@ -69,6 +71,7 @@ class ScopeIdsIntegrationTest extends AbstractIntegrationSpec {
         scopeIds.lastBuildPaths() == [":", ":a", ":a:buildSrc", ":b", ":b:buildSrc"]
     }
 
+    @ToBeFixedForInstantExecution
     def "gradle-build builds with different root does not inherit workspace id"() {
         given:
         // GradleBuild launched builds with a different root dir
@@ -76,10 +79,10 @@ class ScopeIdsIntegrationTest extends AbstractIntegrationSpec {
         scopeIds.disableConsistentWorkspaceIdCheck = true
 
         when:
+        file("other/settings.gradle").touch()
         buildScript """
             task t(type: GradleBuild) {
                 dir = file("other")
-                startParameter.searchUpwards = false
             }
         """
 
@@ -90,15 +93,16 @@ class ScopeIdsIntegrationTest extends AbstractIntegrationSpec {
         ids[":"].workspace != ids[":other"].workspace
     }
 
+    @ToBeFixedForInstantExecution
     def "gradle-build builds with different gradle user home does not inherit user id"() {
         given:
         scopeIds.disableConsistentUserIdCheck = true
         file("other-home/init.d/id.gradle") << scopeIds.initScriptContent()
 
         when:
+        settingsFile << "rootProject.name = 'root'"
         buildScript """
             task t(type: GradleBuild) {
-                startParameter.searchUpwards = false
                 startParameter.gradleUserHomeDir = new File("${TextUtil.normaliseFileSeparators(file("other-home").absolutePath)}")
             }
         """
@@ -111,12 +115,12 @@ class ScopeIdsIntegrationTest extends AbstractIntegrationSpec {
         ids[":"].user != ids[buildPaths[1]].user
     }
 
+    @ToBeFixedForInstantExecution
     def "gradle-build with same root and user dir inherits all"() {
         when:
+        settingsFile << "rootProject.name = 'root'"
         buildScript """
-            task t(type: GradleBuild) {
-                startParameter.searchUpwards = false
-            }
+            task t(type: GradleBuild) {}
         """
 
         then:
@@ -127,8 +131,8 @@ class ScopeIdsIntegrationTest extends AbstractIntegrationSpec {
 
     def "different project roots have different workspace ids"() {
         when:
-        file("a/build.gradle") << ""
-        file("b/build.gradle") << ""
+        file("a/settings.gradle") << ""
+        file("b/settings.gradle") << ""
         succeeds("help", "-p", "a")
         succeeds("help", "-p", "b")
 
@@ -137,6 +141,7 @@ class ScopeIdsIntegrationTest extends AbstractIntegrationSpec {
         scopeIds.userIds.unique().size() == 1
     }
 
+    @ToBeFixedForInstantExecution
     def "changing gradle user home changes user id"() {
         when:
         file("build.gradle") << ""

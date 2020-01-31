@@ -17,6 +17,7 @@
 package org.gradle.api.internal.tasks.testing;
 
 import org.gradle.api.Task;
+import org.gradle.api.internal.CollectionCallbackActionDecorator;
 import org.gradle.api.reporting.ConfigurableReport;
 import org.gradle.api.reporting.DirectoryReport;
 import org.gradle.api.reporting.Report;
@@ -25,10 +26,13 @@ import org.gradle.api.reporting.internal.TaskReportContainer;
 import org.gradle.api.tasks.testing.JUnitXmlReport;
 import org.gradle.api.tasks.testing.TestTaskReports;
 
+import javax.inject.Inject;
+
 public class DefaultTestTaskReports extends TaskReportContainer<Report> implements TestTaskReports {
 
-    public DefaultTestTaskReports(Task task) {
-        super(ConfigurableReport.class, task);
+    @Inject
+    public DefaultTestTaskReports(Task task, CollectionCallbackActionDecorator callbackActionDecorator) {
+        super(ConfigurableReport.class, task, callbackActionDecorator);
 
         add(DefaultJUnitXmlReport.class, "junitXml", task);
         add(TaskGeneratedSingleDirectoryReport.class, "html", task, "index.html");

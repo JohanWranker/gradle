@@ -15,9 +15,12 @@
  */
 package org.gradle.cache.internal;
 
+import com.google.common.annotations.VisibleForTesting;
+import org.gradle.api.Action;
 import org.gradle.cache.FileIntegrityViolationException;
 import org.gradle.cache.FileLock;
 import org.gradle.cache.FileLockManager;
+import org.gradle.cache.FileLockReleasedSignal;
 import org.gradle.cache.InsufficientLockModeException;
 import org.gradle.cache.LockOptions;
 import org.gradle.cache.LockTimeoutException;
@@ -35,18 +38,21 @@ import org.gradle.internal.concurrent.CompositeStoppable;
 import org.gradle.internal.concurrent.Stoppable;
 import org.gradle.internal.id.IdGenerator;
 import org.gradle.internal.id.RandomLongIdGenerator;
-import org.gradle.internal.time.CountdownTimer;
-import org.gradle.internal.time.Time;
+import org.gradle.internal.io.ExponentialBackoff;
+import org.gradle.internal.io.IOQuery;
 import org.gradle.util.GFileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.gradle.internal.UncheckedException.throwAsUncheckedException;
 
 /**
@@ -79,16 +85,19 @@ public class DefaultFileLockManager implements FileLockManager {
         this.generator = generator;
     }
 
+    @Override
     public FileLock lock(File target, LockOptions options, String targetDisplayName) throws LockTimeoutException {
         return lock(target, options, targetDisplayName, "");
     }
 
+    @Override
     public FileLock lock(File target, LockOptions options, String targetDisplayName, String operationDisplayName) {
         return lock(target, options, targetDisplayName, operationDisplayName, null);
     }
 
-    public FileLock lock(File target, LockOptions options, String targetDisplayName, String operationDisplayName, Runnable whenContended) {
-        if (options.getMode() == LockMode.None) {
+    @Override
+    public FileLock lock(File target, LockOptions options, String targetDisplayName, String operationDisplayName, Action<FileLockReleasedSignal> whenContended) {
+        if (options.getMode() == LockMode.OnDemand) {
             throw new UnsupportedOperationException(String.format("No %s mode lock implementation available.", options));
         }
         File canonicalTarget = FileUtils.canonicalize(target);
@@ -124,10 +133,10 @@ public class DefaultFileLockManager implements FileLockManager {
         private int port;
         private final long lockId;
 
-        public DefaultFileLock(File target, LockOptions options, String displayName, String operationDisplayName, int port, Runnable whenContended) throws Throwable {
+        public DefaultFileLock(File target, LockOptions options, String displayName, String operationDisplayName, int port, Action<FileLockReleasedSignal> whenContended) throws Throwable {
             this.port = port;
             this.lockId = generator.generateId();
-            if (options.getMode() == LockMode.None) {
+            if (options.getMode() == LockMode.OnDemand) {
                 throw new UnsupportedOperationException("Locking mode None is not supported.");
             }
 
@@ -161,30 +170,36 @@ public class DefaultFileLockManager implements FileLockManager {
             this.mode = lock.isShared() ? LockMode.Shared : LockMode.Exclusive;
         }
 
+        @Override
         public boolean isLockFile(File file) {
             return file.equals(lockFile);
         }
 
+        @Override
         public boolean getUnlockedCleanly() {
             assertOpen();
             return !lockState.isDirty();
         }
 
+        @Override
         public State getState() {
             assertOpen();
             return lockState;
         }
 
+        @Override
         public <T> T readFile(Factory<? extends T> action) throws LockTimeoutException, FileIntegrityViolationException {
             assertOpenAndIntegral();
             return action.create();
         }
 
+        @Override
         public void updateFile(Runnable action) throws LockTimeoutException, FileIntegrityViolationException {
             assertOpenAndIntegral();
             doWriteAction(action);
         }
 
+        @Override
         public void writeFile(Runnable action) throws LockTimeoutException {
             assertOpen();
             doWriteAction(action);
@@ -217,18 +232,11 @@ public class DefaultFileLockManager implements FileLockManager {
             }
         }
 
+        @Override
         public void close() {
             CompositeStoppable stoppable = new CompositeStoppable();
             stoppable.add(new Stoppable() {
-                public void stop() {
-                    try {
-                        fileLockContentionHandler.stop(lockId);
-                    } catch (Exception e) {
-                        throw new RuntimeException("Unable to stop listening for file lock requests for " + displayName, e);
-                    }
-                }
-            });
-            stoppable.add(new Stoppable() {
+                @Override
                 public void stop() {
                     if (lockFileAccess == null) {
                         return;
@@ -240,7 +248,7 @@ public class DefaultFileLockManager implements FileLockManager {
                                 // Discard information region
                                 java.nio.channels.FileLock info;
                                 try {
-                                    info = lockInformationRegion(LockMode.Exclusive, new ExponentialBackoff(shortTimeoutMs));
+                                    info = lockInformationRegion(LockMode.Exclusive, newExponentialBackoff(shortTimeoutMs));
                                 } catch (InterruptedException e) {
                                     throw throwAsUncheckedException(e);
                                 }
@@ -261,6 +269,17 @@ public class DefaultFileLockManager implements FileLockManager {
                 }
             });
             stoppable.add(new Stoppable() {
+                @Override
+                public void stop() {
+                    try {
+                        fileLockContentionHandler.stop(lockId);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Unable to stop listening for file lock requests for " + displayName, e);
+                    }
+                }
+            });
+            stoppable.add(new Stoppable() {
+                @Override
                 public void stop() {
                     lock = null;
                     lockFileAccess = null;
@@ -270,6 +289,7 @@ public class DefaultFileLockManager implements FileLockManager {
             stoppable.stop();
         }
 
+        @Override
         public LockMode getMode() {
             return mode;
         }
@@ -280,7 +300,7 @@ public class DefaultFileLockManager implements FileLockManager {
             // Lock the state region, with the requested mode
             java.nio.channels.FileLock stateRegionLock = lockStateRegion(lockMode);
             if (stateRegionLock == null) {
-                LockInfo lockInfo = readInformationRegion(new ExponentialBackoff(shortTimeoutMs));
+                LockInfo lockInfo = readInformationRegion(newExponentialBackoff(shortTimeoutMs));
                 throw new LockTimeoutException(displayName, lockInfo.pid, metaDataProvider.getProcessIdentifier(), lockInfo.operation, operationDisplayName, lockFile);
             }
 
@@ -293,7 +313,7 @@ public class DefaultFileLockManager implements FileLockManager {
                     lockState = lockFileAccess.ensureLockState();
 
                     // Acquire an exclusive lock on the information region and write our details there
-                    java.nio.channels.FileLock informationRegionLock = lockInformationRegion(LockMode.Exclusive, new ExponentialBackoff(shortTimeoutMs));
+                    java.nio.channels.FileLock informationRegionLock = lockInformationRegion(LockMode.Exclusive, newExponentialBackoff(shortTimeoutMs));
                     if (informationRegionLock == null) {
                         throw new IllegalStateException(String.format("Unable to lock the information region for %s", displayName));
                     }
@@ -316,7 +336,7 @@ public class DefaultFileLockManager implements FileLockManager {
             }
         }
 
-        private LockInfo readInformationRegion(ExponentialBackoff backoff) throws IOException, InterruptedException {
+        private LockInfo readInformationRegion(ExponentialBackoff<AwaitableFileLockReleasedSignal> backoff) throws IOException, InterruptedException {
             // Can't acquire lock, get details of owner to include in the error message
             LockInfo out = new LockInfo();
             java.nio.channels.FileLock informationRegionLock = lockInformationRegion(LockMode.Shared, backoff);
@@ -333,7 +353,7 @@ public class DefaultFileLockManager implements FileLockManager {
         }
 
         private java.nio.channels.FileLock lockStateRegion(final LockMode lockMode) throws IOException, InterruptedException {
-            final ExponentialBackoff backoff = new ExponentialBackoff(lockTimeoutMs);
+            final ExponentialBackoff<AwaitableFileLockReleasedSignal> backoff = newExponentialBackoff(lockTimeoutMs);
             return backoff.retryUntil(new IOQuery<java.nio.channels.FileLock>() {
                 private long lastPingTime;
                 private int lastLockHolderPort;
@@ -352,8 +372,8 @@ public class DefaultFileLockManager implements FileLockManager {
                                 lastLockHolderPort = lockInfo.port;
                                 lastPingTime = 0;
                             }
-                            if (fileLockContentionHandler.maybePingOwner(lockInfo.port, lockInfo.lockId, displayName, backoff.timer.getElapsedMillis() - lastPingTime)) {
-                                lastPingTime = backoff.timer.getElapsedMillis();
+                            if (fileLockContentionHandler.maybePingOwner(lockInfo.port, lockInfo.lockId, displayName, backoff.getTimer().getElapsedMillis() - lastPingTime, backoff.getSignal())) {
+                                lastPingTime = backoff.getTimer().getElapsedMillis();
                                 LOGGER.debug("The file lock is held by a different Gradle process (pid: {}, lockId: {}). Pinged owner at port {}", lockInfo.pid, lockInfo.lockId, lockInfo.port);
                             }
                         } else {
@@ -365,7 +385,7 @@ public class DefaultFileLockManager implements FileLockManager {
             });
         }
 
-        private java.nio.channels.FileLock lockInformationRegion(final LockMode lockMode, ExponentialBackoff backoff) throws IOException, InterruptedException {
+        private java.nio.channels.FileLock lockInformationRegion(final LockMode lockMode, ExponentialBackoff<AwaitableFileLockReleasedSignal> backoff) throws IOException, InterruptedException {
             return backoff.retryUntil(new IOQuery<java.nio.channels.FileLock>() {
                 @Override
                 public java.nio.channels.FileLock run() throws IOException {
@@ -375,44 +395,48 @@ public class DefaultFileLockManager implements FileLockManager {
         }
     }
 
-    private interface IOQuery<T> {
-        T run() throws IOException, InterruptedException;
+    private ExponentialBackoff<AwaitableFileLockReleasedSignal> newExponentialBackoff(int shortTimeoutMs) {
+        return ExponentialBackoff.of(shortTimeoutMs, MILLISECONDS, new AwaitableFileLockReleasedSignal());
     }
 
-    private static class ExponentialBackoff {
+    @VisibleForTesting
+    static class AwaitableFileLockReleasedSignal implements FileLockReleasedSignal, ExponentialBackoff.Signal {
 
-        private static final int CAP_FACTOR = 100;
+        private final Lock lock = new ReentrantLock();
+        private final Condition condition = lock.newCondition();
+        private int waiting;
 
-        private static final long SLOT_TIME = 25L;
-
-        private final Random random = new Random();
-
-        private final int timeoutMs;
-        private CountdownTimer timer;
-
-        private ExponentialBackoff(int timeoutMs) {
-            this.timeoutMs = timeoutMs;
-            restartTimer();
-        }
-
-        private void restartTimer() {
-            timer = Time.startCountdownTimer(timeoutMs);
-        }
-
-        <T> T retryUntil(IOQuery<T> query) throws IOException, InterruptedException {
-            int iteration = 0;
-            T result;
-            while ((result = query.run()) == null) {
-                if (timer.hasExpired()) {
-                    break;
-                }
-                Thread.sleep(backoffPeriodFor(++iteration));
+        public boolean await(long millis) throws InterruptedException {
+            lock.lock();
+            try {
+                waiting++;
+                return condition.await(millis, MILLISECONDS);
+            } finally {
+                waiting--;
+                lock.unlock();
             }
-            return result;
         }
 
-        long backoffPeriodFor(int iteration) {
-            return random.nextInt(Math.min(iteration, CAP_FACTOR)) * SLOT_TIME;
+        @Override
+        public void trigger() {
+            lock.lock();
+            try {
+                if (waiting > 0) {
+                    condition.signalAll();
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        @VisibleForTesting
+        boolean isWaiting() {
+            lock.lock();
+            try {
+                return waiting > 0;
+            } finally {
+                lock.unlock();
+            }
         }
     }
 }

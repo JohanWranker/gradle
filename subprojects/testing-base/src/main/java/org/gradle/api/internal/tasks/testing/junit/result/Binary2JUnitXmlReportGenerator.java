@@ -16,17 +16,17 @@
 
 package org.gradle.api.internal.tasks.testing.junit.result;
 
-import org.apache.commons.io.IOUtils;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.internal.FileUtils;
+import org.gradle.internal.IoActions;
 import org.gradle.internal.operations.BuildOperationContext;
+import org.gradle.internal.operations.BuildOperationDescriptor;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.operations.BuildOperationQueue;
 import org.gradle.internal.operations.RunnableBuildOperation;
-import org.gradle.internal.progress.BuildOperationDescriptor;
 import org.gradle.internal.time.Time;
 import org.gradle.internal.time.Timer;
 import org.gradle.util.GFileUtils;
@@ -78,6 +78,7 @@ public class Binary2JUnitXmlReportGenerator {
             @Override
             public void execute(final BuildOperationQueue<JUnitXmlReportFileGenerator> queue) {
                 testResultsProvider.visitClasses(new Action<TestClassResult>() {
+                    @Override
                     public void execute(final TestClassResult result) {
                         final File reportFile = new File(testResultsDir, getReportFileName(result));
                         queue.add(new JUnitXmlReportFileGenerator(result, reportFile, xmlWriter));
@@ -119,7 +120,7 @@ public class Binary2JUnitXmlReportGenerator {
             } catch (Exception e) {
                 throw new GradleException(String.format("Could not write XML test results for %s to file %s.", result.getClassName(), reportFile), e);
             } finally {
-                IOUtils.closeQuietly(output);
+                IoActions.closeQuietly(output);
             }
         }
     }

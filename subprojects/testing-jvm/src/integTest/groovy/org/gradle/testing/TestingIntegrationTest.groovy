@@ -16,29 +16,32 @@
 package org.gradle.testing
 
 import org.apache.commons.lang.RandomStringUtils
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
-import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.TargetCoverage
+import org.gradle.testing.fixture.JUnitMultiVersionIntegrationSpec
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
-import org.hamcrest.Matchers
-import spock.lang.IgnoreIf
+import org.hamcrest.CoreMatchers
 import spock.lang.Issue
 import spock.lang.Unroll
+
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_4_LATEST
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_VINTAGE_JUPITER
 
 /**
  * General tests for the JVM testing infrastructure that don't deserve their own test class.
  */
-class TestingIntegrationTest extends AbstractIntegrationSpec {
+@TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE_JUPITER })
+class TestingIntegrationTest extends JUnitMultiVersionIntegrationSpec {
 
     @Issue("https://issues.gradle.org/browse/GRADLE-1948")
-    @IgnoreIf({ GradleContextualExecuter.parallel })
     def "test interrupting its own thread does not kill test execution"() {
         given:
         buildFile << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile "junit:junit:4.12" }
+            dependencies { testImplementation "junit:junit:4.12" }
         """
 
         and:
@@ -56,62 +59,7 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         run "test"
 
         then:
-        ":test" in nonSkippedTasks
-    }
-
-    def "configures test task when debug property is set"() {
-        given:
-        buildFile << """
-            apply plugin: 'java'
-            task validate() {
-                doFirst {
-                    assert test.debug
-                }
-            }
-            test.dependsOn(validate)
-            test.enabled = false
-        """
-
-        when:
-        executer.withArgument("-Dtest.debug")
-
-        then:
-        succeeds("test")
-    }
-
-    def "configures test task when test.single property is set"() {
-        given:
-        buildFile << """
-            import org.gradle.api.internal.tasks.properties.PropertyVisitor
-            import org.gradle.api.internal.tasks.properties.PropertyWalker
-            import org.gradle.api.internal.tasks.TaskInputFilePropertySpec
-            import org.gradle.api.internal.tasks.TaskPropertyUtils
-
-            apply plugin: 'java'
-
-            task validate() {
-                doFirst {
-                    assert test.includes  == ['**/pattern*.class'] as Set
-                    boolean hasSourceFiles = false
-                    TaskPropertyUtils.visitProperties(project.services.get(PropertyWalker), it, new PropertyVisitor.Adapter() {
-                        @Override
-                        void visitInputFileProperty(TaskInputFilePropertySpec inputFileProperty) {
-                            hasSourceFiles |= inputFileProperty.isSkipWhenEmpty() && !inputFileProperty.propertyFiles.empty
-                        }
-                    })
-                    assert !hasSourceFiles
-                }
-            }
-            test.include 'ignoreme'
-            test.dependsOn(validate)
-            test.enabled = false
-        """
-
-        when:
-        executer.withArgument("-Dtest.single=pattern")
-
-        then:
-        succeeds("test")
+        executedAndNotSkipped(":test")
     }
 
     def "fails cleanly even if an exception is thrown that doesn't serialize cleanly"() {
@@ -141,7 +89,7 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         file('build.gradle') << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile 'junit:junit:4.12' }
+            dependencies { testImplementation 'junit:junit:4.12' }
         """
 
         when:
@@ -153,7 +101,7 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         and:
         def results = new DefaultTestExecutionResult(file("."))
         results.assertTestClassesExecuted("ExceptionTest")
-        results.testClass("ExceptionTest").assertTestFailed("testThrow", Matchers.equalTo('ExceptionTest$BadlyBehavedException: Broken writeObject()'))
+        results.testClass("ExceptionTest").assertTestFailed("testThrow", CoreMatchers.equalTo('ExceptionTest$BadlyBehavedException: Broken writeObject()'))
     }
 
     def "fails cleanly even if an exception is thrown that doesn't de-serialize cleanly"() {
@@ -184,7 +132,7 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
             apply plugin: 'java'
             ${mavenCentralRepository()}
             dependencies {
-                testCompile 'junit:junit:4.12'
+                testImplementation 'junit:junit:4.12'
             }
         """
 
@@ -198,7 +146,7 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         and:
         def results = new DefaultTestExecutionResult(file("."))
         results.assertTestClassesExecuted("ExceptionTest")
-        results.testClass("ExceptionTest").assertTestFailed("testThrow", Matchers.equalTo('ExceptionTest$BadlyBehavedException: Broken readObject()'))
+        results.testClass("ExceptionTest").assertTestFailed("testThrow", CoreMatchers.equalTo('ExceptionTest$BadlyBehavedException: Broken readObject()'))
     }
 
     @Requires(TestPrecondition.NOT_WINDOWS)
@@ -213,7 +161,7 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         buildFile << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile "junit:junit:4.12" }
+            dependencies { testImplementation "junit:junit:4.12" }
             test.workingDir = "${testWorkingDir.toURI()}"
         """
 
@@ -234,12 +182,14 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
 
     @Issue("https://issues.gradle.org/browse/GRADLE-2313")
     @Unroll
+    @ToBeFixedForInstantExecution
     "can clean test after extracting class file with #framework"() {
         when:
+        ignoreWhenJUnitPlatform()
         buildFile << """
             apply plugin: "java"
             ${mavenCentralRepository()}
-            dependencies { testCompile "$dependency" }
+            dependencies { testImplementation "$dependency" }
             test { $framework() }
         """
         and:
@@ -262,19 +212,20 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
     @Issue("https://issues.gradle.org/browse/GRADLE-2527")
     def "test class detection works for custom test tasks"() {
         given:
+        ignoreWhenJupiter()
         buildFile << """
                 apply plugin:'java'
                 ${mavenCentralRepository()}
 
-                sourceSets{
-	                othertests{
+                sourceSets {
+	                othertests {
 		                java.srcDir file('src/othertests/java')
 	                    resources.srcDir file('src/othertests/resources')
 	                }
                 }
 
                 dependencies{
-	                othertestsCompile "junit:junit:4.12"
+	                othertestsImplementation "junit:junit:4.12"
                 }
 
                 task othertestsTest(type:Test){
@@ -333,9 +284,9 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
                 // guarantee ordering
                 first 'com.google.guava:guava:15.0'
                 last 'com.google.collections:google-collections:1.0'
-                compile configurations.first + configurations.last
+                implementation configurations.first + configurations.last
 
-                testCompile 'junit:junit:4.12'
+                testImplementation 'junit:junit:4.12'
             }
         """
 
@@ -356,8 +307,8 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         and:
         def result = new DefaultTestExecutionResult(testDirectory)
         result.testClass("TestCase").with {
-            assertTestFailed("test", Matchers.containsString("java.lang.VerifyError"))
-            assertTestFailed("test", Matchers.containsString("\$EmptyImmutableCollection"))
+            assertTestFailed("test", CoreMatchers.containsString("java.lang.VerifyError"))
+            assertTestFailed("test", CoreMatchers.containsString("\$EmptyImmutableCollection"))
         }
     }
 
@@ -369,7 +320,7 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
             apply plugin: 'java'
             ${mavenCentralRepository()}
             dependencies {
-                testCompile 'junit:junit:4.12'
+                testImplementation 'junit:junit:4.12'
             }
             tasks.withType(JavaCompile) {
                 options.with {
@@ -410,13 +361,14 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         }
     }
 
+    @ToBeFixedForInstantExecution
     def "tests are re-executed when set of candidate classes change"() {
         given:
         buildFile << """
             apply plugin:'java'
             ${mavenCentralRepository()}
             dependencies {
-                testCompile 'junit:junit:4.12'
+                testImplementation 'junit:junit:4.12'
             }
             test {
                 testLogging {
@@ -443,14 +395,14 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         when:
         run "test"
         then:
-        nonSkippedTasks.contains ":test"
+        executedAndNotSkipped ":test"
         output.contains("FirstTest > test PASSED")
         output.contains("SecondTest > test PASSED")
 
         when:
         run "test"
         then:
-        skippedTasks.contains ":test"
+        skipped ":test"
 
         when:
         buildFile << """
@@ -463,7 +415,7 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
         then:
         run "test"
         then:
-        nonSkippedTasks.contains ":test"
+        executedAndNotSkipped ":test"
         output.contains("FirstTest > test PASSED")
         !output.contains("SecondTest > test PASSED")
     }
@@ -489,5 +441,42 @@ class TestingIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         noExceptionThrown()
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/5305")
+    def "test can install an irreplaceable SecurityManager"() {
+        given:
+        executer.withStackTraceChecksDisabled()
+        buildFile << """
+            apply plugin:'java'
+            ${mavenCentralRepository()}
+            dependencies { testImplementation 'junit:junit:4.12' }
+        """
+
+        and:
+        file('src/test/java/SecurityManagerInstallationTest.java') << """
+            import org.junit.Test;
+            import java.security.Permission;
+
+            public class SecurityManagerInstallationTest {
+                @Test
+                public void testSecurityManagerCleanExit() {
+                    System.setSecurityManager(new SecurityManager() {
+                        @Override
+                        public void checkPermission(Permission perm) {
+                            if ("setSecurityManager".equals(perm.getName())) {
+                                throw new SecurityException("You cannot replace this security manager!");
+                            }
+                        }
+                    });
+                }
+            }
+        """
+
+        when:
+        succeeds "test"
+
+        then:
+        outputContains "Unable to reset SecurityManager"
     }
 }

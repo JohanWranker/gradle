@@ -16,7 +16,7 @@
 
 package org.gradle.internal.resource.local;
 
-import org.gradle.internal.hash.HashValue;
+import org.gradle.internal.hash.HashCode;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -29,6 +29,7 @@ public class CompositeLocallyAvailableResourceFinder<C> implements LocallyAvaila
         this.composites = composites;
     }
 
+    @Override
     public LocallyAvailableResourceCandidates findCandidates(C criterion) {
         List<LocallyAvailableResourceCandidates> allCandidates = new LinkedList<LocallyAvailableResourceCandidates>();
         for (LocallyAvailableResourceFinder<C> finder : composites) {
@@ -37,7 +38,7 @@ public class CompositeLocallyAvailableResourceFinder<C> implements LocallyAvaila
 
         return new CompositeLocallyAvailableResourceCandidates(allCandidates);
     }
-    
+
     private static class CompositeLocallyAvailableResourceCandidates implements LocallyAvailableResourceCandidates {
         private final List<LocallyAvailableResourceCandidates> allCandidates;
 
@@ -45,6 +46,7 @@ public class CompositeLocallyAvailableResourceFinder<C> implements LocallyAvaila
             this.allCandidates = allCandidates;
         }
 
+        @Override
         public boolean isNone() {
             for (LocallyAvailableResourceCandidates candidates : allCandidates) {
                 if (!candidates.isNone()) {
@@ -55,7 +57,8 @@ public class CompositeLocallyAvailableResourceFinder<C> implements LocallyAvaila
             return true;
         }
 
-        public LocallyAvailableResource findByHashValue(HashValue hashValue) {
+        @Override
+        public LocallyAvailableResource findByHashValue(HashCode hashValue) {
             for (LocallyAvailableResourceCandidates candidates : allCandidates) {
                 LocallyAvailableResource match = candidates.findByHashValue(hashValue);
                 if (match != null) {

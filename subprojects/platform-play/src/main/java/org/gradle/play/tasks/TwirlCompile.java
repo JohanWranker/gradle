@@ -19,6 +19,7 @@ package org.gradle.play.tasks;
 import com.google.common.collect.Lists;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
+import org.gradle.api.file.FileTree;
 import org.gradle.api.file.FileVisitDetails;
 import org.gradle.api.file.FileVisitor;
 import org.gradle.api.internal.file.RelativeFile;
@@ -26,11 +27,13 @@ import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SourceTask;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.compile.BaseForkOptions;
-import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
 import org.gradle.api.tasks.incremental.InputFileDetails;
+import org.gradle.internal.file.Deleter;
 import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.language.twirl.TwirlImports;
 import org.gradle.language.twirl.TwirlTemplateFormat;
@@ -40,10 +43,11 @@ import org.gradle.play.internal.CleaningPlayToolCompiler;
 import org.gradle.play.internal.toolchain.PlayToolChainInternal;
 import org.gradle.play.internal.twirl.DefaultTwirlCompileSpec;
 import org.gradle.play.internal.twirl.TwirlCompileSpec;
-import org.gradle.play.internal.twirl.TwirlCompilerFactory;
+import org.gradle.play.internal.twirl.TwirlCompilerAdapterFactory;
 import org.gradle.play.platform.PlayPlatform;
 import org.gradle.play.toolchain.PlayToolChain;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.util.Arrays;
@@ -55,6 +59,7 @@ import java.util.Set;
  * Task for compiling Twirl templates into Scala code.
  */
 @Incubating
+@Deprecated
 public class TwirlCompile extends SourceTask {
 
     /**
@@ -72,6 +77,15 @@ public class TwirlCompile extends SourceTask {
     private PlayPlatform platform;
     private List<TwirlTemplateFormat> userTemplateFormats = Lists.newArrayList();
     private List<String> additionalImports = Lists.newArrayList();
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @PathSensitive(PathSensitivity.RELATIVE)
+    public FileTree getSource() {
+        return super.getSource();
+    }
 
     /**
      * fork options for the twirl compiler.
@@ -96,7 +110,7 @@ public class TwirlCompile extends SourceTask {
 
     @Input
     public Object getDependencyNotation() {
-        return TwirlCompilerFactory.createAdapter(platform).getDependencyNotation();
+        return TwirlCompilerAdapterFactory.createAdapter(platform).getDependencyNotation();
     }
 
     /**
@@ -112,7 +126,7 @@ public class TwirlCompile extends SourceTask {
      * Returns the default imports that will be used when compiling templates.
      * @return The imports that will be used.
      */
-    @Optional @Input
+    @Nullable @Optional @Input
     public TwirlImports getDefaultImports() {
         return defaultImports;
     }
@@ -121,26 +135,28 @@ public class TwirlCompile extends SourceTask {
      * Sets the default imports to be used when compiling templates.
      * @param defaultImports The imports to be used.
      */
-    public void setDefaultImports(TwirlImports defaultImports) {
+    public void setDefaultImports(@Nullable TwirlImports defaultImports) {
         this.defaultImports = defaultImports;
     }
 
     @TaskAction
-    void compile(IncrementalTaskInputs inputs) {
+    void compile(@SuppressWarnings("deprecation") org.gradle.api.tasks.incremental.IncrementalTaskInputs inputs) {
         RelativeFileCollector relativeFileCollector = new RelativeFileCollector();
         getSource().visit(relativeFileCollector);
         TwirlCompileSpec spec = new DefaultTwirlCompileSpec(relativeFileCollector.relativeFiles, getOutputDirectory(), getForkOptions(), getDefaultImports(), userTemplateFormats, additionalImports);
         if (!inputs.isIncremental()) {
-            new CleaningPlayToolCompiler<TwirlCompileSpec>(getCompiler(), getOutputs()).execute(spec);
+            new CleaningPlayToolCompiler<TwirlCompileSpec>(getCompiler(), getOutputs(), getDeleter()).execute(spec);
         } else {
             final Set<File> sourcesToCompile = new HashSet<File>();
             inputs.outOfDate(new Action<InputFileDetails>() {
+                @Override
                 public void execute(InputFileDetails inputFileDetails) {
                     sourcesToCompile.add(inputFileDetails.getFile());
                 }
             });
             final Set<File> staleOutputFiles = new HashSet<File>();
             inputs.removed(new Action<InputFileDetails>() {
+                @Override
                 public void execute(InputFileDetails inputFileDetails) {
                     staleOutputFiles.add(inputFileDetails.getFile());
                 }
@@ -164,6 +180,11 @@ public class TwirlCompile extends SourceTask {
 
     public void setPlatform(PlayPlatform platform) {
         this.platform = platform;
+    }
+
+    @Inject
+    protected Deleter getDeleter() {
+        throw new UnsupportedOperationException("Decorator takes care of injection");
     }
 
     /**
@@ -249,8 +270,8 @@ public class TwirlCompile extends SourceTask {
 
         public void execute(Set<File> staleSources) {
             for (File removedInputFile : staleSources) {
-                File staleOuputFile = calculateOutputFile(removedInputFile);
-                staleOuputFile.delete();
+                File staleOutputFile = calculateOutputFile(removedInputFile);
+                staleOutputFile.delete();
             }
         }
 

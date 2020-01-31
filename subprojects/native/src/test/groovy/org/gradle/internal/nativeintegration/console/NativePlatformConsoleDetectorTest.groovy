@@ -16,17 +16,33 @@
 
 package org.gradle.internal.nativeintegration.console
 
-import net.rubygrapefruit.platform.Terminals
+
+import net.rubygrapefruit.platform.terminal.Terminals
 import org.gradle.internal.nativeintegration.ProcessEnvironment
 import org.gradle.testfixtures.internal.NativeServicesTestFixture
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
 import spock.lang.Specification
 
+@Requires(TestPrecondition.SET_ENV_VARIABLE)
 class NativePlatformConsoleDetectorTest extends Specification {
     private Terminals terminals = Mock()
     private NativePlatformConsoleDetector detector = new NativePlatformConsoleDetector(terminals)
     final ProcessEnvironment env = NativeServicesTestFixture.getInstance().get(ProcessEnvironment)
+    String originalTerm
+
+    def setup() {
+        originalTerm = System.getenv("TERM")
+        env.setEnvironmentVariable("TERM", "mock")
+    }
+
+    def cleanup() {
+        if (originalTerm != null) {
+            env.setEnvironmentVariable("TERM", originalTerm)
+        } else {
+            env.removeEnvironmentVariable("TERM")
+        }
+    }
 
     def "returns null when neither stdout or stderr is attached to console"() {
         given:
@@ -73,16 +89,20 @@ class NativePlatformConsoleDetectorTest extends Specification {
         detector.console.stdErr
     }
 
-    @Requires([TestPrecondition.SET_ENV_VARIABLE, TestPrecondition.UNIX])
+    @Requires(TestPrecondition.UNIX)
     def "returns null when TERM is not set"() {
         given:
-        def oldTerm = System.getenv('TERM')
         env.removeEnvironmentVariable('TERM')
 
         expect:
         detector.console == null
+    }
 
-        cleanup:
-        env.setEnvironmentVariable('TERM', oldTerm)
+    def "returns null when TERM is set to dumb"() {
+        given:
+        env.setEnvironmentVariable("TERM", "dumb")
+
+        expect:
+        detector.console == null
     }
 }

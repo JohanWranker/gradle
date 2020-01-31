@@ -17,25 +17,70 @@
 package org.gradle.plugin.devel.tasks
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import spock.lang.Unroll
 
 class ValidateTaskPropertiesIntegrationTest extends AbstractIntegrationSpec {
 
     def setup() {
         buildFile << """
             apply plugin: "java-gradle-plugin"
+        """
+    }
 
-            dependencies {
-                compile gradleApi()
+    @Unroll
+    def "delegates to validatePlugins and emits deprecation warning when configuration is changed via #methodCall for validateTaskProperties"() {
+        buildFile << """
+            validateTaskProperties {
+                ${methodCall}
             }
 
+            ${check ? "assert validatePlugins." + check : ""}
+        """
+
+        executer.expectDocumentedDeprecationWarning("The validateTaskProperties task has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Please use the validatePlugins task instead. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_5.html#plugin_validation_changes")
+
+        expect:
+        succeeds "help"
+
+        where:
+        methodCall                        | check
+        "getIgnoreFailures()"             | null
+        "ignoreFailures = true"           | "ignoreFailures.get() == true"
+        "ignoreFailures = false"          | "ignoreFailures.get() == false"
+        "getFailOnWarning()"              | null
+        "failOnWarning = true"            | "failOnWarning.get() == true"
+        "failOnWarning = false"           | "failOnWarning.get() == false"
+        "getClasses()"                    | null
+        "getClasspath()"                  | null
+        "getEnableStricterValidation()"   | null
+        "enableStricterValidation = true" | "enableStricterValidation.get() == true"
+        "getOutputFile()"                 | null
+    }
+
+    @ToBeFixedForInstantExecution
+    def "detects missing annotations on Java properties while emitting deprecation warning"() {
+        buildFile << """
             validateTaskProperties {
                 failOnWarning = true
             }
         """
-    }
+        file('src/main/java/com/example/TestPlugin.java') << """
+            package com.example;
 
-    def "detects missing annotations on Java properties"() {
-        file("src/main/java/MyTask.java") << """
+            import org.gradle.api.Plugin;
+            import org.gradle.api.Project;
+
+            public class TestPlugin implements Plugin<Project> {
+                public void apply(Project project) {}
+            }
+        """
+
+        file("src/main/java/com/example/MyTask.java") << """
+            package com.example;
+
             import org.gradle.api.*;
             import org.gradle.api.tasks.*;
 
@@ -49,8 +94,9 @@ class ValidateTaskPropertiesIntegrationTest extends AbstractIntegrationSpec {
                     return count;
                 }
 
+                // Not annotated
                 public long getter() {
-                    return 0L;
+                    return System.currentTimeMillis();
                 }
 
                 // Ignored because static
@@ -96,203 +142,21 @@ class ValidateTaskPropertiesIntegrationTest extends AbstractIntegrationSpec {
             }
         """
 
-        expect:
-        fails "validateTaskProperties"
-        failure.assertHasCause "Task property validation failed"
-        failure.assertHasCause "Warning: Task type 'MyTask': property 'badTime' is not annotated with an input or output annotation."
-        failure.assertHasCause "Warning: Task type 'MyTask': property 'options.badNested' is not annotated with an input or output annotation."
-        failure.assertHasCause "Warning: Task type 'MyTask': property 'ter' is not annotated with an input or output annotation."
-
-        file("build/reports/task-properties/report.txt").text == """
-            Warning: Task type 'MyTask': property 'badTime' is not annotated with an input or output annotation.
-            Warning: Task type 'MyTask': property 'options.badNested' is not annotated with an input or output annotation.
-            Warning: Task type 'MyTask': property 'ter' is not annotated with an input or output annotation.
-        """.stripIndent().trim()
-    }
-
-    def "detects missing annotation on Groovy properties"() {
-        buildFile << """
-            apply plugin: "groovy"
-
-            dependencies {
-                compile localGroovy()
-            }
-        """
-        file("src/main/groovy/MyTask.groovy") << """
-            import org.gradle.api.*
-            import org.gradle.api.tasks.*
-
-            class MyTask extends DefaultTask {
-                @Input
-                long goodTime
-
-                @Nested Options options
-
-                @javax.inject.Inject
-                org.gradle.api.internal.file.FileResolver fileResolver
-
-                long badTime
-
-                static class Options {
-                    @Input String goodNested
-                    String badNested
-                }
-            }
-        """
+        executer.expectDocumentedDeprecationWarning("The validateTaskProperties task has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Please use the validatePlugins task instead. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_5.html#plugin_validation_changes")
 
         expect:
         fails "validateTaskProperties"
-        failure.assertHasCause "Task property validation failed"
-        failure.assertHasCause "Warning: Task type 'MyTask': property 'badTime' is not annotated with an input or output annotation."
-        failure.assertHasCause "Warning: Task type 'MyTask': property 'options.badNested' is not annotated with an input or output annotation."
+        failure.assertHasCause "Plugin validation failed"
+        failure.assertHasCause "Warning: Type 'MyTask': property 'badTime' is not annotated with an input or output annotation."
+        failure.assertHasCause "Warning: Type 'MyTask': property 'options.badNested' is not annotated with an input or output annotation."
+        failure.assertHasCause "Warning: Type 'MyTask': property 'ter' is not annotated with an input or output annotation."
 
-        file("build/reports/task-properties/report.txt").text == """
-            Warning: Task type 'MyTask': property 'badTime' is not annotated with an input or output annotation.
-            Warning: Task type 'MyTask': property 'options.badNested' is not annotated with an input or output annotation.
-        """.stripIndent().trim()
-    }
-
-    def "no problems with Copy task"() {
-        file("src/main/java/MyTask.java") << """
-            public class MyTask extends org.gradle.api.tasks.Copy {}
-        """
-
-        expect:
-        succeeds "validateTaskProperties"
-    }
-
-    def "does not report missing properties for Provider types"() {
-        file("src/main/java/MyTask.java") << """
-            import org.gradle.api.*;
-            import org.gradle.api.tasks.*;
-            import org.gradle.api.provider.Provider;
-            import org.gradle.api.provider.Property;
-            
-            import java.io.File;
-            import java.util.concurrent.Callable;
-
-            public class MyTask extends DefaultTask {
-                private final Provider<String> text;
-                private final Property<File> file;
-                private final Property<Pojo> pojo;
-
-                public MyTask() {
-                    text = getProject().provider(new Callable<String>() {
-                        @Override
-                        public String call() throws Exception {
-                            return "Hello World!";
-                        }
-                    });
-                    file = getProject().getObjects().property(File.class);
-                    file.set(new File("some/dir"));
-                    pojo = getProject().getObjects().property(Pojo.class);
-                }
-
-                @Input
-                public String getText() {
-                    return text.get();
-                }
-
-                @OutputFile
-                public File getFile() {
-                    return file.get();
-                }
-
-                @Nested
-                public Pojo getPojo() {
-                    return pojo.get();
-                }
-            }
-        """
-
-        file("src/main/java/Pojo.java") << """
-            import org.gradle.api.tasks.Input;
-
-            public class Pojo {
-                private final Boolean enabled;
-                
-                public Pojo(Boolean enabled) {
-                    this.enabled = enabled;
-                }
-
-                @Input
-                public Boolean isEnabled() {
-                    return enabled;
-                }
-            }
-        """
-
-        expect:
-        succeeds "validateTaskProperties"
-
-        file("build/reports/task-properties/report.txt").text == ""
-    }
-
-    def "detects problems with file inputs"() {
-        file("src/main/java/MyTask.java") << """
-            import org.gradle.api.*;
-            import org.gradle.api.tasks.*;
-            import java.io.File;
-
-            @CacheableTask
-            public class MyTask extends DefaultTask {
-                @Input
-                public long getGoodTime() {
-                    return 0;
-                }
-
-                @Nested
-                public Options getOptions() {
-                    return new Options();
-                }
-
-                @javax.inject.Inject
-                org.gradle.api.internal.file.FileResolver fileResolver;
-
-                public long getBadTime() {
-                    return 0;
-                }
-
-                public static class Options {
-                    @Input
-                    public String getGoodNested() {
-                        return "good";
-                    }
-                    public String getBadNested(){
-                        return "bad";
-                    }
-                }
-                
-                @OutputDirectory
-                public File getOutputDir() {
-                    return new File("outputDir");
-                }
-                
-                @InputDirectory
-                @Optional
-                public File getInputDirectory() {
-                    return new File("inputDir");
-                }
-                
-                @Input
-                public File getFile() {
-                    return new File("some-file");
-                }
-                
-                @TaskAction
-                public void doStuff() { }
-            }
-        """
-
-        when:
-        fails "validateTaskProperties"
-
-        then:
-        file("build/reports/task-properties/report.txt").text == """
-            Warning: Task type 'MyTask': property 'badTime' is not annotated with an input or output annotation.
-            Warning: Task type 'MyTask': property 'file' has @Input annotation used on property of type java.io.File.
-            Warning: Task type 'MyTask': property 'inputDirectory' is missing a @PathSensitive annotation, defaulting to PathSensitivity.ABSOLUTE.
-            Warning: Task type 'MyTask': property 'options.badNested' is not annotated with an input or output annotation.
-        """.stripIndent().trim()
+        file("build/reports/plugin-development/validation-report.txt").text == """
+            Warning: Type 'MyTask': property 'badTime' is not annotated with an input or output annotation.
+            Warning: Type 'MyTask': property 'options.badNested' is not annotated with an input or output annotation.
+            Warning: Type 'MyTask': property 'ter' is not annotated with an input or output annotation.
+            """.stripIndent().trim()
     }
 }

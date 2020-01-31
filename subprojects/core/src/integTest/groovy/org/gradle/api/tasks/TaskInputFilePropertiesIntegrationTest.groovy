@@ -16,7 +16,12 @@
 
 package org.gradle.api.tasks
 
+import org.gradle.api.internal.file.FileCollectionFactory
+import org.gradle.api.internal.tasks.TaskPropertyUtils
+import org.gradle.api.internal.tasks.properties.GetInputFilesVisitor
+import org.gradle.api.internal.tasks.properties.PropertyWalker
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Issue
 import spock.lang.Unroll
 
@@ -25,14 +30,16 @@ class TaskInputFilePropertiesIntegrationTest extends AbstractIntegrationSpec {
     @Unroll
     def "allows optional @#annotation.simpleName to have null value"() {
         buildFile << """
-            import org.gradle.api.internal.tasks.properties.GetInputFilesVisitor
-            import org.gradle.api.internal.tasks.TaskPropertyUtils
-            import org.gradle.api.internal.tasks.properties.PropertyWalker
+            import ${GetInputFilesVisitor.name}
+            import ${TaskPropertyUtils.name}
+            import ${PropertyWalker.name}
+            import ${FileCollectionFactory.name}
 
             class CustomTask extends DefaultTask {
                 @Optional @$annotation.simpleName input
                 @TaskAction void doSomething() {
-                    GetInputFilesVisitor visitor = new GetInputFilesVisitor()
+                    def fileCollectionFactory = project.services.get(FileCollectionFactory)
+                    GetInputFilesVisitor visitor = new GetInputFilesVisitor("ownerName", fileCollectionFactory)
                     def walker = services.get(PropertyWalker)
                     TaskPropertyUtils.visitProperties(walker, this, visitor)
                     def inputFiles = visitor.fileProperties*.propertyFiles*.files.flatten()
@@ -54,13 +61,14 @@ class TaskInputFilePropertiesIntegrationTest extends AbstractIntegrationSpec {
 
     @Unroll
     @Issue("https://github.com/gradle/gradle/issues/3193")
-    def "TaskInputs.#method shows deprecation warning when used with complex input"() {
+    @ToBeFixedForInstantExecution
+    def "TaskInputs.#method shows error message when used with complex input"() {
         buildFile << """
             task dependencyTask {
             }
 
             task test {
-                inputs.$method(dependencyTask)
+                inputs.$method(dependencyTask).withPropertyName('input')
                 doFirst {
                     // Need a task action to not skip this task
                 }
@@ -68,13 +76,48 @@ class TaskInputFilePropertiesIntegrationTest extends AbstractIntegrationSpec {
         """
 
         expect:
-        executer.expectDeprecationWarning()
-        succeeds "test"
-
-        output.contains "Using TaskInputs.$method() with something that doesn't resolve to a File object has been deprecated and is scheduled to be removed in Gradle 5.0. Use TaskInputs.files() instead."
+        fails "test"
+        failure.assertHasDescription("A problem was found with the configuration of task ':test' (type 'DefaultTask').")
+        failure.assertHasCause("Value 'task ':dependencyTask'' specified for property 'input' cannot be converted to a ${targetType}.")
 
         where:
-        method << ["file", "dir"]
+        method | targetType
+        "dir"  | "directory"
+        "file" | "file"
+    }
+
+    @Unroll
+    @ToBeFixedForInstantExecution
+    def "#annotation.simpleName shows error message when used with complex input"() {
+        buildFile << """
+            import org.gradle.api.internal.tasks.properties.GetInputFilesVisitor
+            import org.gradle.api.internal.tasks.TaskPropertyUtils
+            import org.gradle.api.internal.tasks.properties.PropertyWalker
+
+            class CustomTask extends DefaultTask {
+                @Optional @${annotation.name} input
+                @TaskAction void doSomething() {
+                    println("Yay!")
+                }
+            }
+
+            task dependencyTask {
+            }
+
+            task customTask(type: CustomTask) {
+                input = dependencyTask
+            }
+        """
+
+        expect:
+        fails "customTask"
+        failure.assertHasDescription("A problem was found with the configuration of task ':customTask' (type 'CustomTask').")
+        failure.assertHasCause("Value 'task ':dependencyTask'' specified for property 'input' cannot be converted to a ${targetType}.")
+
+        where:
+        annotation     | targetType
+        InputDirectory | "directory"
+        InputFile      | "file"
     }
 
     @Issue("https://github.com/gradle/gradle/issues/3792")
@@ -109,5 +152,45 @@ class TaskInputFilePropertiesIntegrationTest extends AbstractIntegrationSpec {
         run "bar"
         then:
         executed ":foo"
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/9674")
+    def "allows @Input of task with no actions to be null"() {
+        buildFile << """
+            class FooTask extends DefaultTask {
+               @Input
+               FileCollection bar
+            }
+
+            task foo(type: FooTask)
+        """
+
+        when:
+        run "foo"
+
+        then:
+        executed ":foo"
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/9674")
+    def "shows validation error when non-Optional @Input is null"() {
+        buildFile << """
+            class FooTask extends DefaultTask {
+               @InputFiles
+               FileCollection bar
+               
+               @TaskAction
+               def go() {
+               }
+            }
+
+            task foo(type: FooTask)
+        """
+
+        when:
+        fails "foo"
+
+        then:
+        failureCauseContains("No value has been specified for property 'bar'.")
     }
 }

@@ -17,9 +17,11 @@
 package org.gradle.jvm.test
 
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionIntegrationSpec {
 
+    @ToBeFixedForInstantExecution
     def "can test a JVM library that declares an external dependency"() {
         given:
         applyJUnitPlugin()
@@ -38,6 +40,7 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
         notExecuted 'createGreeterJar' // runtime jar of the component under test doesn't need to be built
     }
 
+    @ToBeFixedForInstantExecution
     def "can test a JVM library that declares an API dependency"() {
         given:
         applyJUnitPlugin()
@@ -53,6 +56,7 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
         executedAndNotSkipped ':compileGreeterJarGreeterJava', ':greeterApiJar', ':compileSuperGreeterJarSuperGreeterJava', ':createGreeterJar', ':compileMyTestSuperGreeterJarBinaryMyTestJava', ':myTestSuperGreeterJarBinaryTest'
     }
 
+    @ToBeFixedForInstantExecution
     def "can test a JVM library that declares an API"() {
         given:
         applyJUnitPlugin()
@@ -79,6 +83,7 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
             .assertTestsExecuted('testGreetingPrefix')
     }
 
+    @ToBeFixedForInstantExecution
     def "tests are not re-executed when sources of components under test haven't changed"() {
         given:
         applyJUnitPlugin()
@@ -98,6 +103,7 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
             .assertTestsExecuted('testGreeting')
 
         when:
+        expectDeprecationWarnings()
         succeeds ':myTestGreeterJarBinaryTest'
 
         then:
@@ -105,6 +111,7 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
 
     }
 
+    @ToBeFixedForInstantExecution
     def "updating sources of the component under test should re-execute the tests"() {
         given:
         applyJUnitPlugin()
@@ -128,6 +135,7 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
         '''
 
         then:
+        expectDeprecationWarnings()
         fails ':myTestGreeterJarBinaryTest'
         def result = new DefaultTestExecutionResult(testDirectory, 'build', 'myTest', 'greeterJar')
         result.assertTestClassesExecuted('com.acme.GreeterTest')
@@ -136,6 +144,7 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
             .assertTestsExecuted('testGreeting')
     }
 
+    @ToBeFixedForInstantExecution
     def "tests should be listed when calling tasks"() {
         given:
         applyJUnitPlugin()
@@ -150,6 +159,7 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
         outputContains 'myTestGreeterJarBinaryTest - Runs test suite \'myTest:greeterJarBinary\'.'
     }
 
+    @ToBeFixedForInstantExecution
     def "one test suite binary is created for each variant of component under test"() {
         given:
         applyJUnitPlugin()
@@ -159,19 +169,8 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
         greeterTestCase()
 
         when:
-        succeeds ':myTestGreeterJava6JarBinaryTest'
-        def result = new DefaultTestExecutionResult(testDirectory, 'build', 'myTest', 'greeterJava6Jar')
-
-        then:
-        executedAndNotSkipped ':myTestGreeterJava6JarBinaryTest', ':compileGreeterJava6JarGreeterJava'
-        result.assertTestClassesExecuted('com.acme.GreeterTest')
-        result.testClass('com.acme.GreeterTest')
-            .assertTestCount(1, 0, 0)
-            .assertTestsExecuted('testGreeting')
-
-        when:
         succeeds ':myTestGreeterJava7JarBinaryTest'
-        result = new DefaultTestExecutionResult(testDirectory, 'build', 'myTest', 'greeterJava7Jar')
+        def result = new DefaultTestExecutionResult(testDirectory, 'build', 'myTest', 'greeterJava7Jar')
 
         then:
         executedAndNotSkipped ':myTestGreeterJava7JarBinaryTest', ':compileGreeterJava7JarGreeterJava'
@@ -180,8 +179,21 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
             .assertTestCount(1, 0, 0)
             .assertTestsExecuted('testGreeting')
 
+        when:
+        expectDeprecationWarnings()
+        succeeds ':myTestGreeterJava8JarBinaryTest'
+        result = new DefaultTestExecutionResult(testDirectory, 'build', 'myTest', 'greeterJava8Jar')
+
+        then:
+        executedAndNotSkipped ':myTestGreeterJava8JarBinaryTest', ':compileGreeterJava8JarGreeterJava'
+        result.assertTestClassesExecuted('com.acme.GreeterTest')
+        result.testClass('com.acme.GreeterTest')
+            .assertTestCount(1, 0, 0)
+            .assertTestsExecuted('testGreeting')
+
     }
 
+    @ToBeFixedForInstantExecution
     def "junit test run task is properly wired to binaries check tasks and lifecycle check task"() {
         given:
         applyJUnitPlugin()
@@ -207,11 +219,13 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
         executed ':customGreeterCheck', ':checkGreeterJar', ':checkMyTestGreeterJarBinary', ':myTestGreeterJarBinaryTest'
 
         when:
+        expectDeprecationWarnings()
         run 'checkMyTestGreeterJarBinary'
         then:
         executed ':myTestGreeterJarBinaryTest'
 
         when:
+        expectDeprecationWarnings()
         run 'checkGreeterJar'
         then:
         executed ':customGreeterCheck', ':myTestGreeterJarBinaryTest'
@@ -283,8 +297,8 @@ class JUnitComponentUnderTestIntegrationTest extends AbstractJUnitTestExecutionI
             model {
                 components {
                     greeter {
-                        targetPlatform 'java6'
                         targetPlatform 'java7'
+                        targetPlatform 'java8'
                     }
                 }
             }

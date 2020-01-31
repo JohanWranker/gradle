@@ -16,30 +16,62 @@
 
 package org.gradle.api.internal.artifacts;
 
+import org.gradle.api.artifacts.ComponentMetadata;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.api.artifacts.ivy.IvyModuleDescriptor;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.MetadataProvider;
+
+import javax.annotation.Nullable;
 
 public class DefaultComponentSelection implements ComponentSelectionInternal {
-    private ModuleComponentIdentifier candidate;
+    private final ModuleComponentIdentifier candidate;
+    private final MetadataProvider metadataProvider;
     private boolean rejected;
     private String rejectionReason;
 
-    public DefaultComponentSelection(ModuleComponentIdentifier candidate) {
+    public DefaultComponentSelection(ModuleComponentIdentifier candidate, MetadataProvider metadataProvider) {
         this.candidate = candidate;
+        this.metadataProvider = metadataProvider;
     }
 
+    @Override
     public ModuleComponentIdentifier getCandidate() {
         return candidate;
     }
 
+    @Override
+    public ComponentMetadata getMetadata() {
+        if (metadataProvider.isUsable()) {
+            return metadataProvider.getComponentMetadata();
+        } else {
+            return null;
+        }
+
+    }
+
+    @Nullable
+    @Override
+    public <T> T getDescriptor(Class<T> descriptorClass) {
+        if (metadataProvider.isUsable()) {
+            if (IvyModuleDescriptor.class.isAssignableFrom(descriptorClass)) {
+                return descriptorClass.cast(metadataProvider.getIvyModuleDescriptor());
+            }
+        }
+        return null;
+    }
+
+    @Override
     public void reject(String reason) {
         rejected = true;
         rejectionReason = reason;
     }
 
+    @Override
     public boolean isRejected() {
         return rejected;
     }
 
+    @Override
     public String getRejectionReason() {
         return rejectionReason;
     }

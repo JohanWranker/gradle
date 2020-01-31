@@ -16,6 +16,7 @@
 
 package org.gradle.testing.testng
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
 import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.testing.fixture.TestNGCoverage
@@ -23,11 +24,12 @@ import org.gradle.testing.fixture.TestNGCoverage
 @TargetCoverage({TestNGCoverage.PRESERVE_ORDER})
 public class TestNGPreserveOrderIntegrationTest extends MultiVersionIntegrationSpec {
 
+    @ToBeFixedForInstantExecution
     def "run tests using preserveOrder"() {
         buildFile << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile 'org.testng:testng:$version' }
+            dependencies { testImplementation 'org.testng:testng:$version' }
             test {
                 useTestNG { preserveOrder true }
                 onOutput { test, event -> print "\$event.message" }
@@ -98,16 +100,16 @@ public class TestNGPreserveOrderIntegrationTest extends MultiVersionIntegrationS
             }
         """
 
-        when: run "test"
+        when: succeeds "test"
 
         then:
-        result.output.contains("""
+        outputContains("""
 Test1.beforeClass()
 Test1.test1()
 Test1.test2()
 Test1.afterClass()
 """)
-        result.output.contains("""
+        outputContains("""
 Test2.beforeClass()
 Test2.test1()
 Test2.test2()

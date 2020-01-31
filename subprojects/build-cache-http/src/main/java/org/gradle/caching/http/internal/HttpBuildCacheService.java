@@ -17,16 +17,13 @@
 package org.gradle.caching.http.internal;
 
 import com.google.common.collect.ImmutableSet;
-import org.apache.commons.lang.IncompleteArgumentException;
-import org.apache.http.Header;
 import org.apache.http.HttpHeaders;
-import org.apache.http.HttpMessage;
 import org.apache.http.HttpStatus;
 import org.apache.http.StatusLine;
-import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.NonRepeatableRequestException;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPut;
-import org.apache.http.client.utils.HttpClientUtils;
 import org.apache.http.entity.AbstractHttpEntity;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.caching.BuildCacheEntryReader;
@@ -34,10 +31,9 @@ import org.gradle.caching.BuildCacheEntryWriter;
 import org.gradle.caching.BuildCacheException;
 import org.gradle.caching.BuildCacheKey;
 import org.gradle.caching.BuildCacheService;
-import org.gradle.caching.internal.tasks.TaskOutputPacker;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.resource.transport.http.HttpClientHelper;
-import org.gradle.util.GradleVersion;
+import org.gradle.internal.resource.transport.http.HttpClientResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,7 +42,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.UnknownHostException;
 import java.util.Set;
 
 /**
@@ -54,7 +49,7 @@ import java.util.Set;
  */
 public class HttpBuildCacheService implements BuildCacheService {
     private static final Logger LOGGER = LoggerFactory.getLogger(HttpBuildCacheService.class);
-    static final String BUILD_CACHE_CONTENT_TYPE = "application/vnd.gradle.build-cache-artifact.v" + TaskOutputPacker.CACHE_ENTRY_FORMAT;
+    static final String BUILD_CACHE_CONTENT_TYPE = "application/vnd.gradle.build-cache-artifact.v1";
 
     private static final Set<Integer> FATAL_HTTP_ERROR_CODES = ImmutableSet.of(
         HttpStatus.SC_USE_PROXY,
@@ -69,10 +64,12 @@ public class HttpBuildCacheService implements BuildCacheService {
 
     private final URI root;
     private final HttpClientHelper httpClientHelper;
+    private final HttpBuildCacheRequestCustomizer requestCustomizer;
 
-    public HttpBuildCacheService(HttpClientHelper httpClientHelper, URI url) {
+    public HttpBuildCacheService(HttpClientHelper httpClientHelper, URI url, HttpBuildCacheRequestCustomizer requestCustomizer) {
+        this.requestCustomizer = requestCustomizer;
         if (!url.getPath().endsWith("/")) {
-            throw new IncompleteArgumentException("HTTP cache root URI must end with '/'");
+            throw new IllegalArgumentException("HTTP cache root URI must end with '/'");
         }
         this.root = url;
         this.httpClientHelper = httpClientHelper;
@@ -83,18 +80,16 @@ public class HttpBuildCacheService implements BuildCacheService {
         final URI uri = root.resolve("./" + key.getHashCode());
         HttpGet httpGet = new HttpGet(uri);
         httpGet.addHeader(HttpHeaders.ACCEPT, BUILD_CACHE_CONTENT_TYPE + ", */*");
-        addDiagnosticHeaders(httpGet);
+        requestCustomizer.customize(httpGet);
 
-        CloseableHttpResponse response = null;
-        try {
-            response = httpClientHelper.performHttpRequest(httpGet);
+        try (HttpClientResponse response = httpClientHelper.performHttpRequest(httpGet)) {
             StatusLine statusLine = response.getStatusLine();
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("Response for GET {}: {}", safeUri(uri), statusLine);
             }
             int statusCode = statusLine.getStatusCode();
             if (isHttpSuccess(statusCode)) {
-                reader.readFrom(response.getEntity().getContent());
+                reader.readFrom(response.getContent());
                 return true;
             } else if (statusCode == HttpStatus.SC_NOT_FOUND) {
                 return false;
@@ -107,22 +102,18 @@ public class HttpBuildCacheService implements BuildCacheService {
                 }
             }
         } catch (IOException e) {
-            // TODO: We should consider different types of exceptions as fatal/recoverable.
-            // Right now, everything is considered recoverable.
-            throw new BuildCacheException(String.format("Unable to load entry from '%s': %s", safeUri(uri), e.getMessage()), e);
-        } finally {
-            HttpClientUtils.closeQuietly(response);
+            throw wrap(e);
         }
     }
 
-    private boolean handleRedirect(URI uri, CloseableHttpResponse response, int statusCode, String defaultMessage, String action) {
-        final Header locationHeader = response.getFirstHeader("location");
+    private boolean handleRedirect(URI uri, HttpClientResponse response, int statusCode, String defaultMessage, String action) {
+        String locationHeader = response.getHeader(HttpHeaders.LOCATION);
         if (locationHeader == null) {
             return throwHttpStatusCodeException(statusCode, defaultMessage);
         }
         try {
             throw new BuildCacheException(String.format("Received unexpected redirect (HTTP %d) to %s when " + action + " '%s'. "
-                + "Ensure the configured URL for the remote build cache is correct.", statusCode, safeUri(new URI(locationHeader.getValue())), safeUri(uri)));
+                + "Ensure the configured URL for the remote build cache is correct.", statusCode, safeUri(new URI(locationHeader)), safeUri(uri)));
         } catch (URISyntaxException e) {
             return throwHttpStatusCodeException(statusCode, defaultMessage);
         }
@@ -132,21 +123,17 @@ public class HttpBuildCacheService implements BuildCacheService {
         return statusCode == HttpStatus.SC_MOVED_PERMANENTLY || statusCode == HttpStatus.SC_MOVED_TEMPORARILY || statusCode == HttpStatus.SC_TEMPORARY_REDIRECT;
     }
 
-    private void addDiagnosticHeaders(HttpMessage request) {
-        request.addHeader("X-Gradle-Version", GradleVersion.current().getVersion());
-    }
-
     @Override
     public void store(BuildCacheKey key, final BuildCacheEntryWriter output) throws BuildCacheException {
         final URI uri = root.resolve(key.getHashCode());
         HttpPut httpPut = new HttpPut(uri);
         httpPut.addHeader(HttpHeaders.CONTENT_TYPE, BUILD_CACHE_CONTENT_TYPE);
-        addDiagnosticHeaders(httpPut);
+        requestCustomizer.customize(httpPut);
 
         httpPut.setEntity(new AbstractHttpEntity() {
             @Override
             public boolean isRepeatable() {
-                return true;
+                return false;
             }
 
             @Override
@@ -155,7 +142,7 @@ public class HttpBuildCacheService implements BuildCacheService {
             }
 
             @Override
-            public InputStream getContent() throws IOException, UnsupportedOperationException {
+            public InputStream getContent() {
                 throw new UnsupportedOperationException();
             }
 
@@ -169,9 +156,7 @@ public class HttpBuildCacheService implements BuildCacheService {
                 return false;
             }
         });
-        CloseableHttpResponse response = null;
-        try {
-            response = httpClientHelper.performHttpRequest(httpPut);
+        try (HttpClientResponse response = httpClientHelper.performHttpRequest(httpPut)) {
             StatusLine statusLine = response.getStatusLine();
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("Response for PUT {}: {}", safeUri(uri), statusLine);
@@ -185,15 +170,24 @@ public class HttpBuildCacheService implements BuildCacheService {
                     throwHttpStatusCodeException(statusCode, defaultMessage);
                 }
             }
-        } catch (UnknownHostException e) {
-            throw new UncheckedException(e);
+        } catch (ClientProtocolException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof NonRepeatableRequestException) {
+                throw wrap(cause.getCause());
+            } else {
+                throw wrap(cause);
+            }
         } catch (IOException e) {
-            // TODO: We should consider different types of exceptions as fatal/recoverable.
-            // Right now, everything is considered recoverable.
-            throw new BuildCacheException(String.format("Unable to store entry at '%s': %s", safeUri(uri), e.getMessage()), e);
-        } finally {
-            HttpClientUtils.closeQuietly(response);
+            throw wrap(e);
         }
+    }
+
+    private static BuildCacheException wrap(Throwable e) {
+        if (e instanceof Error) {
+            throw (Error) e;
+        }
+
+        throw new BuildCacheException(e.getMessage(), e);
     }
 
     private boolean isHttpSuccess(int statusCode) {

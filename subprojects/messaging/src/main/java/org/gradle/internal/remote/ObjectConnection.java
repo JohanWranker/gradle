@@ -15,6 +15,7 @@
  */
 package org.gradle.internal.remote;
 
+import org.gradle.api.Action;
 import org.gradle.internal.concurrent.AsyncStoppable;
 
 /**
@@ -33,11 +34,25 @@ public interface ObjectConnection extends AsyncStoppable, ObjectConnectionBuilde
      * Commences a graceful stop of this connection. Stops accepting outgoing messages. Requests that the peer stop
      * sending incoming messages.
      */
+    @Override
     void requestStop();
 
     /**
      * Performs a graceful stop of this connection. Stops accepting outgoing messages. Blocks until all incoming messages
      * have been handled, and all outgoing messages have been forwarded to the peer.
      */
+    @Override
     void stop();
+
+    /**
+     * Indicate that the execution containing this {@code ObjectConnection} has been prematurely stopped.
+     */
+    void abort();
+
+    /**
+     * Add a callback upon unrecoverable errors, e.g. broken connection. Should not throw any exceptions because
+     * this is the last line of defense.
+     * @param handler the callback
+     */
+    void addUnrecoverableErrorHandler(Action<Throwable> handler);
 }

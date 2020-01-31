@@ -15,75 +15,92 @@
  */
 package org.gradle.api.internal.artifacts.dependencies;
 
+import com.google.common.base.Objects;
 import com.google.common.base.Strings;
 import org.gradle.api.Action;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.ExternalModuleDependency;
+import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.MutableVersionConstraint;
 import org.gradle.api.artifacts.VersionConstraint;
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier;
 import org.gradle.api.internal.artifacts.ModuleVersionSelectorStrictSpec;
+import org.gradle.internal.deprecation.DeprecationLogger;
 
 public abstract class AbstractExternalModuleDependency extends AbstractModuleDependency implements ExternalModuleDependency {
-    private String group;
-    private String name;
+    private final ModuleIdentifier moduleIdentifier;
     private boolean changing;
     private boolean force;
-    private final MutableVersionConstraint versionConstraint;
+    private final DefaultMutableVersionConstraint versionConstraint;
 
-    public AbstractExternalModuleDependency(String group, String name, String version, String configuration) {
+    public AbstractExternalModuleDependency(ModuleIdentifier module, String version, String configuration) {
         super(configuration);
-        if (name == null) {
-            throw new InvalidUserDataException("Name must not be null!");
+        if (module == null) {
+            throw new InvalidUserDataException("Module must not be null!");
         }
-        this.group = group;
-        this.name = name;
+        this.moduleIdentifier = module;
         this.versionConstraint = new DefaultMutableVersionConstraint(version);
     }
 
     protected void copyTo(AbstractExternalModuleDependency target) {
         super.copyTo(target);
-        target.setForce(isForce());
+        DeprecationLogger.whileDisabled(() -> target.setForce(isForce()));
         target.setChanging(isChanging());
     }
 
     protected boolean isContentEqualsFor(ExternalModuleDependency dependencyRhs) {
-        if (!isKeyEquals(dependencyRhs) || !isCommonContentEquals(dependencyRhs)) {
+        if (!isCommonContentEquals(dependencyRhs)) {
             return false;
         }
-        return force == dependencyRhs.isForce() && changing == dependencyRhs.isChanging();
+        return force == dependencyRhs.isForce() && changing == dependencyRhs.isChanging() &&
+            Objects.equal(getVersionConstraint(), dependencyRhs.getVersionConstraint());
     }
 
+    @Override
     public boolean matchesStrictly(ModuleVersionIdentifier identifier) {
         return new ModuleVersionSelectorStrictSpec(this).isSatisfiedBy(identifier);
     }
 
+    @Override
     public String getGroup() {
-        return group;
+        return moduleIdentifier.getGroup();
     }
 
+    @Override
     public String getName() {
-        return name;
+        return moduleIdentifier.getName();
     }
 
+    @Override
     public String getVersion() {
-        return Strings.emptyToNull(versionConstraint.getPreferredVersion());
+        return Strings.emptyToNull(versionConstraint.getVersion());
     }
 
+    @Override
     public boolean isForce() {
         return force;
     }
 
+    @Override
     public ExternalModuleDependency setForce(boolean force) {
         validateMutation(this.force, force);
+        if (force) {
+            DeprecationLogger.deprecate("Using force on a dependency")
+                .withAdvice("Consider using strict version constraints instead (version { strictly ... } }).")
+                .withUpgradeGuideSection(5, "forced_dependencies")
+                .nagUser();
+        }
         this.force = force;
         return this;
     }
 
+    @Override
     public boolean isChanging() {
         return changing;
     }
 
+    @Override
     public ExternalModuleDependency setChanging(boolean changing) {
         validateMutation(this.changing, changing);
         this.changing = changing;
@@ -99,5 +116,38 @@ public abstract class AbstractExternalModuleDependency extends AbstractModuleDep
     public void version(Action<? super MutableVersionConstraint> configureAction) {
         validateMutation();
         configureAction.execute(versionConstraint);
+    }
+
+    @Override
+    public ModuleIdentifier getModule() {
+        return moduleIdentifier;
+    }
+
+    static ModuleIdentifier assertModuleId(String group, String name) {
+        if (name == null) {
+            throw new InvalidUserDataException("Name must not be null!");
+        }
+        return DefaultModuleIdentifier.newId(group, name);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        AbstractExternalModuleDependency that = (AbstractExternalModuleDependency) o;
+        return isContentEqualsFor(that);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = getGroup() != null ? getGroup().hashCode() : 0;
+        result = 31 * result + getName().hashCode();
+        result = 31 * result + (getVersion() != null ? getVersion().hashCode() : 0);
+        return result;
     }
 }

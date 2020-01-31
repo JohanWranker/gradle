@@ -17,15 +17,14 @@
 package org.gradle.api.publish.maven.tasks;
 
 import org.gradle.api.DefaultTask;
-import org.gradle.api.Incubating;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.artifacts.mvnsettings.LocalMavenRepositoryLocator;
 import org.gradle.api.publish.maven.MavenPublication;
 import org.gradle.api.publish.maven.internal.publication.MavenPublicationInternal;
+import org.gradle.api.publish.maven.internal.publisher.MavenDuplicatePublicationTracker;
+import org.gradle.api.publish.maven.internal.publisher.MavenPublishers;
 import org.gradle.api.tasks.Internal;
-import org.gradle.internal.Factory;
-import org.gradle.internal.logging.LoggingManagerInternal;
+import org.gradle.api.tasks.PathSensitivity;
 
 import javax.inject.Inject;
 import java.util.concurrent.Callable;
@@ -35,7 +34,6 @@ import java.util.concurrent.Callable;
  *
  * @since 2.4
  */
-@Incubating
 public abstract class AbstractPublishToMaven extends DefaultTask {
 
     private MavenPublicationInternal publication;
@@ -43,11 +41,14 @@ public abstract class AbstractPublishToMaven extends DefaultTask {
     public AbstractPublishToMaven() {
         // Allow the publication to participate in incremental build
         getInputs().files(new Callable<FileCollection>() {
+            @Override
             public FileCollection call() throws Exception {
                 MavenPublicationInternal publicationInternal = getPublicationInternal();
-                return publicationInternal == null ? null : publicationInternal.getPublishableFiles();
+                return publicationInternal == null ? null : publicationInternal.getPublishableArtifacts().getFiles();
             }
-        }).withPropertyName("publication.publishableFiles");
+        })
+            .withPropertyName("publication.publishableFiles")
+            .withPathSensitivity(PathSensitivity.NAME_ONLY);
 
         // Should repositories be able to participate in incremental?
         // At the least, they may be able to express themselves as output files
@@ -98,12 +99,12 @@ public abstract class AbstractPublishToMaven extends DefaultTask {
     }
 
     @Inject
-    protected Factory<LoggingManagerInternal> getLoggingManagerFactory() {
+    protected MavenPublishers getMavenPublishers() {
         throw new UnsupportedOperationException();
     }
 
     @Inject
-    protected LocalMavenRepositoryLocator getMavenRepositoryLocator() {
+    protected MavenDuplicatePublicationTracker getDuplicatePublicationTracker() {
         throw new UnsupportedOperationException();
     }
 

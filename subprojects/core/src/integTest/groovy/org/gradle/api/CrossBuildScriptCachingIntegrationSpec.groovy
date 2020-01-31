@@ -17,6 +17,7 @@
 package org.gradle.api
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.daemon.DaemonLogsAnalyzer
 import org.gradle.integtests.fixtures.daemon.DaemonsFixture
 import org.gradle.test.fixtures.file.TestFile
@@ -156,6 +157,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
         hasCachedScripts(settingsHash, *buildHashes)
     }
 
+    @ToBeFixedForInstantExecution
     def "cache size increases when build file changes"() {
         given:
         root {
@@ -251,6 +253,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
         failure.assertHasLineNumber(4)
     }
 
+    @ToBeFixedForInstantExecution
     def "caches scripts applied from remote locations"() {
         server.start()
 
@@ -258,7 +261,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
         root {
             'build.gradle'(this.applyFromRemote(server))
         }
-        server.expect(server.resource("shared.gradle", "println 'Echo'"))
+        server.expect(server.get("shared.gradle").send("println 'Echo'"))
 
         when:
         run 'tasks'
@@ -274,6 +277,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
         hasCachedScripts(buildHash, sharedHash)
     }
 
+    @ToBeFixedForInstantExecution
     def "caches scripts applied from remote locations when remote script changes"() {
         server.start()
 
@@ -283,7 +287,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
         }
         def buildHash
         def sharedHash
-        server.expect(server.resource("shared.gradle", "println 'Echo 0'"))
+        server.expect(server.get("shared.gradle").send("println 'Echo 0'"))
 
         when:
         run 'tasks'
@@ -300,7 +304,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
 
         when:
         server.expect(server.head("shared.gradle"))
-        server.expect(server.resource("shared.gradle", "println 'Echo 1'"))
+        server.expect(server.get("shared.gradle").send("println 'Echo 1'"))
 
         run 'tasks'
         buildHash = uniqueRemapped('build')
@@ -354,6 +358,7 @@ task fastTask { }
         hasCachedScripts(*hasRemapped('build'))
     }
 
+    @ToBeFixedForInstantExecution
     def "build script is recompiled when project's classpath changes"() {
         createJarWithProperties("lib/foo.jar", [source: 1])
         root {
@@ -389,6 +394,7 @@ task fastTask { }
         getCompileClasspath(coreHash, 'proj').length == 2
     }
 
+    @ToBeFixedForInstantExecution
     def "build script is recompiled when parent project's classpath changes"() {
         createJarWithProperties("lib/foo.jar", [source: 1])
         root {
@@ -581,6 +587,7 @@ task fastTask { }
         noExceptionThrown()
     }
 
+    @ToBeFixedForInstantExecution
     def "same applied script is compiled once for different projects with different classpath"() {
         root {
             'common.gradle'('println "poke"')

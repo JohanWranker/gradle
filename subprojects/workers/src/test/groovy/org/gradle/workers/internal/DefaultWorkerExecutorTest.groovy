@@ -16,53 +16,73 @@
 
 package org.gradle.workers.internal
 
-import com.google.common.util.concurrent.ListenableFutureTask
-import org.gradle.api.internal.InstantiatorFactory
-import org.gradle.api.internal.file.FileResolver
-import org.gradle.internal.concurrent.ExecutorFactory
-import org.gradle.internal.concurrent.ManagedExecutor
+import org.gradle.api.internal.file.TestFiles
+import org.gradle.api.model.ObjectFactory
+import org.gradle.internal.Actions
+import org.gradle.internal.classloader.VisitableURLClassLoader
 import org.gradle.internal.operations.BuildOperationExecutor
+import org.gradle.internal.reflect.Instantiator
 import org.gradle.internal.work.AsyncWorkTracker
+import org.gradle.internal.work.ConditionalExecution
+import org.gradle.internal.work.ConditionalExecutionQueue
 import org.gradle.internal.work.WorkerLeaseRegistry
 import org.gradle.process.internal.worker.child.WorkerDirectoryProvider
+import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.RedirectStdOutAndErr
 import org.gradle.util.UsesNativeServices
 import org.gradle.workers.IsolationMode
+import org.gradle.workers.WorkAction
+import org.gradle.workers.WorkParameters
 import org.gradle.workers.WorkerConfiguration
+import org.gradle.workers.WorkerSpec
 import org.junit.Rule
 import spock.lang.Specification
-import spock.lang.Unroll
 
 @UsesNativeServices
 class DefaultWorkerExecutorTest extends Specification {
-    @Rule RedirectStdOutAndErr output = new RedirectStdOutAndErr()
+    @Rule
+    RedirectStdOutAndErr output = new RedirectStdOutAndErr()
+    @Rule
+    TestNameTestDirectoryProvider temporaryFolder = new TestNameTestDirectoryProvider()
 
     def workerDaemonFactory = Mock(WorkerFactory)
     def inProcessWorkerFactory = Mock(WorkerFactory)
     def noIsolationWorkerFactory = Mock(WorkerFactory)
-    def executorFactory = Mock(ExecutorFactory)
     def buildOperationWorkerRegistry = Mock(WorkerLeaseRegistry)
     def buildOperationExecutor = Mock(BuildOperationExecutor)
     def asyncWorkTracker = Mock(AsyncWorkTracker)
-    def fileResolver = Mock(FileResolver)
-    def workerDirectoryProvider = Mock(WorkerDirectoryProvider)
+    def forkOptionsFactory = TestFiles.execFactory(temporaryFolder.testDirectory)
+    def objectFactory = Stub(ObjectFactory) {
+        fileCollection() >> { TestFiles.fileCollectionFactory().configurableFiles() }
+    }
+    def workerDirectoryProvider = Stub(WorkerDirectoryProvider) {
+        getWorkingDirectory() >> { temporaryFolder.testDirectory }
+    }
     def runnable = Mock(Runnable)
-    def executor = Mock(ManagedExecutor)
-    def instantiatorFactory = Mock(InstantiatorFactory)
-    def worker = Mock(Worker)
-    ListenableFutureTask task
+    def executionQueueFactory = Mock(WorkerExecutionQueueFactory)
+    def executionQueue = Mock(ConditionalExecutionQueue)
+    def classLoaderStructureProvider = Mock(ClassLoaderStructureProvider)
+    def worker = Mock(BuildOperationAwareWorker)
+    def actionExecutionSpecFactory = Mock(ActionExecutionSpecFactory)
+    def instantiator = Mock(Instantiator)
+    def parameters = Mock(AdapterWorkParameters)
+    ConditionalExecution task
     DefaultWorkerExecutor workerExecutor
 
     def setup() {
-        _ * fileResolver.resolve(_ as File) >> { files -> files[0] }
-        _ * fileResolver.resolve(_ as String) >> { files -> new File(files[0]) }
-        _ * executorFactory.create(_ as String) >> executor
-        workerExecutor = new DefaultWorkerExecutor(workerDaemonFactory, inProcessWorkerFactory, noIsolationWorkerFactory, fileResolver, executorFactory, buildOperationWorkerRegistry, buildOperationExecutor, asyncWorkTracker, workerDirectoryProvider)
+        _ * executionQueueFactory.create() >> executionQueue
+        _ * instantiator.newInstance(AdapterWorkParameters) >> parameters
+        _ * instantiator.newInstance(DefaultWorkerSpec) >> { args -> new DefaultWorkerSpec() }
+        _ * instantiator.newInstance(DefaultClassLoaderWorkerSpec) >> { args -> new DefaultClassLoaderWorkerSpec(objectFactory) }
+        _ * instantiator.newInstance(DefaultProcessWorkerSpec, _) >> { args -> new DefaultProcessWorkerSpec(args[1][0], objectFactory) }
+        _ * instantiator.newInstance(DefaultWorkerExecutor.DefaultWorkQueue, _, _, _) >> { args -> new DefaultWorkerExecutor.DefaultWorkQueue(args[1][0], args[1][1], args[1][2]) }
+        workerExecutor = new DefaultWorkerExecutor(workerDaemonFactory, inProcessWorkerFactory, noIsolationWorkerFactory, forkOptionsFactory, buildOperationWorkerRegistry, buildOperationExecutor, asyncWorkTracker, workerDirectoryProvider, executionQueueFactory, classLoaderStructureProvider, actionExecutionSpecFactory, instantiator, temporaryFolder.testDirectory)
+        _ * actionExecutionSpecFactory.newIsolatedSpec(_, _, _, _, _) >> Mock(IsolatedParametersActionExecutionSpec)
     }
 
     def "worker configuration fork property defaults to AUTO"() {
         given:
-        WorkerConfiguration configuration = new DefaultWorkerConfiguration(fileResolver)
+        WorkerConfiguration configuration = new DefaultWorkerConfiguration(forkOptionsFactory)
 
         expect:
         configuration.isolationMode == IsolationMode.AUTO
@@ -93,7 +113,7 @@ class DefaultWorkerExecutorTest extends Specification {
     }
 
     def "can convert javaForkOptions to daemonForkOptions"() {
-        WorkerConfiguration configuration = new DefaultWorkerConfiguration(fileResolver)
+        WorkerSpec configuration = new DefaultProcessWorkerSpec(forkOptionsFactory.newJavaForkOptions(), objectFactory)
 
         given:
         configuration.forkOptions { options ->
@@ -101,202 +121,104 @@ class DefaultWorkerExecutorTest extends Specification {
             options.maxHeapSize = "128m"
             options.systemProperty("foo", "bar")
             options.jvmArgs("-foo")
-            options.bootstrapClasspath(new File("/foo"))
+            options.bootstrapClasspath("foo")
             options.debug = true
         }
 
         when:
-        def daemonForkOptions = workerExecutor.getDaemonForkOptions(runnable.class, configuration)
+        def daemonForkOptions = workerExecutor.getWorkerRequirement(runnable.class, configuration, null).forkOptions
 
         then:
         daemonForkOptions.javaForkOptions.minHeapSize == "128m"
         daemonForkOptions.javaForkOptions.maxHeapSize == "128m"
         daemonForkOptions.javaForkOptions.allJvmArgs.contains("-Dfoo=bar")
         daemonForkOptions.javaForkOptions.allJvmArgs.contains("-foo")
-        daemonForkOptions.javaForkOptions.allJvmArgs.contains("-Xbootclasspath:${File.separator}foo".toString())
+        daemonForkOptions.javaForkOptions.allJvmArgs.contains("-Xbootclasspath:${temporaryFolder.file('foo')}".toString())
         daemonForkOptions.javaForkOptions.allJvmArgs.contains("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005")
     }
 
     def "can add to classpath on executor"() {
         given:
-        WorkerConfiguration configuration = new DefaultWorkerConfiguration(fileResolver)
-        def foo = new File("/foo")
-        configuration.classpath([foo])
+        WorkerSpec configuration = new DefaultClassLoaderWorkerSpec(objectFactory)
+        def foo = temporaryFolder.createFile("foo")
+        configuration.classpath.from([foo])
 
         when:
-        DaemonForkOptions daemonForkOptions = workerExecutor.getDaemonForkOptions(runnable.class, configuration)
+        IsolatedClassLoaderWorkerRequirement requirement = workerExecutor.getWorkerRequirement(runnable.class, configuration, null)
 
         then:
-        daemonForkOptions.classpath.contains(foo)
+        1 * classLoaderStructureProvider.getInProcessClassLoaderStructure(_, _) >> { args -> new HierarchicalClassLoaderStructure(new VisitableURLClassLoader.Spec("test", args[0].collect { it.toURI().toURL() })) }
+
+        and:
+        requirement.classLoaderStructure.spec.classpath.contains(foo.toURI().toURL())
     }
 
-    def "executor executes a given runnable in a daemon"() {
+    def "executor executes a given work action in a daemon"() {
         when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = IsolationMode.PROCESS
-            configuration.params = []
-        }
+        workerExecutor.processIsolation().submit(TestExecutable.class, Actions.doNothing())
 
         then:
+        _ * parameters.implementationClassName >> TestExecutable.class.getName()
+        _ * parameters.params >> []
         1 * buildOperationWorkerRegistry.getCurrentWorkerLease()
-        1 * executor.execute(_ as ListenableFutureTask) >> { args -> task = args[0] }
+        1 * executionQueue.submit(_) >> { args -> task = args[0] }
 
         when:
-        task.run()
+        task.getExecution().run()
 
         then:
         1 * workerDaemonFactory.getWorker(_) >> worker
-        1 * worker.execute(_, _, _) >> { spec, workOperation, buildOperation ->
-            assert spec.implementationClass == TestRunnable
+        1 * worker.execute(_, _) >> { spec, buildOperation ->
+            assert spec.implementationClass == TestExecutable.class
             return new DefaultWorkResult(true, null)
         }
     }
 
     def "executor executes a given runnable in-process"() {
         when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = IsolationMode.CLASSLOADER
-            configuration.params = []
-        }
+        workerExecutor.classLoaderIsolation().submit(TestExecutable.class, Actions.doNothing())
 
         then:
+        _ * parameters.implementationClassName >> TestExecutable.class.getName()
+        _ * parameters.params >> []
         1 * buildOperationWorkerRegistry.getCurrentWorkerLease()
-        1 * executor.execute(_ as ListenableFutureTask) >> { args -> task = args[0] }
+        1 * executionQueue.submit(_) >> { args -> task = args[0] }
 
         when:
-        task.run()
+        task.getExecution().run()
 
         then:
         1 * inProcessWorkerFactory.getWorker(_) >> worker
-        1 * worker.execute(_, _, _) >> { spec, workOperation, buildOperation ->
-            assert spec.implementationClass == TestRunnable
+        1 * worker.execute(_, _) >> { spec, workOperation, buildOperation ->
+            assert spec.implementationClass == TestExecutable
             return new DefaultWorkResult(true, null)
         }
     }
 
     def "executor executes a given runnable with no isolation"() {
         when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = IsolationMode.NONE
-            configuration.params = []
-        }
+        workerExecutor.noIsolation().submit(TestExecutable.class, Actions.doNothing())
 
         then:
+        _ * parameters.implementationClassName >> TestExecutable.class.getName()
+        _ * parameters.params >> []
         1 * buildOperationWorkerRegistry.getCurrentWorkerLease()
-        1 * executor.execute(_ as ListenableFutureTask) >> { args -> task = args[0] }
+        1 * executionQueue.submit(_) >> { args -> task = args[0] }
 
         when:
-        task.run()
+        task.getExecution().run()
 
         then:
         1 * noIsolationWorkerFactory.getWorker(_) >> worker
-        1 * worker.execute(_, _, _) >> { spec, workOperation, buildOperation ->
-            assert spec.implementationClass == TestRunnable
+        1 * worker.execute(_, _) >> { spec, workOperation, buildOperation ->
+            assert spec.implementationClass == TestExecutable
             return new DefaultWorkResult(true, null)
         }
     }
 
-    def "cannot set classpath in isolation mode NONE"() {
-        when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = IsolationMode.NONE
-            configuration.params = []
-            configuration.classpath([new File("foo")])
-        }
-
-        then:
-        def e = thrown(UnsupportedOperationException)
-        e.message == "The worker classpath cannot be set when using isolation mode NONE"
-    }
-
-    @Unroll
-    def "cannot set bootstrap classpath in isolation mode #isolationMode"() {
-        when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = isolationMode
-            configuration.params = []
-            configuration.forkOptions.bootstrapClasspath new File("foo")
-        }
-
-        then:
-        def e = thrown(UnsupportedOperationException)
-        e.message == "The worker bootstrap classpath cannot be set when using isolation mode $isolationMode".toString()
-
-        where:
-        isolationMode << [IsolationMode.NONE, IsolationMode.CLASSLOADER]
-    }
-
-    @Unroll
-    def "cannot set jvm arguments in isolation mode #isolationMode"() {
-        when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = isolationMode
-            configuration.params = []
-            configuration.forkOptions.jvmArgs "foo"
-        }
-
-        then:
-        def e = thrown(UnsupportedOperationException)
-        e.message == "The worker jvm arguments cannot be set when using isolation mode $isolationMode".toString()
-
-        where:
-        isolationMode << [IsolationMode.NONE, IsolationMode.CLASSLOADER]
-    }
-
-    @Unroll
-    def "cannot set system properties in isolation mode #isolationMode"() {
-        when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = isolationMode
-            configuration.params = []
-            configuration.forkOptions.systemProperty "FOO", "bar"
-        }
-
-        then:
-        def e = thrown(UnsupportedOperationException)
-        e.message == "The worker system properties cannot be set when using isolation mode $isolationMode".toString()
-
-        where:
-        isolationMode << [IsolationMode.NONE, IsolationMode.CLASSLOADER]
-    }
-
-    @Unroll
-    def "cannot set maximum heap in isolation mode #isolationMode"() {
-        when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = isolationMode
-            configuration.params = []
-            configuration.forkOptions.maxHeapSize = "foo"
-        }
-
-        then:
-        def e = thrown(UnsupportedOperationException)
-        e.message == "The worker maximum heap size cannot be set when using isolation mode $isolationMode".toString()
-
-        where:
-        isolationMode << [IsolationMode.NONE, IsolationMode.CLASSLOADER]
-    }
-
-    @Unroll
-    def "cannot set minimum heap in isolation mode #isolationMode"() {
-        when:
-        workerExecutor.submit(TestRunnable.class) { WorkerConfiguration configuration ->
-            configuration.isolationMode = isolationMode
-            configuration.params = []
-            configuration.forkOptions.minHeapSize = "foo"
-        }
-
-        then:
-        def e = thrown(UnsupportedOperationException)
-        e.message == "The worker minimum heap size cannot be set when using isolation mode $isolationMode".toString()
-
-        where:
-        isolationMode << [IsolationMode.NONE, IsolationMode.CLASSLOADER]
-    }
-
-    static class TestRunnable implements Runnable {
+    abstract static class TestExecutable implements WorkAction<WorkParameters.None> {
         @Override
-        void run() {
+        void execute() {
             println "executing"
         }
     }

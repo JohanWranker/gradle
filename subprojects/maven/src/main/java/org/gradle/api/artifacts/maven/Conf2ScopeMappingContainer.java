@@ -24,6 +24,7 @@ import java.util.Map;
  * Defines a set of rules for how to map the Gradle dependencies to a POM. This mapping is based
  * on the configuration the dependencies belong to.
  */
+@Deprecated
 public interface Conf2ScopeMappingContainer {
     String PROVIDED = "provided";
     String COMPILE = "compile";
@@ -35,13 +36,13 @@ public interface Conf2ScopeMappingContainer {
      * Maven scope. A configuration can be mapped to one and only one scope. If this method is called
      * more than once for a particular configuration, the last call wins.</p>
      *
-     * See {@link #getMapping(java.util.Collection)} for the rules how a scope is choosen from a set of mappings.
+     * See {@link #getMapping(java.util.Collection)} for the rules how a scope is chosen from a set of mappings.
      *
      * @param priority a number that is used for comparison with the priority of other scopes.
      * @param configuration a Gradle configuration name (must not be null).
      * @param scope A Maven scope name (must not be null)
      * @return this
-     * @see #getMapping(java.util.Collection) 
+     * @see #getMapping(java.util.Collection)
      */
     Conf2ScopeMappingContainer addMapping(int priority, Configuration configuration, String scope);
 
@@ -67,13 +68,13 @@ public interface Conf2ScopeMappingContainer {
      * Returns a map with all the configuration to scope mappings. If no such mapping has been defined,
      * an empty map is returned.
      *
-     * @see #addMapping(int, Configuration, String) 
+     * @see #addMapping(int, Configuration, String)
      */
     Map<Configuration, Conf2ScopeMapping> getMappings();
 
     /**
      * Returns whether unmapped configuration should be skipped or not. Defaults to true.
-     * @see #setSkipUnmappedConfs(boolean) 
+     * @see #setSkipUnmappedConfs(boolean)
      */
     boolean isSkipUnmappedConfs();
 

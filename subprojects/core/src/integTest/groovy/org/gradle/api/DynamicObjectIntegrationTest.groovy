@@ -554,7 +554,7 @@ task print(type: MyTask) {
 
         expect:
         succeeds("print")
-        result.output.contains("transform(Class)")
+        outputContains("transform(Class)")
     }
 
     def failsWhenTryingToCallMethodWithClassValue() {
@@ -630,6 +630,36 @@ task print(type: MyTask) {
     }
 
     def failsWhenGettingUnknownPropertyOnDecoratedObject() {
+        buildFile << """
+            class Thing {
+            }
+            def thing = objects.newInstance(Thing)
+            assert !thing.hasProperty("p1")
+            println thing.p1
+        """
+
+        expect:
+        fails()
+        failure.assertHasLineNumber(6)
+        failure.assertHasCause("Could not get unknown property 'p1' for object of type Thing.")
+    }
+
+    def failsWhenGettingUnknownPropertyOnExtensionObject() {
+        buildFile << """
+            class Thing {
+            }
+            extensions.add('thing', Thing)
+            assert !thing.hasProperty("p1")
+            println thing.p1
+        """
+
+        expect:
+        fails()
+        failure.assertHasLineNumber(6)
+        failure.assertHasCause("Could not get unknown property 'p1' for extension 'thing' of type Thing.")
+    }
+
+    def failsWhenGettingUnknownPropertyOnExtensionObjectWithToStringImplementation() {
         buildFile << """
             class Thing {
                 String toString() { "<thing>" }

@@ -15,8 +15,6 @@
  */
 package org.gradle.tooling.model;
 
-import org.gradle.api.Incubating;
-
 import javax.annotation.Nullable;
 
 /**
@@ -27,14 +25,13 @@ import javax.annotation.Nullable;
  *
  * @since 1.12
  */
-@Incubating
 public interface Launchable extends ProjectModel {
     /**
      * Returns the identifier for the Gradle project that this model originated from.
      *
      * @since 2.13
      */
-    @Incubating
+    @Override
     ProjectIdentifier getProjectIdentifier();
 
     /**

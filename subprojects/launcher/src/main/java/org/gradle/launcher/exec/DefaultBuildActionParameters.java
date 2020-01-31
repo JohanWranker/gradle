@@ -32,11 +32,9 @@ public class DefaultBuildActionParameters implements BuildActionParameters, Seri
 
     private final boolean useDaemon;
     private final boolean continuous;
-    private final boolean interactive;
     private final ClassPath injectedPluginClasspath;
 
-    public DefaultBuildActionParameters(Map<?, ?> systemProperties, Map<String, String> envVariables, File currentDir, LogLevel logLevel, boolean useDaemon, boolean continuous, boolean interactive,
-                                        ClassPath injectedPluginClasspath) {
+    public DefaultBuildActionParameters(Map<?, ?> systemProperties, Map<String, String> envVariables, File currentDir, LogLevel logLevel, boolean useDaemon, boolean continuous, ClassPath injectedPluginClasspath) {
         this.currentDir = currentDir;
         this.logLevel = logLevel;
         this.useDaemon = useDaemon;
@@ -46,22 +44,25 @@ public class DefaultBuildActionParameters implements BuildActionParameters, Seri
         this.systemProperties = new HashMap<String, String>();
         GUtil.addToMap(this.systemProperties, systemProperties);
         this.envVariables = new HashMap<String, String>(envVariables);
-        this.interactive = interactive;
         this.injectedPluginClasspath = injectedPluginClasspath;
     }
 
+    @Override
     public Map<String, String> getSystemProperties() {
         return systemProperties;
     }
 
+    @Override
     public Map<String, String> getEnvVariables() {
         return envVariables;
     }
 
+    @Override
     public File getCurrentDir() {
         return currentDir;
     }
 
+    @Override
     public LogLevel getLogLevel() {
         return logLevel;
     }
@@ -75,23 +76,21 @@ public class DefaultBuildActionParameters implements BuildActionParameters, Seri
             + ", logLevel=" + logLevel
             + ", useDaemon=" + useDaemon
             + ", continuous=" + continuous
-            + ", interactive=" + interactive
             + ", injectedPluginClasspath=" + injectedPluginClasspath
             + '}';
     }
 
+    @Override
     public boolean isUseDaemon() {
         return useDaemon;
     }
 
+    @Override
     public boolean isContinuous() {
         return continuous;
     }
 
-    public boolean isInteractive() {
-        return interactive;
-    }
-
+    @Override
     public ClassPath getInjectedPluginClasspath() {
         return injectedPluginClasspath;
     }

@@ -16,49 +16,54 @@
 package org.gradle.api.internal;
 
 import groovy.lang.Closure;
+import org.gradle.api.Action;
 import org.gradle.api.Named;
 import org.gradle.api.NamedDomainObjectSet;
 import org.gradle.api.Namer;
-import org.gradle.api.internal.collections.CollectionEventRegister;
 import org.gradle.api.internal.collections.CollectionFilter;
-import org.gradle.api.internal.collections.FilteredSet;
+import org.gradle.api.internal.collections.SortedSetElementSource;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.reflect.Instantiator;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.TreeSet;
 
 public class DefaultNamedDomainObjectSet<T> extends DefaultNamedDomainObjectCollection<T> implements NamedDomainObjectSet<T> {
+    private final MutationGuard parentMutationGuard;
 
-    public DefaultNamedDomainObjectSet(Class<? extends T> type, Instantiator instantiator, Namer<? super T> namer) {
-        super(type, new TreeSet(new Namer.Comparator(namer)), instantiator, namer);
+    public DefaultNamedDomainObjectSet(Class<? extends T> type, Instantiator instantiator, Namer<? super T> namer, CollectionCallbackActionDecorator decorator) {
+        super(type, new SortedSetElementSource<T>(new Namer.Comparator<T>(namer)), instantiator, namer, decorator);
+        this.parentMutationGuard = MutationGuards.identity();
     }
 
+    @Deprecated
     public DefaultNamedDomainObjectSet(Class<? extends T> type, Instantiator instantiator) {
-        this(type, instantiator, Named.Namer.forType(type));
+        this(type, instantiator, CollectionCallbackActionDecorator.NOOP);
+        DeprecationLogger.deprecateInternalApi("constructor DefaultNamedDomainObjectSet(Class<T>, Instantiator, Namer<T>)")
+            .replaceWith("ObjectFactory.namedDomainObjectSet(Class<T>)")
+            .withUserManual("custom_gradle_types", "nameddomainobjectset")
+            .nagUser();
     }
 
-    /**
-     * Subclasses using this constructor must ensure that the {@code store} uses a name based equality strategy as per the contract on NamedDomainObjectContainer.
-     */
-    protected DefaultNamedDomainObjectSet(Class<? extends T> type, Set<T> store, CollectionEventRegister<T> eventRegister, Instantiator instantiator, Namer<? super T> namer) {
-        super(type, store, eventRegister, new UnfilteredIndex<T>(), instantiator, namer);
+    public DefaultNamedDomainObjectSet(Class<? extends T> type, Instantiator instantiator, CollectionCallbackActionDecorator decorator) {
+        this(type, instantiator, Named.Namer.forType(type), decorator);
     }
 
     // should be protected, but use of the class generator forces it to be public
     public DefaultNamedDomainObjectSet(DefaultNamedDomainObjectSet<? super T> collection, CollectionFilter<T> filter, Instantiator instantiator, Namer<? super T> namer) {
+        this(collection, filter, instantiator, namer, MutationGuards.identity());
+    }
+
+    public DefaultNamedDomainObjectSet(DefaultNamedDomainObjectSet<? super T> collection, CollectionFilter<T> filter, Instantiator instantiator, Namer<? super T> namer, MutationGuard parentMutationGuard) {
         super(collection, filter, instantiator, namer);
+        this.parentMutationGuard = parentMutationGuard;
     }
 
     @Override
     protected <S extends T> DefaultNamedDomainObjectSet<S> filtered(CollectionFilter<S> filter) {
         return getInstantiator().newInstance(DefaultNamedDomainObjectSet.class, this, filter, getInstantiator(), getNamer());
-    }
-
-    protected <S extends T> Set<S> filteredStore(CollectionFilter<S> filter) {
-        return new FilteredSet<T, S>(this, filter);
     }
 
     @Override
@@ -84,5 +89,10 @@ public class DefaultNamedDomainObjectSet<T> extends DefaultNamedDomainObjectColl
     @Override
     public Set<T> findAll(Closure cl) {
         return findAll(cl, new LinkedHashSet<T>());
+    }
+
+    @Override
+    protected <I extends T> Action<? super I> withMutationDisabled(Action<? super I> action) {
+        return parentMutationGuard.withMutationDisabled(super.withMutationDisabled(action));
     }
 }

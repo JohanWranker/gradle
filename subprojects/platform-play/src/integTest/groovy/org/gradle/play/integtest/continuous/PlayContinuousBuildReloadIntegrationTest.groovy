@@ -16,6 +16,7 @@
 
 package org.gradle.play.integtest.continuous
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.internal.filewatch.PendingChangesManager
 import org.gradle.test.fixtures.ConcurrentTestUtil
 
@@ -24,26 +25,38 @@ import org.gradle.test.fixtures.ConcurrentTestUtil
  */
 class PlayContinuousBuildReloadIntegrationTest extends AbstractPlayReloadIntegrationTest {
 
+    protected static final String PENDING_DETECTED_MESSAGE = 'Pending changes detected'
+
     int pendingChangesMarker
 
     def setup() {
         buildFile << """
                 def pendingChangesManager = gradle.services.get(${PendingChangesManager.canonicalName})
                 pendingChangesManager.addListener {
-                    println "Pending changes detected"
+                    println "$PENDING_DETECTED_MESSAGE"
                 }
         """
+        buildFile << playLogbackDependenciesIfPlay25(versionNumber)
     }
 
-    private int waitForChangesToBePickedUp() {
+    protected int waitForChangesToBePickedUp() {
+        waitForConditionSatisfied { output -> output.contains(PENDING_DETECTED_MESSAGE) }
+    }
+
+    protected int waitForBuildFinish() {
+        waitForConditionSatisfied { output -> output ==~ /(?s).*Waiting for changes.*/ }
+    }
+
+    private int waitForConditionSatisfied(Closure predicate){
         def buildOutput = ''
         ConcurrentTestUtil.poll {
             buildOutput = buildOutputSoFar()
-            assert buildOutput.substring(pendingChangesMarker).contains("Pending changes detected")
+            assert predicate(buildOutput.substring(pendingChangesMarker))
         }
         pendingChangesMarker = buildOutput.length()
     }
 
+    @ToBeFixedForInstantExecution
     def "should reload modified scala controller and routes and restart server"() {
         when:
         succeeds("runPlayBinary")
@@ -61,6 +74,7 @@ class PlayContinuousBuildReloadIntegrationTest extends AbstractPlayReloadIntegra
         page == 'hello world'
     }
 
+    @ToBeFixedForInstantExecution
     def "should reload with exception when modify scala controller and restart server"() {
         when:
         succeeds("runPlayBinary")
@@ -74,8 +88,9 @@ class PlayContinuousBuildReloadIntegrationTest extends AbstractPlayReloadIntegra
         then:
         println "CHECKING ERROR PAGE"
         errorPageHasTaskFailure("compilePlayBinaryScala")
+        waitForBuildFinish()
         serverStartCount == 1
-        !executedTasks.contains('runPlayBinary')
+        notExecuted('runPlayBinary')
 
         when:
         fixBadCode()
@@ -88,6 +103,7 @@ class PlayContinuousBuildReloadIntegrationTest extends AbstractPlayReloadIntegra
         appIsRunningAndDeployed()
     }
 
+    @ToBeFixedForInstantExecution
     def "should reload modified coffeescript but not restart server"() {
         when:
         succeeds("runPlayBinary")
@@ -113,6 +129,7 @@ alert message
         testMinJs.contains('Hello coffeescript')
     }
 
+    @ToBeFixedForInstantExecution
     def "should detect new javascript files but not restart"() {
         when:
         succeeds("runPlayBinary")
@@ -135,6 +152,7 @@ var message = "Hello JS";
         helloworldMinJs.contains('Hello JS')
     }
 
+    @ToBeFixedForInstantExecution
     def "should reload modified java model and restart server"() {
         when:
         succeeds("runPlayBinary")
@@ -156,6 +174,7 @@ var message = "Hello JS";
         page.contains("<li>Hello foo:1 !</li>")
     }
 
+    @ToBeFixedForInstantExecution
     def "should reload twirl template and restart server"() {
         when:
         succeeds("runPlayBinary")
@@ -175,6 +194,7 @@ var message = "Hello JS";
         page.contains("Welcome to Play with Gradle")
     }
 
+    @ToBeFixedForInstantExecution
     def "should reload with exception when task that depends on runPlayBinary fails"() {
         given:
         buildFile << """
@@ -199,6 +219,6 @@ task otherTask {
 
         then:
         errorPageHasTaskFailure("otherTask")
-        !executedTasks.contains('runPlayBinary')
+        notExecuted('runPlayBinary')
     }
 }

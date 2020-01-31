@@ -16,18 +16,22 @@
 
 package org.gradle.api.internal.artifacts.type
 
+import com.google.common.collect.ImmutableList
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.internal.CollectionCallbackActionDecorator
+import org.gradle.api.internal.artifacts.ArtifactAttributes
 import org.gradle.api.internal.attributes.ImmutableAttributes
 import org.gradle.internal.component.model.ComponentArtifactMetadata
 import org.gradle.internal.component.model.IvyArtifactName
 import org.gradle.internal.component.model.VariantResolveMetadata
-import org.gradle.internal.reflect.DirectInstantiator
+import org.gradle.util.AttributeTestUtil
 import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class DefaultArtifactTypeRegistryTest extends Specification {
-    def attributesFactory = TestUtil.attributesFactory()
-    def registry = new DefaultArtifactTypeRegistry(DirectInstantiator.INSTANCE, attributesFactory)
+    def attributesFactory = AttributeTestUtil.attributesFactory()
+    def registry = new DefaultArtifactTypeRegistry(TestUtil.instantiatorFactory().decorateLenient(), attributesFactory, CollectionCallbackActionDecorator.NOOP)
 
     def "creates as required and reuses"() {
         expect:
@@ -63,7 +67,7 @@ class DefaultArtifactTypeRegistryTest extends Specification {
 
         given:
         variant.attributes >> attrs
-        variant.artifacts >> []
+        variant.artifacts >> ImmutableList.of()
 
         expect:
         registry.mapAttributesFor(variant) == attrs
@@ -78,7 +82,7 @@ class DefaultArtifactTypeRegistryTest extends Specification {
 
         given:
         variant.attributes >> attrs
-        variant.artifacts >> [artifact]
+        variant.artifacts >> ImmutableList.of(artifact)
         artifact.name >> artifactName
         artifactName.extension >> "jar"
         artifactName.type >> "jar"
@@ -98,7 +102,7 @@ class DefaultArtifactTypeRegistryTest extends Specification {
 
         given:
         variant.attributes >> attrs
-        variant.artifacts >> [artifact]
+        variant.artifacts >> ImmutableList.of(artifact)
         artifact.name >> artifactName
         artifactName.extension >> "jar"
         artifactName.type >> "jar"
@@ -118,7 +122,7 @@ class DefaultArtifactTypeRegistryTest extends Specification {
 
         given:
         variant.attributes >> attrs
-        variant.artifacts >> [artifact]
+        variant.artifacts >> ImmutableList.of(artifact)
         artifact.name >> artifactName
         artifactName.extension >> "jar"
         artifactName.type >> "jar"
@@ -139,7 +143,7 @@ class DefaultArtifactTypeRegistryTest extends Specification {
 
         given:
         variant.attributes >> attrs
-        variant.artifacts >> [artifact1, artifact2]
+        variant.artifacts >> ImmutableList.of(artifact1, artifact2)
         artifact1.name >> artifactName1
         artifactName1.extension >> "jar"
         artifactName1.type >> "jar"
@@ -154,23 +158,72 @@ class DefaultArtifactTypeRegistryTest extends Specification {
         registry.mapAttributesFor(variant) == attrs
     }
 
-    def "does not apply mapping when variant already defines some attributes"() {
-        def attrs = attributesFactory.of(Attribute.of("attr", String), "value")
-        def variant = Stub(VariantResolveMetadata)
-        def artifact = Stub(ComponentArtifactMetadata)
-        def artifactName = Stub(IvyArtifactName)
+    def "maps only artifactType attribute for arbitrary files when no extensions are registered"() {
+        expect:
+        registry.mapAttributesFor(artifactFile).getAttribute(ArtifactAttributes.ARTIFACT_FORMAT) == type
+
+        where:
+        artifactFile    | type
+        file("foo.jar") | ArtifactTypeDefinition.JAR_TYPE
+        file("foo.zip") | ArtifactTypeDefinition.ZIP_TYPE
+        file("foo.bar") | "bar"
+        file("foo")     | ""
+        dir("foo")      | ArtifactTypeDefinition.DIRECTORY_TYPE
+        dir("foo.jar")  | ArtifactTypeDefinition.DIRECTORY_TYPE
+    }
+
+    def "maps all attributes for arbitrary files when matching extensions are registered"() {
+        def attrs = ImmutableAttributes.EMPTY
+        def attrsPlusFormat = concat(attrs, ["artifactType": type, "custom": "123"])
 
         given:
-        variant.attributes >> attrs
-        variant.artifacts >> [artifact]
-        artifact.name >> artifactName
-        artifactName.extension >> "jar"
-        artifactName.type >> "jar"
-
-        registry.create().create("jar").attributes.attribute(Attribute.of("custom", String), "123")
+        registry.create().create(type).attributes.attribute(Attribute.of("custom", String), "123")
 
         expect:
-        registry.mapAttributesFor(variant) == concat(attrs, ["artifactType": "jar"])
+        registry.mapAttributesFor(artifactFile) == attrsPlusFormat
+
+        where:
+        artifactFile    | type
+        file("foo.jar") | ArtifactTypeDefinition.JAR_TYPE
+        file("foo.zip") | ArtifactTypeDefinition.ZIP_TYPE
+        file("foo.bar") | "bar"
+    }
+
+    def "maps only artifactType attribute for arbitrary files when extensions are registered but none match"() {
+        def attrs = ImmutableAttributes.EMPTY
+        def attrsPlusFormat = concat(attrs, ["artifactType": type])
+
+        given:
+        registry.create().create("baz").attributes.attribute(Attribute.of("custom", String), "123")
+        registry.create().create("buzz").attributes.attribute(Attribute.of("custom", String), "234")
+
+        expect:
+        registry.mapAttributesFor(artifactFile) == attrsPlusFormat
+
+        where:
+        artifactFile    | type
+        file("foo.jar") | ArtifactTypeDefinition.JAR_TYPE
+        file("foo.zip") | ArtifactTypeDefinition.ZIP_TYPE
+        file("foo.bar") | "bar"
+        file("foo")     | ""
+        dir("foo")      | ArtifactTypeDefinition.DIRECTORY_TYPE
+        dir("foo.jar")  | ArtifactTypeDefinition.DIRECTORY_TYPE
+    }
+
+    File file(String name) {
+        return Stub(File) {
+            getName() >> name
+            isDirectory() >> false
+            isFile() >> true
+        }
+    }
+
+    File dir(String name) {
+        return Stub(File) {
+            getName() >> name
+            isDirectory() >> true
+            isFile() >> false
+        }
     }
 
     def concat(ImmutableAttributes source, Map<String, String> attrs) {

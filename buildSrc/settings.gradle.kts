@@ -14,6 +14,72 @@
  * limitations under the License.
  */
 
-apply {
-    from("../gradle/remoteHttpCacheSettings.gradle")
+pluginManagement {
+    repositories {
+        maven {
+            name = "kotlin-eap"
+            url = uri("https://dl.bintray.com/kotlin/kotlin-eap")
+        }
+        gradlePluginPortal()
+    }
+}
+
+apply(from = "../gradle/shared-with-buildSrc/mirrors.settings.gradle.kts")
+
+val upperCaseLetters = "\\p{Upper}".toRegex()
+
+fun String.toKebabCase() =
+    replace(upperCaseLetters) { "-${it.value.toLowerCase()}" }
+
+rootProject.name = "buildSrc"
+
+// Please preserve alphabetical order
+include("binaryCompatibility")
+include("build")
+include("buildquality")
+include("cleanup")
+include("configuration")
+include("docs")
+include("ide")
+include("integrationTesting")
+include("kotlinDsl")
+include("uberPlugins")
+include("packaging")
+include("plugins")
+include("profiling")
+include("performance")
+include("versioning")
+include("buildPlatform")
+
+fun buildFileNameFor(projectDirName: String) =
+    "$projectDirName.gradle.kts"
+
+for (project in rootProject.children) {
+    val projectDirName = project.name.toKebabCase()
+    project.projectDir = file("subprojects/$projectDirName")
+    project.buildFileName = buildFileNameFor(projectDirName)
+    assert(project.projectDir.isDirectory)
+    assert(project.buildFile.isFile)
+}
+
+fun remoteBuildCacheEnabled(settings: Settings) = settings.buildCache.remote?.isEnabled == true
+
+fun isAdoptOpenJDK() = true == System.getProperty("java.vendor")?.contains("AdoptOpenJDK")
+
+fun isAdoptOpenJDK11() = isAdoptOpenJDK() && JavaVersion.current().isJava11
+
+fun getBuildJavaHome() = System.getProperty("java.home")
+
+gradle.settingsEvaluated {
+    if ("true" == System.getProperty("org.gradle.ignoreBuildJavaVersionCheck")) {
+        return@settingsEvaluated
+    }
+
+    if (remoteBuildCacheEnabled(this) && !isAdoptOpenJDK11()) {
+        throw GradleException("Remote cache is enabled, which requires AdoptOpenJDK 11 to perform this build. It's currently ${getBuildJavaHome()}.")
+    }
+
+    if (!JavaVersion.current().isJava9Compatible) {
+        throw GradleException("JDK 9+ is required to perform this build. It's currently Java ${JavaVersion.current()} at ${getBuildJavaHome()}.")
+    }
 }

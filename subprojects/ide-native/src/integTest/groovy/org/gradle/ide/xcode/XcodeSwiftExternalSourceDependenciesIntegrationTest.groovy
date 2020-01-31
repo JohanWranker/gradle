@@ -17,6 +17,7 @@
 package org.gradle.ide.xcode
 
 import org.gradle.ide.xcode.fixtures.AbstractXcodeIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.app.SwiftAppWithLibrary
 import org.gradle.nativeplatform.fixtures.app.SwiftLib
 import org.gradle.nativeplatform.fixtures.app.SwiftLibTest
@@ -34,6 +35,7 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         requireSwiftToolChain()
     }
 
+    @ToBeFixedForInstantExecution
     def "adds source dependencies Swift module of main component to Xcode indexer search path"() {
         def fixture = new SwiftAppWithLibrary()
 
@@ -72,16 +74,26 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         fixture.executable.writeToProject(testDirectory)
 
         when:
-        succeeds 'xcode'
+        succeeds ':xcode'
 
         then:
-        executedAndNotSkipped(":greeter:compileDebugSwift", ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme", ":xcode")
+        result.assertTasksExecuted(":greeter:compileDebugSwift",
+            ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme",
+            ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj")
 
         def appProject = xcodeProject("${rootProjectName}.xcodeproj").projectFile
         appProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(checkoutDir(repo.name, commit.id.name, repo.id).file('build/modules/main/debug'))
+
+        when:
+        succeeds ':xcodeProject'
+
+        then:
+        result.assertTasksExecuted(":greeter:compileDebugSwift",
+            ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme")
     }
 
+    @ToBeFixedForInstantExecution
     def "does not add source dependencies Xcode project of main component to Xcode workspace"() {
         def fixture = new SwiftAppWithLibrary()
 
@@ -121,16 +133,19 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         fixture.executable.writeToProject(testDirectory)
 
         when:
-        succeeds 'xcode'
+        succeeds ':xcode'
 
         then:
-        executedAndNotSkipped(":greeter:compileDebugSwift", ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme", ":xcode")
-        rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj")//, "${checkoutRelativeDir(repo.name, commit.id.name, repo.id)}/greeter.xcodeproj")
+        result.assertTasksExecuted(":greeter:compileDebugSwift",
+            ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme",
+            ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
+        rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj")
 
         def appProject = xcodeProject("${rootProjectName}.xcodeproj").projectFile
         appProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(checkoutDir(repo.name, commit.id.name, repo.id).file('build/modules/main/debug'))
     }
 
+    @ToBeFixedForInstantExecution
     def "adds source dependencies Swift module of test component to Xcode indexer search path"() {
         def library = new SwiftLib()
         def test = new SwiftLibTest(library, library.greeter, library.sum, library.multiply)
@@ -170,10 +185,13 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         test.writeToProject(testDirectory)
 
         when:
-        succeeds 'xcode'
+        succeeds ':xcode'
 
         then:
-        executedAndNotSkipped(":greeter:compileDebugSwift", ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme", ":xcode")
+        result.assertTasksExecuted(":greeter:compileDebugSwift",
+            ":compileDebugSwift",
+            ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme",
+            ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj")
 
         def appProject = xcodeProject("${rootProjectName}.xcodeproj").projectFile
@@ -181,6 +199,7 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         appProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file('build/modules/main/debug'), checkoutDir(repo.name, commit.id.name, repo.id).file('build/modules/main/debug'))
     }
 
+    @ToBeFixedForInstantExecution
     def "does not add source dependencies Xcode project of test component to Xcode workspace"() {
         def library = new SwiftLib()
         def test = new SwiftLibTest(library, library.greeter, library.sum, library.multiply)
@@ -221,10 +240,13 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         test.writeToProject(testDirectory)
 
         when:
-        succeeds 'xcode'
+        succeeds ':xcode'
 
         then:
-        executedAndNotSkipped(":greeter:compileDebugSwift", ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme", ":xcode")
+        result.assertTasksExecuted(":greeter:compileDebugSwift",
+            ":compileDebugSwift",
+            ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcodeScheme",
+            ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj")
 
         def appProject = xcodeProject("${rootProjectName}.xcodeproj").projectFile
@@ -232,6 +254,7 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         appProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file('build/modules/main/debug'), checkoutDir(repo.name, commit.id.name, repo.id).file('build/modules/main/debug'))
     }
 
+    @ToBeFixedForInstantExecution
     def "adds source dependencies Swift module of main component to Xcode indexer search path when no component in root project"() {
         def fixture = new SwiftAppWithLibrary()
 
@@ -278,17 +301,20 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         """
 
         when:
-        succeeds 'xcode'
+        succeeds ':xcode'
 
         then:
-        executedAndNotSkipped(":greeter:compileDebugSwift", ":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme",
-            ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcode")
+        result.assertTasksExecuted(":greeter:compileDebugSwift",
+            ":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme",
+            ":xcodeProject", ":xcodeProjectWorkspaceSettings",
+            ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj", "app/app.xcodeproj")
 
         def appProject = xcodeProject("app/app.xcodeproj").projectFile
         appProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(checkoutDir(repo.name, commit.id.name, repo.id).file('build/modules/main/debug'))
     }
 
+    @ToBeFixedForInstantExecution
     def "does not add source dependencies Xcode project of main component to Xcode workspace when no component in root project"() {
         def fixture = new SwiftAppWithLibrary()
 
@@ -336,11 +362,13 @@ class XcodeSwiftExternalSourceDependenciesIntegrationTest extends AbstractXcodeI
         """
 
         when:
-        succeeds 'xcode'
+        succeeds ':xcode'
 
         then:
-        executedAndNotSkipped(":greeter:compileDebugSwift", ":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme",
-            ":xcodeProject", ":xcodeProjectWorkspaceSettings", ":xcode")
+        result.assertTasksExecuted(":greeter:compileDebugSwift",
+            ":app:xcodeProject", ":app:xcodeProjectWorkspaceSettings", ":app:xcodeScheme",
+            ":xcodeProject", ":xcodeProjectWorkspaceSettings",
+            ":xcodeWorkspace", ":xcodeWorkspaceWorkspaceSettings", ":xcode")
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj", "app/app.xcodeproj")
 
         def appProject = xcodeProject("app/app.xcodeproj").projectFile

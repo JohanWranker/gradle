@@ -45,6 +45,7 @@ public class DefaultDaemonConnection implements DaemonConnection {
     private final DisconnectQueue disconnectQueue;
     private final CancelQueue cancelQueue;
     private final ReceiveQueue receiveQueue;
+    private volatile boolean stopping;
 
     public DefaultDaemonConnection(final RemoteConnection<Message> connection, ExecutorFactory executorFactory) {
         this.connection = connection;
@@ -54,6 +55,7 @@ public class DefaultDaemonConnection implements DaemonConnection {
         receiveQueue = new ReceiveQueue();
         executor = executorFactory.create("Handler for " + connection.toString());
         executor.execute(new Runnable() {
+            @Override
             public void run() {
                 Throwable failure = null;
                 try {
@@ -62,7 +64,7 @@ public class DefaultDaemonConnection implements DaemonConnection {
                         try {
                             message = connection.receive();
                         } catch (Exception e) {
-                            if (LOGGER.isDebugEnabled()) {
+                            if (!stopping && LOGGER.isDebugEnabled()) {
                                 LOGGER.debug(String.format("thread %s: Could not receive message from client.", Thread.currentThread().getId()), e);
                             }
                             failure = e;
@@ -94,32 +96,39 @@ public class DefaultDaemonConnection implements DaemonConnection {
         });
     }
 
+    @Override
     public void onStdin(StdinHandler handler) {
         stdinQueue.useHandler(handler);
     }
 
+    @Override
     public void onDisconnect(Runnable handler) {
         disconnectQueue.useHandler(handler);
     }
 
+    @Override
     public void onCancel(Runnable handler) {
         cancelQueue.useHandler(handler);
     }
 
+    @Override
     public Object receive(long timeoutValue, TimeUnit timeoutUnits) {
         return receiveQueue.take(timeoutValue, timeoutUnits);
     }
 
+    @Override
     public void daemonUnavailable(DaemonUnavailable unavailable) {
         connection.dispatch(unavailable);
         connection.flush();
     }
 
+    @Override
     public void buildStarted(BuildStarted buildStarted) {
         connection.dispatch(buildStarted);
         connection.flush();
     }
 
+    @Override
     public void logEvent(OutputEvent logEvent) {
         connection.dispatch(new OutputMessage(logEvent));
         connection.flush();
@@ -131,12 +140,16 @@ public class DefaultDaemonConnection implements DaemonConnection {
         connection.flush();
     }
 
+    @Override
     public void completed(Result result) {
         connection.dispatch(result);
         connection.flush();
     }
 
+    @Override
     public void stop() {
+        stopping = true;
+
         // 1. Stop handling disconnects. Blocks until the handler has finished.
         // 2. Stop the connection. This means that the thread receiving from the connection will receive a null and finish up.
         // 3. Stop receiving incoming messages. Blocks until the receive thread has finished. This will notify the stdin and receive queues to signal end of input.
@@ -164,6 +177,7 @@ public class DefaultDaemonConnection implements DaemonConnection {
             this.name = name;
         }
 
+        @Override
         public void stop() {
             ManagedExecutor executor;
             lock.lock();
@@ -219,6 +233,7 @@ public class DefaultDaemonConnection implements DaemonConnection {
                 }
                 executor = executorFactory.create(name);
                 executor.execute(new Runnable() {
+                    @Override
                     public void run() {
                         while (true) {
                             C command;
@@ -271,6 +286,7 @@ public class DefaultDaemonConnection implements DaemonConnection {
             super(executorFactory, "Stdin handler");
         }
 
+        @Override
         protected boolean doHandleCommand(final StdinHandler handler, InputMessage command) {
             try {
                 if (command instanceof CloseInput) {
@@ -354,6 +370,7 @@ public class DefaultDaemonConnection implements DaemonConnection {
             }
         }
 
+        @Override
         public void stop() {
             useHandler(null);
         }
@@ -408,6 +425,7 @@ public class DefaultDaemonConnection implements DaemonConnection {
         private static final Object END = new Object();
         private final BlockingQueue<Object> queue = new LinkedBlockingQueue<Object>();
 
+        @Override
         public void stop() {
         }
 

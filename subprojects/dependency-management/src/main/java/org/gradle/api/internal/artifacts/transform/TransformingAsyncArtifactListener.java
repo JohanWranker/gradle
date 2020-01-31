@@ -16,38 +16,57 @@
 
 package org.gradle.api.internal.artifacts.transform;
 
+import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvableArtifact;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvedArtifactSet;
+import org.gradle.api.internal.file.FileCollectionInternal;
+import org.gradle.api.internal.file.FileCollectionStructureVisitor;
 import org.gradle.internal.operations.BuildOperationQueue;
 import org.gradle.internal.operations.RunnableBuildOperation;
 
 import java.io.File;
 import java.util.Map;
+import java.util.Optional;
 
 class TransformingAsyncArtifactListener implements ResolvedArtifactSet.AsyncArtifactListener {
-    private final Map<ResolvableArtifact, TransformArtifactOperation> artifactResults;
-    private final Map<File, TransformFileOperation> fileResults;
+    private final Map<ComponentArtifactIdentifier, TransformationResult> artifactResults;
+    private final ExecutionGraphDependenciesResolver dependenciesResolver;
+    private final TransformationNodeRegistry transformationNodeRegistry;
     private final BuildOperationQueue<RunnableBuildOperation> actions;
-    private final ResolvedArtifactSet.AsyncArtifactListener delegate;
-    private final ArtifactTransformer transform;
+    private final Transformation transformation;
 
-    TransformingAsyncArtifactListener(ArtifactTransformer transform, ResolvedArtifactSet.AsyncArtifactListener delegate, BuildOperationQueue<RunnableBuildOperation> actions, Map<ResolvableArtifact, TransformArtifactOperation> artifactResults, Map<File, TransformFileOperation> fileResults) {
+    TransformingAsyncArtifactListener(
+        Transformation transformation,
+        BuildOperationQueue<RunnableBuildOperation> actions,
+        Map<ComponentArtifactIdentifier, TransformationResult> artifactResults,
+        ExecutionGraphDependenciesResolver dependenciesResolver,
+        TransformationNodeRegistry transformationNodeRegistry
+    ) {
         this.artifactResults = artifactResults;
         this.actions = actions;
-        this.transform = transform;
-        this.delegate = delegate;
-        this.fileResults = fileResults;
+        this.transformation = transformation;
+        this.dependenciesResolver = dependenciesResolver;
+        this.transformationNodeRegistry = transformationNodeRegistry;
     }
 
     @Override
     public void artifactAvailable(ResolvableArtifact artifact) {
-        TransformArtifactOperation operation = new TransformArtifactOperation(artifact, transform);
-        artifactResults.put(artifact, operation);
-        if (transform.hasCachedResult(artifact.getFile())) {
-            operation.run(null);
+        ComponentArtifactIdentifier artifactId = artifact.getId();
+        Optional<TransformationNode> node = transformationNodeRegistry.getIfExecuted(artifactId, transformation);
+        if (node.isPresent()) {
+            artifactResults.put(artifactId, new PrecomputedTransformationResult(node.get().getTransformedSubject()));
         } else {
-            actions.add(operation);
+            File file = artifact.getFile();
+            TransformationSubject initialSubject = TransformationSubject.initial(artifactId, file);
+            TransformationResult result = createTransformationResult(initialSubject);
+            artifactResults.put(artifactId, result);
         }
+    }
+
+    @Override
+    public FileCollectionStructureVisitor.VisitType prepareForVisit(FileCollectionInternal.Source source) {
+        // Visit everything
+        return FileCollectionStructureVisitor.VisitType.Visit;
     }
 
     @Override
@@ -56,19 +75,14 @@ class TransformingAsyncArtifactListener implements ResolvedArtifactSet.AsyncArti
         return true;
     }
 
-    @Override
-    public boolean includeFileDependencies() {
-        return delegate.includeFileDependencies();
-    }
-
-    @Override
-    public void fileAvailable(File file) {
-        TransformFileOperation operation = new TransformFileOperation(file, transform);
-        fileResults.put(file, operation);
-        if (transform.hasCachedResult(file)) {
-            operation.run(null);
-        } else {
-            actions.add(operation);
-        }
+    private TransformationResult createTransformationResult(TransformationSubject initialSubject) {
+        CacheableInvocation<TransformationSubject> invocation = transformation.createInvocation(initialSubject, dependenciesResolver, null);
+        return invocation.getCachedResult()
+            .<TransformationResult>map(PrecomputedTransformationResult::new)
+            .orElseGet(() -> {
+                TransformationOperation operation = new TransformationOperation(invocation, "Transform " + initialSubject.getDisplayName() + " with " + transformation.getDisplayName());
+                actions.add(operation);
+                return operation;
+            });
     }
 }

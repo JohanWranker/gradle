@@ -16,14 +16,13 @@
 
 package org.gradle.api.tasks.wrapper;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.io.ByteStreams;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
-import org.gradle.api.Incubating;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.api.internal.file.FileLookup;
 import org.gradle.api.internal.file.FileResolver;
-import org.gradle.api.internal.file.archive.ZipCopyAction;
 import org.gradle.api.internal.plugins.StartScriptGenerator;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Optional;
@@ -31,8 +30,6 @@ import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.options.Option;
 import org.gradle.api.tasks.options.OptionValues;
-import org.gradle.internal.IoActions;
-import org.gradle.internal.UncheckedException;
 import org.gradle.internal.util.PropertiesUtils;
 import org.gradle.util.DistributionLocator;
 import org.gradle.util.GradleVersion;
@@ -41,19 +38,18 @@ import org.gradle.wrapper.GradleWrapperMain;
 import org.gradle.wrapper.Install;
 import org.gradle.wrapper.WrapperExecutor;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.io.OutputStream;
+import java.net.URL;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
 
 /**
  * <p>Generates scripts (for *nix and windows) which allow you to build your project with Gradle, without having to
@@ -134,43 +130,21 @@ public class Wrapper extends DefaultTask {
         generator.setExitEnvironmentVar("GRADLE_EXIT_CONSOLE");
         generator.setAppNameSystemProperty("org.gradle.appname");
         generator.setScriptRelPath(unixScript.getName());
+        generator.setDefaultJvmOpts(ImmutableList.of("-Xmx64m", "-Xms64m"));
         generator.generateUnixScript(unixScript);
         generator.generateWindowsScript(getBatchScript());
     }
 
     private void writeWrapperTo(File destination) {
-        InputStream gradleWrapperJar = Wrapper.class.getResourceAsStream("/gradle-wrapper.jar");
-        if (gradleWrapperJar == null) {
+        URL jarFileSource = Wrapper.class.getResource("/gradle-wrapper.jar");
+        if (jarFileSource == null) {
             throw new GradleException("Cannot locate wrapper JAR resource.");
         }
-        ZipInputStream zipInputStream = null;
-        ZipOutputStream zipOutputStream = null;
-        try {
-            zipInputStream = new ZipInputStream(gradleWrapperJar);
-            zipOutputStream = new ZipOutputStream(new FileOutputStream(destination));
-            for (ZipEntry entry = zipInputStream.getNextEntry(); entry != null; entry = zipInputStream.getNextEntry()) {
-                zipOutputStream.putNextEntry(entry);
-                if (!entry.isDirectory()) {
-                    ByteStreams.copy(zipInputStream, zipOutputStream);
-                }
-                zipOutputStream.closeEntry();
-            }
-            addBuildReceipt(zipOutputStream);
+        try (InputStream in = jarFileSource.openStream(); OutputStream out = new FileOutputStream(destination)) {
+            ByteStreams.copy(in, out);
         } catch (IOException e) {
-            throw UncheckedException.throwAsUncheckedException(e);
-        } finally {
-            IoActions.closeQuietly(zipInputStream);
-            IoActions.closeQuietly(zipOutputStream);
+            throw new UncheckedIOException("Failed to write wrapper JAR to " + destination, e);
         }
-    }
-
-    private void addBuildReceipt(ZipOutputStream zipOutputStream) throws IOException {
-        ZipEntry buildReceipt = new ZipEntry("build-receipt.properties");
-        buildReceipt.setTime(ZipCopyAction.CONSTANT_TIME_FOR_ZIP_ENTRIES);
-        zipOutputStream.putNextEntry(buildReceipt);
-        String contents = "versionNumber=" + GradleVersion.current().getVersion();
-        zipOutputStream.write(contents.getBytes(StandardCharsets.ISO_8859_1));
-        zipOutputStream.closeEntry();
     }
 
     private void writeProperties(File propertiesFileDestination) {
@@ -254,7 +228,7 @@ public class Wrapper extends DefaultTask {
     public File getPropertiesFile() {
         File jarFileDestination = getJarFile();
         return new File(jarFileDestination.getParentFile(), jarFileDestination.getName().replaceAll("\\.jar$",
-                ".properties"));
+            ".properties"));
     }
 
     /**
@@ -356,7 +330,7 @@ public class Wrapper extends DefaultTask {
      *
      * <p>If {@link #getGradleVersion()} is not set, will return null.
      *
-     * <p>The wrapper downloads a certain distribution only once and caches it. If your distribution base is the
+     * <p>The wrapper downloads a certain distribution and caches it. If your distribution base is the
      * project, you might submit the distribution to your version control system. That way no download is necessary at
      * all. This might be in particular interesting, if you provide a custom gradle snapshot to the wrapper, because you
      * don't need to provide a download server then.
@@ -377,9 +351,9 @@ public class Wrapper extends DefaultTask {
      *
      * @since 4.5
      */
-    @Incubating
-    @Input
+    @Nullable
     @Optional
+    @Input
     public String getDistributionSha256Sum() {
         return distributionSha256Sum;
     }
@@ -395,9 +369,8 @@ public class Wrapper extends DefaultTask {
      *
      * @since 4.5
      */
-    @Incubating
     @Option(option = "gradle-distribution-sha256-sum", description = "The SHA-256 hash sum of the gradle distribution.")
-    public void setDistributionSha256Sum(String distributionSha256Sum) {
+    public void setDistributionSha256Sum(@Nullable String distributionSha256Sum) {
         this.distributionSha256Sum = distributionSha256Sum;
     }
 

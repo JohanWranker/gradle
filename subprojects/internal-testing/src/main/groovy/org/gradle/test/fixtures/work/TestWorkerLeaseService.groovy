@@ -16,17 +16,27 @@
 
 package org.gradle.test.fixtures.work
 
+import org.gradle.internal.Factory
 import org.gradle.internal.resources.ResourceLock
 import org.gradle.internal.work.WorkerLeaseRegistry
 import org.gradle.internal.work.WorkerLeaseService
-
-import java.util.concurrent.Callable
+import org.gradle.util.Path
 
 
 class TestWorkerLeaseService implements WorkerLeaseService {
     @Override
-    ResourceLock getProjectLock(String gradlePath, String projectPath) {
+    ResourceLock getProjectLock(Path buildIdentityPath, Path projectPath) {
         return null
+    }
+
+    @Override
+    Collection<? extends ResourceLock> getCurrentProjectLocks() {
+        return null
+    }
+
+    @Override
+    void releaseCurrentProjectLocks() {
+
     }
 
     @Override
@@ -54,7 +64,7 @@ class TestWorkerLeaseService implements WorkerLeaseService {
     }
 
     @Override
-    def <T> T withoutProjectLock(Callable<T> action) {
+    def <T> T withoutProjectLock(Factory<T> action) {
         return action.call()
     }
 
@@ -64,8 +74,8 @@ class TestWorkerLeaseService implements WorkerLeaseService {
     }
 
     @Override
-    def <T> T withLocks(Iterable<? extends ResourceLock> locks, Callable<T> action) {
-        return action.call()
+    def <T> T withLocks(Iterable<? extends ResourceLock> locks, Factory<T> factory) {
+        return factory.create()
     }
 
     @Override
@@ -73,9 +83,10 @@ class TestWorkerLeaseService implements WorkerLeaseService {
         action.run()
     }
 
+
     @Override
-    def <T> T withoutLocks(Iterable<? extends ResourceLock> locks, Callable<T> action) {
-        return action.call()
+    def <T> T withoutLocks(Iterable<? extends ResourceLock> locks, Factory<T> factory) {
+        return factory.create()
     }
 
     @Override

@@ -17,6 +17,7 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.result
 
 import org.gradle.api.artifacts.result.ComponentSelectionReason
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.internal.component.external.model.DefaultModuleComponentSelector
 import org.gradle.internal.resolve.ModuleVersionResolveException
@@ -33,33 +34,37 @@ class CachingDependencyResultFactoryTest extends Specification {
     def "creates and caches resolved dependencies"() {
         def fromModule = newModule('from')
         def selectedModule = newModule('selected')
+        def variant = newVariant("foo")
 
         when:
-        def dep = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule)
-        def same = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule)
+        def dep = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule, variant, false)
+        def same = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule, variant, false)
 
-        def differentRequested = factory.createResolvedDependency(selector('xxx'), fromModule, selectedModule)
-        def differentFrom = factory.createResolvedDependency(selector('requested'), newModule('xxx'), selectedModule)
-        def differentSelected = factory.createResolvedDependency(selector('requested'), fromModule, newModule('xxx'))
+        def differentRequested = factory.createResolvedDependency(selector('xxx'), fromModule, selectedModule, variant, false)
+        def differentFrom = factory.createResolvedDependency(selector('requested'), newModule('xxx'), selectedModule, variant, false)
+        def differentSelected = factory.createResolvedDependency(selector('requested'), fromModule, newModule('xxx'), variant, false)
+        def differentConstraint = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule, variant, true)
 
         then:
         dep.is(same)
         !dep.is(differentFrom)
         !dep.is(differentRequested)
         !dep.is(differentSelected)
+        !dep.is(differentConstraint)
     }
 
     def "creates and caches resolved dependencies with attributes"() {
         def fromModule = newModule('from')
         def selectedModule = newModule('selected', 'a', '1', selectedByRule(), newVariant('custom', [attr1: 'foo', attr2: 'bar']))
+        def variant = newVariant("foo")
 
         when:
-        def dep = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule)
-        def same = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule)
+        def dep = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule, variant, false)
+        def same = factory.createResolvedDependency(selector('requested'), fromModule, selectedModule, variant, false)
 
-        def differentRequested = factory.createResolvedDependency(selector('xxx'), fromModule, selectedModule)
-        def differentFrom = factory.createResolvedDependency(selector('requested'), newModule('xxx'), selectedModule)
-        def differentSelected = factory.createResolvedDependency(selector('requested'), fromModule, newModule('xxx'))
+        def differentRequested = factory.createResolvedDependency(selector('xxx'), fromModule, selectedModule, variant, false)
+        def differentFrom = factory.createResolvedDependency(selector('requested'), newModule('xxx'), selectedModule, variant, false)
+        def differentSelected = factory.createResolvedDependency(selector('requested'), fromModule, newModule('xxx'), variant, false)
 
         then:
         dep.is(same)
@@ -71,31 +76,34 @@ class CachingDependencyResultFactoryTest extends Specification {
     def "creates and caches unresolved dependencies"() {
         def fromModule = newModule('from')
         def selectedModule = Mock(ComponentSelectionReason)
+        org.gradle.internal.Factory<String> broken = { " foo" }
 
         when:
-        def dep = factory.createUnresolvedDependency(selector('requested'), fromModule, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), "foo"))
-        def same = factory.createUnresolvedDependency(selector('requested'), fromModule, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), "foo"))
+        def dep = factory.createUnresolvedDependency(selector('requested'), fromModule, false, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), broken))
+        def same = factory.createUnresolvedDependency(selector('requested'), fromModule, false, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), broken))
 
-        def differentRequested = factory.createUnresolvedDependency(selector('xxx'), fromModule, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('xxx'), "foo"))
-        def differentFrom = factory.createUnresolvedDependency(selector('requested'), newModule('xxx'), selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), "foo"))
-        def differentFailure = factory.createUnresolvedDependency(selector('requested'), fromModule, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), "foo"))
+        def differentRequested = factory.createUnresolvedDependency(selector('xxx'), fromModule, false, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('xxx'), broken))
+        def differentFrom = factory.createUnresolvedDependency(selector('requested'), newModule('xxx'), false, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), broken))
+        def differentConstraint = factory.createUnresolvedDependency(selector('requested'), fromModule, true, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), broken))
+        def differentFailure = factory.createUnresolvedDependency(selector('requested'), fromModule, false, selectedModule, new ModuleVersionResolveException(moduleVersionSelector('requested'), broken))
 
         then:
         dep.is(same)
         !dep.is(differentFrom)
         !dep.is(differentRequested)
+        !dep.is(differentConstraint)
         dep.is(differentFailure) //the same dependency edge cannot have different failures
     }
 
-    def selector(String group='a', String module='a', String version='1') {
-        DefaultModuleComponentSelector.newSelector(group, module, new DefaultMutableVersionConstraint(version))
+    def selector(String group = 'a', String module = 'a', String version = '1') {
+        DefaultModuleComponentSelector.newSelector(DefaultModuleIdentifier.newId(group, module), new DefaultMutableVersionConstraint(version))
     }
 
-    def moduleVersionSelector(String group='a', String module='a', String version='1') {
-        newSelector(group, module, new DefaultMutableVersionConstraint(version))
+    def moduleVersionSelector(String group = 'a', String module = 'a', String version = '1') {
+        newSelector(DefaultModuleIdentifier.newId(group, module), version)
     }
 
     private static ComponentSelectionReason selectedByRule() {
-        VersionSelectionReasons.of([VersionSelectionReasons.SELECTED_BY_RULE])
+        ComponentSelectionReasons.of(ComponentSelectionReasons.SELECTED_BY_RULE)
     }
 }

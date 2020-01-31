@@ -16,12 +16,11 @@
 
 package org.gradle.api.publish.ivy
 
-import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
-import spock.lang.IgnoreIf
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.test.fixtures.ivy.IvyDescriptor
 import spock.lang.Unroll
 
 import javax.xml.namespace.QName
-import org.gradle.test.fixtures.ivy.IvyDescriptor
 
 class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishIntegTest {
 
@@ -52,13 +51,13 @@ class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishInteg
         """
     }
 
-    @IgnoreIf({GradleContextualExecuter.parallel})
+    @ToBeFixedForInstantExecution
     def "can customize descriptor xml during publication"() {
         when:
         succeeds 'publish'
 
         then:
-        ":jar" in executedTasks
+        executed(":jar")
 
         and:
         module.parsedIvy.revision == "2"
@@ -71,6 +70,18 @@ class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishInteg
                         descriptor {
                             status "custom-status"
                             branch "custom-branch"
+                            license {
+                                name = 'The Apache License, Version 2.0'
+                                url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                            }
+                            author {
+                                name = 'Jane Doe'
+                                url = 'http://example.com/users/jane'
+                            }
+                            description {
+                                text = 'A concise description of my library'
+                                homepage = 'http://www.example.com/library'
+                            }
                             extraInfo 'http://my.extra.info1', 'foo', 'fooValue'
                             extraInfo 'http://my.extra.info2', 'bar', 'barValue'
                             withXml {
@@ -83,19 +94,29 @@ class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishInteg
         """
         succeeds 'publish'
 
-
         then:
-        ":jar" in skippedTasks
+        skipped(":jar")
 
         and:
-        module.parsedIvy.resolver == "test"
-        module.parsedIvy.status == "custom-status"
-        module.parsedIvy.branch == "custom-branch"
-        module.parsedIvy.extraInfo.size() == 2
-        module.parsedIvy.extraInfo[new QName('http://my.extra.info1', 'foo')] == 'fooValue'
-        module.parsedIvy.extraInfo[new QName('http://my.extra.info2', 'bar')] == 'barValue'
+        with (module.parsedIvy) {
+            resolver == "test"
+            status == "custom-status"
+            branch == "custom-branch"
+            licenses.size() == 1
+            licenses[0].@name == 'The Apache License, Version 2.0'
+            licenses[0].@url == 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+            authors.size() == 1
+            authors[0].@name == 'Jane Doe'
+            authors[0].@url == 'http://example.com/users/jane'
+            description.text() == "A concise description of my library"
+            description.@homepage == 'http://www.example.com/library'
+            extraInfo.size() == 2
+            extraInfo[new QName('http://my.extra.info1', 'foo')] == 'fooValue'
+            extraInfo[new QName('http://my.extra.info2', 'bar')] == 'barValue'
+        }
     }
 
+    @ToBeFixedForInstantExecution
     def "can generate ivy.xml without publishing"() {
         given:
         def moduleName = module.module
@@ -113,10 +134,11 @@ class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishInteg
         then:
         file('generated-ivy.xml').assertIsFile()
         IvyDescriptor ivy = new IvyDescriptor(file('generated-ivy.xml'))
-        ivy.expectArtifact(moduleName).hasAttributes("jar", "jar", ["compile"])
+        ivy.expectArtifact(moduleName).hasAttributes("jar", "jar", ["compile", "runtime"])
         module.ivyFile.assertDoesNotExist()
     }
 
+    @ToBeFixedForInstantExecution
     def "produces sensible error when withXML fails"() {
         when:
         buildFile << """
@@ -140,6 +162,7 @@ class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishInteg
         failure.assertHasCause("No such property: foo for class: groovy.util.Node")
     }
 
+    @ToBeFixedForInstantExecution
     def "produces sensible error when withXML modifies publication coordinates"() {
         when:
         buildFile << """
@@ -179,8 +202,7 @@ class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishInteg
         fails 'publish'
 
         then:
-        failure.assertHasDescription("A problem occurred configuring root project 'publish'.")
-        failure.assertHasCause("Exception thrown while executing model rule: PublishingPlugin.Rules#publishing")
+        failure.assertHasDescription("A problem occurred evaluating root project 'publish'.")
         failure.assertHasCause("Invalid ivy extra info element name: '${name}'")
 
         where:
@@ -209,7 +231,7 @@ class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishInteg
         fails 'publish'
 
         then:
-        failure.assertHasDescription("A problem occurred configuring root project 'publish'.")
+        failure.assertHasDescription("A problem occurred evaluating root project 'publish'.")
         failure.assertHasFileName("Build file '${buildFile}'")
         failure.assertHasLineNumber(23)
         failure.assertHasCause("Cannot add an extra info element with null ")
@@ -218,5 +240,31 @@ class IvyPublishDescriptorCustomizationIntegTest extends AbstractIvyPublishInteg
         namespace                | name
         null                     | "'foo'"
         "'http://my.extra.info'" | null
+    }
+
+    @ToBeFixedForInstantExecution
+    def "withXml should not loose Gradle metadata marker"() {
+        buildFile << """
+            publishing {
+                repositories {
+                    ivy { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    ivy {
+                        descriptor.withXml {
+                           asNode().info[0].@resolver = 'wonderland'
+                        }
+                    }
+                }
+            }
+        """
+        when:
+        succeeds 'publish'
+
+        then:
+        module.assertPublished()
+        module.hasGradleMetadataRedirectionMarker()
+        def parsedIvy = module.parsedIvy
+        parsedIvy.resolver == 'wonderland'
     }
 }

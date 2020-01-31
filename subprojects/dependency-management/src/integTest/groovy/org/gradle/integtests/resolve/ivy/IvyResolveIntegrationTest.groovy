@@ -16,6 +16,8 @@
 package org.gradle.integtests.resolve.ivy
 
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
 
 class IvyResolveIntegrationTest extends AbstractHttpDependencyResolutionTest {
     def "a dependency on an ivy module includes all artifacts and transitive dependencies of referenced configuration"() {
@@ -82,6 +84,7 @@ task check {
         succeeds "check"
     }
 
+    @ToBeFixedForInstantExecution
     def "dependency includes only the artifacts of the default configuration"() {
         given:
         server.start()
@@ -147,13 +150,21 @@ task check {
         succeeds "check"
     }
 
-    def "dependency that references a classifier can resolve module with no metadata"() {
+    def "dependency that references a classifier can resolve module with no metadata when artifact metadata source is configured"() {
         given:
         ivyRepo.module("org.gradle", "test", "1.45").withNoMetaData().artifact(classifier: "classifier").publish()
 
         and:
         buildFile << """
-repositories { ivy { url "${ivyRepo.uri}" } }
+repositories { 
+    ivy { 
+        url "${ivyRepo.uri}" 
+        metadataSources {
+            ivyDescriptor()
+            artifact()
+        }
+    }
+}
 configurations { compile }
 dependencies {
     compile "org.gradle:test:1.45:classifier"
@@ -218,9 +229,13 @@ task check {
 
         and:
         buildFile << """
-repositories {
-    ivy {
-        url "${ivyHttpRepo.uri}"
+repositories { 
+    ivy { 
+        url "${ivyHttpRepo.uri}" 
+        metadataSources {
+            ivyDescriptor()
+            artifact()
+        }
     }
 }
 configurations { compile }
@@ -286,5 +301,72 @@ task check {
 
         expect:
         succeeds "check"
+    }
+
+    def "a constraint should not prevent the selection of an explicit Ivy configuration (both direct and transitive)"() {
+        settingsFile << """
+            rootProject.name = 'test'
+        """
+        def main = ivyRepo.module("org", "foo")
+            .configuration("bob")
+            .configuration("alice")
+            .dependsOn(organisation:"org", module:"bar", revision:"1.0", conf: 'alice->extra')
+        main.configurations.remove('default')
+        main.publish()
+
+        def dep = ivyRepo.module("org", "bar", "1.0")
+            .configuration("extra")
+        dep.configurations.remove("default")
+        dep.publish()
+
+        given:
+        buildFile << """
+            group = 'com.acme'
+            version = '1.9'
+
+            repositories { ivy { url "${ivyRepo.uri}" } }
+
+            apply plugin: 'java-library'
+            
+            dependencies {
+                constraints {
+                    api("org:foo") {
+                        version {
+                            strictly '1.0'
+                        }
+                    }
+                    api("org:bar") {
+                        version {
+                            strictly '1.0'
+                        }
+                    }
+                }
+                dependencies {
+                    implementation(group:"org", name:"foo", configuration:"alice")
+                }
+            }
+        """
+        def resolve = new ResolveTestFixture(buildFile, "compileClasspath")
+        resolve.prepare()
+
+        when:
+        run ':checkDeps'
+
+        then:
+        resolve.expectGraph {
+            root(":", "com.acme:test:1.9") {
+                edge('org:foo', 'org:foo:1.0') {
+                    configuration('alice')
+                    byConstraint()
+                    module('org:bar:1.0') {
+                        byAncestor()
+                        byConstraint()
+                        configuration('extra')
+                    }
+                }
+                constraint("org:foo:{strictly 1.0}", "org:foo:1.0")
+                constraint("org:bar:{strictly 1.0}","org:bar:1.0")
+            }
+        }
     }
 }

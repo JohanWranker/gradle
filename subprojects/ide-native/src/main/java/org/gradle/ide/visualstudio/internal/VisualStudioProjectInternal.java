@@ -16,15 +16,16 @@
 
 package org.gradle.ide.visualstudio.internal;
 
-import org.gradle.api.artifacts.PublishArtifact;
+import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.Internal;
 import org.gradle.ide.visualstudio.VisualStudioProject;
+import org.gradle.plugins.ide.internal.IdeProjectMetadata;
 
 public interface VisualStudioProjectInternal extends VisualStudioProject {
-    String ARTIFACT_TYPE = "visualStudioProject";
-
     /**
      * Returns the name of the component associated with this project
      */
+    @Input
     String getComponentName();
 
     /**
@@ -33,7 +34,8 @@ public interface VisualStudioProjectInternal extends VisualStudioProject {
     void builtBy(Object... tasks);
 
     /**
-     * Returns a {@link org.gradle.api.artifacts.PublishArtifact} associated with this project
+     * Returns a {@link IdeProjectMetadata} view of this project
      */
-    PublishArtifact getPublishArtifact();
+    @Internal
+    IdeProjectMetadata getPublishArtifact();
 }

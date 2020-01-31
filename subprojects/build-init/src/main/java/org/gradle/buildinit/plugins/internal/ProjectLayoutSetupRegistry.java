@@ -15,42 +15,91 @@
  */
 package org.gradle.buildinit.plugins.internal;
 
+import com.google.common.collect.ImmutableList;
 import org.gradle.api.GradleException;
-import org.gradle.api.logging.Logger;
-import org.gradle.api.logging.Logging;
-import org.gradle.util.CollectionUtils;
+import org.gradle.buildinit.plugins.internal.modifiers.ComponentType;
+import org.gradle.buildinit.plugins.internal.modifiers.Language;
+import org.gradle.internal.logging.text.TreeFormatter;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class ProjectLayoutSetupRegistry {
-    private final static Logger LOGGER = Logging.getLogger(ProjectLayoutSetupRegistry.class);
-    private final Map<String, ProjectInitDescriptor> registeredProjectDescriptors = new HashMap<String, ProjectInitDescriptor>();
+    private final Map<String, BuildInitializer> registeredProjectDescriptors = new TreeMap<String, BuildInitializer>();
+    private final BuildInitializer defaultType;
+    private final BuildConverter converter;
 
-    public void add(final String descriptorID, ProjectInitDescriptor descriptor) {
-        if (registeredProjectDescriptors.containsKey(descriptorID)) {
-            throw new GradleException(String.format("ProjectDescriptor with ID '%s' already registered.", descriptorID));
-        }
-
-        registeredProjectDescriptors.put(descriptorID, descriptor);
-        LOGGER.debug("registered setupDescriptor {}", descriptorID);
+    public ProjectLayoutSetupRegistry(BuildInitializer defaultType, BuildConverter converter) {
+        this.defaultType = defaultType;
+        this.converter = converter;
+        add(defaultType);
+        add(converter);
     }
 
-    public ProjectInitDescriptor get(String type) {
+    public void add(BuildInitializer descriptor) {
+        if (registeredProjectDescriptors.containsKey(descriptor.getId())) {
+            throw new GradleException(String.format("ProjectDescriptor with ID '%s' already registered.", descriptor.getId()));
+        }
+
+        registeredProjectDescriptors.put(descriptor.getId(), descriptor);
+    }
+
+    public List<ComponentType> getComponentTypes() {
+        return ImmutableList.copyOf(ComponentType.values());
+    }
+
+    // This should turn into a set of converters at some point
+    public BuildConverter getBuildConverter() {
+        return converter;
+    }
+
+    public BuildInitializer getDefault() {
+        return defaultType;
+    }
+
+    /**
+     * Locates the {@link BuildInitializer} with the given type.
+     */
+    public BuildInitializer get(String type) {
+        if (!registeredProjectDescriptors.containsKey(type)) {
+            TreeFormatter formatter = new TreeFormatter();
+            formatter.node("The requested build type '" + type + "' is not supported. Supported types");
+            formatter.startChildren();
+            for (String candidate : getAllTypes()) {
+                formatter.node("'" + candidate + "'");
+            }
+            formatter.endChildren();
+            throw new GradleException(formatter.toString());
+        }
         return registeredProjectDescriptors.get(type);
     }
 
-    public List<ProjectInitDescriptor> getAll() {
-        return CollectionUtils.toList(registeredProjectDescriptors.values());
+    public List<Language> getLanguagesFor(ComponentType componentType) {
+        List<Language> result = new ArrayList<>(registeredProjectDescriptors.size());
+        for (BuildInitializer initializer : registeredProjectDescriptors.values()) {
+            if (initializer != converter && initializer.getComponentType().equals(componentType)) {
+                result.add(initializer.getLanguage());
+            }
+        }
+        return result;
     }
 
-    public List<String> getSupportedTypes() {
-        return CollectionUtils.sort(registeredProjectDescriptors.keySet());
+    public BuildInitializer get(ComponentType componentType, Language language) {
+        for (BuildInitializer initializer : registeredProjectDescriptors.values()) {
+            if (initializer != converter && initializer.getComponentType().equals(componentType) && initializer.getLanguage().equals(language)) {
+                return initializer;
+            }
+        }
+        throw new IllegalArgumentException("No initializer with component type " + componentType + " and language " + language);
     }
 
-    public boolean supports(String type) {
-        return get(type) != null;
+    public List<String> getAllTypes() {
+        List<String> result = new ArrayList<String>(registeredProjectDescriptors.size());
+        for (BuildInitializer initDescriptor : registeredProjectDescriptors.values()) {
+            result.add(initDescriptor.getId());
+        }
+        return result;
     }
-
 }

@@ -16,7 +16,12 @@
 
 package org.gradle.nativeplatform.test.cpp.internal
 
+
 import org.gradle.language.cpp.CppPlatform
+import org.gradle.language.cpp.internal.NativeVariantIdentity
+import org.gradle.nativeplatform.MachineArchitecture
+import org.gradle.nativeplatform.OperatingSystemFamily
+import org.gradle.nativeplatform.TargetMachine
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
@@ -28,19 +33,36 @@ class DefaultCppTestSuiteTest extends Specification {
     @Rule
     TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     def project = TestUtil.createRootProject(tmpDir.testDirectory)
+    def testSuite = project.objects.newInstance(DefaultCppTestSuite, "test")
+
+    def "has display name"() {
+        expect:
+        testSuite.displayName.displayName == "C++ test suite 'test'"
+        testSuite.toString() == "C++ test suite 'test'"
+    }
 
     def "has implementation dependencies"() {
-        def testSuite = new DefaultCppTestSuite("test", project.objects, project)
-
         expect:
         testSuite.implementationDependencies == project.configurations['testImplementation']
     }
 
     def "can add executable"() {
-        def testSuite = new DefaultCppTestSuite("test", project.objects, project)
-
         expect:
-        def exe = testSuite.addExecutable("exe", Stub(CppPlatform), Stub(NativeToolChainInternal), Stub(PlatformToolProvider))
-        exe.name == 'testExe'
+        def exe = testSuite.addExecutable("Foo", identity, Stub(CppPlatform), Stub(NativeToolChainInternal), Stub(PlatformToolProvider))
+        exe.name == 'testFooExecutable'
+    }
+
+    private NativeVariantIdentity getIdentity() {
+        return Stub(NativeVariantIdentity) {
+            getTargetMachine() >> targetMachine(OperatingSystemFamily.WINDOWS, MachineArchitecture.X86_64)
+        }
+    }
+
+    private TargetMachine targetMachine(String os, String arch) {
+        def objectFactory = TestUtil.objectFactory()
+        return Stub(TargetMachine) {
+            getOperatingSystemFamily() >> objectFactory.named(OperatingSystemFamily.class, os)
+            getArchitecture() >> objectFactory.named(MachineArchitecture.class, arch)
+        }
     }
 }

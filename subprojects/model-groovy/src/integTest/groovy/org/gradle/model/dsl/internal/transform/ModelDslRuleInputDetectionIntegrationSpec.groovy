@@ -17,9 +17,10 @@
 package org.gradle.model.dsl.internal.transform
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Unroll
 
-import static org.hamcrest.Matchers.containsString
+import static org.hamcrest.CoreMatchers.containsString
 
 class ModelDslRuleInputDetectionIntegrationSpec extends AbstractIntegrationSpec {
 
@@ -144,6 +145,7 @@ class ModelDslRuleInputDetectionIntegrationSpec extends AbstractIntegrationSpec 
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "input reference can be used as expression statement - #syntax"() {
         when:
         buildScript """
@@ -165,7 +167,7 @@ class ModelDslRuleInputDetectionIntegrationSpec extends AbstractIntegrationSpec 
 
         then:
         succeeds "tasks"
-        result.output.contains '''thing configured
+        outputContains '''thing configured
 tasks configured
 '''
 
@@ -205,6 +207,7 @@ tasks configured
         ]
     }
 
+    @ToBeFixedForInstantExecution
     def "path for dollar var expression ends with first non-property reference"() {
         when:
         buildScript '''
@@ -229,7 +232,7 @@ tasks configured
 
         then:
         succeeds "echo"
-        output.contains "values: [true, false, false]"
+        outputContains "values: [true, false, false]"
     }
 
     @Unroll
@@ -263,6 +266,7 @@ tasks configured
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "dollar method is only detected with no explicit receiver - #code"() {
         when:
         buildScript """
@@ -296,6 +300,7 @@ tasks configured
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "dollar var is only detected with no explicit receiver - #code"() {
         when:
         buildScript """
@@ -351,6 +356,7 @@ tasks configured
             }
 
             class PrintTask extends DefaultTask {
+                @Internal
                 String message
 
                 @TaskAction
@@ -370,7 +376,7 @@ tasks configured
 
         then:
         succeeds "printMessage"
-        output.contains("message: [foo]")
+        outputContains("message: [foo]")
 
         where:
         code << [
@@ -422,6 +428,7 @@ cl.call()
         failure.assertThatCause(containsString("Model element name ' bar' has illegal first character ' ' (names must start with an ASCII letter or underscore)."))
     }
 
+    @ToBeFixedForInstantExecution
     def "location and suggestions are provided for unbound rule subject specified using a name"() {
         given:
         buildScript '''
@@ -470,6 +477,7 @@ cl.call()
 ''')
     }
 
+    @ToBeFixedForInstantExecution
     def "location and suggestions are provided for unbound rule inputs specified using a name"() {
         given:
         buildScript '''
@@ -513,6 +521,7 @@ cl.call()
     }
 
     // This is temporary. Will be closed once more progress on DSL has been made
+    @ToBeFixedForInstantExecution
     def "can access project and script from rule"() {
         when:
         buildScript """

@@ -18,6 +18,7 @@ package org.gradle.internal.progress
 
 import org.gradle.internal.logging.progress.ProgressLogger
 import org.gradle.internal.logging.progress.ProgressLoggerFactory
+import org.gradle.internal.operations.BuildOperationDescriptor
 
 class NoOpProgressLoggerFactory implements ProgressLoggerFactory {
     ProgressLogger newOperation(String loggerCategory) {
@@ -38,7 +39,6 @@ class NoOpProgressLoggerFactory implements ProgressLoggerFactory {
 
     static class Logger implements ProgressLogger {
         String description
-        String shortDescription
         String loggingHeader
 
         String getDescription() { description }
@@ -48,34 +48,21 @@ class NoOpProgressLoggerFactory implements ProgressLoggerFactory {
             this
         }
 
-        String getShortDescription() { shortDescription }
-
-        ProgressLogger setShortDescription(String description) {
-            this.shortDescription = description
-            this
-        }
-
         String getLoggingHeader() { loggingHeader }
 
-        ProgressLogger setLoggingHeader(String header) {
-            this.loggingHeader = header
+        ProgressLogger setLoggingHeader(String loggingHeader) {
+            this.loggingHeader = loggingHeader
             this
         }
 
-        ProgressLogger start(String description, String shortDescription) {
-            start(description, shortDescription, 0)
-        }
-
-        ProgressLogger start(String description, String shortDescription, int totalProgress) {
+        ProgressLogger start(String description, String status) {
             setDescription(description)
-            setShortDescription(shortDescription)
             started()
             this
         }
 
         void started() {}
         void started(String status) {}
-        void started(String status, int totalProgress) {}
         void progress(String status) {}
         void progress(String status, boolean failing) {}
         void completed() {}

@@ -120,6 +120,10 @@ class MultipleCandidateMatcher<T extends HasAttributes> {
     }
 
     private void findCompatibleCandidates() {
+        if (requested.isEmpty()) {
+            // Avoid iterating on candidates if there's no requested attribute
+            return;
+        }
         for (int c = 0; c < candidates.size(); c++) {
             matchCandidate(c);
         }
@@ -189,15 +193,44 @@ class MultipleCandidateMatcher<T extends HasAttributes> {
         remaining = new BitSet(candidates.size());
         remaining.or(compatible);
 
-        disambiguateWithRequestedAttributes();
+        disambiguateWithRequestedAttributeValues();
         if (remaining.cardinality() > 1) {
             disambiguateWithExtraAttributes();
         }
-
+        if (remaining.cardinality() > 1) {
+            disambiguateWithRequestedAttributeKeys();
+        }
         return remaining.cardinality() == 0 ? getCandidates(compatible) : getCandidates(remaining);
     }
 
-    private void disambiguateWithRequestedAttributes() {
+    private void disambiguateWithRequestedAttributeKeys() {
+        if (requestedAttributes.isEmpty()) {
+            return;
+        }
+        for (Attribute<?> extraAttribute : extraAttributes) {
+            // We consider only extra attributes which are NOT on every candidate:
+            // Because they are EXTRA attributes, we consider that a
+            // candidate which does NOT provide this value is a better match
+            int candidateCount = candidateAttributeSets.length;
+            BitSet any = new BitSet(candidateCount);
+            for (int c = 0; c < candidateCount; c++) {
+                ImmutableAttributes candidateAttributeSet = candidateAttributeSets[c];
+                if (candidateAttributeSet.getAttributes().contains(extraAttribute)) {
+                    any.set(c);
+                }
+            }
+            if (any.cardinality() > 0 && any.cardinality() != candidateCount) {
+                // there is at least one candidate which does NOT provide this attribute
+                remaining.andNot(any);
+                if (remaining.cardinality() == 0) {
+                    // there are no left candidate, do not bother checking other attributes
+                    break;
+                }
+            }
+        }
+    }
+
+    private void disambiguateWithRequestedAttributeValues() {
         for (int a = 0; a < requestedAttributes.size(); a++) {
             disambiguateWithAttribute(a);
             if (remaining.cardinality() == 0) {
@@ -208,18 +241,47 @@ class MultipleCandidateMatcher<T extends HasAttributes> {
 
     private void disambiguateWithAttribute(int a) {
         Set<Object> candidateValues = getCandidateValues(a);
-        if (candidateValues.size() == 1) {
+        if (candidateValues.size() <= 1) {
             return;
         }
 
         Set<Object> matches = schema.disambiguate(getAttribute(a), getRequestedValue(a), candidateValues);
-        removeCandidatesWithValueNotIn(a, matches);
+        if (matches.size() < candidateValues.size()) {
+            removeCandidatesWithValueNotIn(a, matches);
+        }
     }
 
     private Set<Object> getCandidateValues(int a) {
-        Set<Object> candidateValues = Sets.newHashSetWithExpectedSize(compatible.cardinality());
+        // It's often the case that all the candidate values are the same. In this case, we avoid
+        // the creation of a set, and just iterate until we find a different value. Then, only in
+        // this case, we lazily initialize a set and collect all the candidate values.
+        Set<Object> candidateValues = null;
+        Object compatibleValue = null;
+        boolean first = true;
         for (int c = compatible.nextSetBit(0); c >= 0; c = compatible.nextSetBit(c + 1)) {
-            candidateValues.add(getCandidateValue(c, a));
+            Object candidateValue = getCandidateValue(c, a);
+            if (candidateValue == null) {
+                continue;
+            }
+            if (first) {
+                // first match, just record the value. We can't use "null" as the candidate value may be null
+                compatibleValue = candidateValue;
+                first = false;
+            } else if (compatibleValue != candidateValue || candidateValues != null) {
+                // we see a different value, or the set already exists, in which case we initialize
+                // the set if it wasn't done already, and collect all values.
+                if (candidateValues == null) {
+                    candidateValues = Sets.newHashSetWithExpectedSize(compatible.cardinality());
+                    candidateValues.add(compatibleValue);
+                }
+                candidateValues.add(candidateValue);
+            }
+        }
+        if (candidateValues == null) {
+            if (compatibleValue == null) {
+                return Collections.emptySet();
+            }
+            return Collections.singleton(compatibleValue);
         }
         return candidateValues;
     }
@@ -251,19 +313,7 @@ class MultipleCandidateMatcher<T extends HasAttributes> {
      * rules.
      */
     private void collectExtraAttributes() {
-        Set<Attribute<?>> extraAttributes = Sets.newLinkedHashSet();
-        for (ImmutableAttributes attributes : candidateAttributeSets) {
-            extraAttributes.addAll(attributes.keySet());
-        }
-        extraAttributes.removeAll(requested.keySet());
-        this.extraAttributes = extraAttributes.toArray(new Attribute[0]);
-        for (int i = 0; i < this.extraAttributes.length; i++) {
-            Attribute<?> extraAttribute = this.extraAttributes[i];
-            Attribute<?> schemaAttribute = schema.getAttribute(extraAttribute.getName());
-            if (schemaAttribute != null) {
-                this.extraAttributes[i] = schemaAttribute;
-            }
-        }
+        extraAttributes = schema.collectExtraAttributes(candidateAttributeSets, requested);
     }
 
     private List<T> getCandidates(BitSet liveSet) {

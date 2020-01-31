@@ -16,6 +16,7 @@
 
 package org.gradle.launcher.daemon
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.daemon.DaemonClientFixture
 import org.gradle.integtests.fixtures.daemon.DaemonIntegrationSpec
 import org.gradle.launcher.daemon.client.DaemonDisappearedException
@@ -91,6 +92,7 @@ class ProcessCrashHandlingIntegrationTest extends DaemonIntegrationSpec {
      * of the daemon is different than the session id of the client.
      */
     @Requires(TestPrecondition.NOT_WINDOWS)
+    @ToBeFixedForInstantExecution
     def "session id of daemon is different from daemon client"() {
         given:
         withGetSidProject()
@@ -171,7 +173,7 @@ class ProcessCrashHandlingIntegrationTest extends DaemonIntegrationSpec {
         def failure = build.waitForFailure()
 
         then:
-        failure.error.contains("----- Last  20 lines from daemon log file")
+        failure.assertHasErrorOutput("----- Last  20 lines from daemon log file")
         failure.assertHasDescription(DaemonDisappearedException.MESSAGE)
     }
 
@@ -184,8 +186,8 @@ class ProcessCrashHandlingIntegrationTest extends DaemonIntegrationSpec {
         def failure = executer.runWithFailure()
 
         then:
-        failure.error.contains("----- Last  20 lines from daemon log file")
-        failure.error.contains(DaemonMessages.DAEMON_VM_SHUTTING_DOWN)
+        failure.assertHasErrorOutput("----- Last  20 lines from daemon log file")
+        failure.assertHasErrorOutput(DaemonMessages.DAEMON_VM_SHUTTING_DOWN)
         failure.assertHasDescription(DaemonDisappearedException.MESSAGE)
 
         and:
@@ -251,8 +253,11 @@ class ProcessCrashHandlingIntegrationTest extends DaemonIntegrationSpec {
 
                 // We expect AttachConsole to fail with a particular error if the
                 // provided pid is not attached to a console
+                // when pid is not attached to console, GetLastError(pid) returns:
+                // ERROR_GEN_FAILURE on Win7
+                // ERROR_INVALID_HANDLE on Win10
                 if (!AttachConsole(pid)) {
-                    if (GetLastError() == ERROR_GEN_FAILURE) {
+                    if (GetLastError() == ERROR_GEN_FAILURE || GetLastError() == ERROR_INVALID_HANDLE) {
                         printf("none\\n");
                         exit(0);
                     } else {

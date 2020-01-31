@@ -22,18 +22,22 @@ import org.gradle.internal.hash.HashCode;
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 
 public class BaseSerializerFactory {
     public static final Serializer<String> STRING_SERIALIZER = new StringSerializer();
     public static final Serializer<Boolean> BOOLEAN_SERIALIZER = new BooleanSerializer();
     public static final Serializer<Byte> BYTE_SERIALIZER = new ByteSerializer();
+    public static final Serializer<Character> CHAR_SERIALIZER = new CharSerializer();
     public static final Serializer<Short> SHORT_SERIALIZER = new ShortSerializer();
     public static final Serializer<Integer> INTEGER_SERIALIZER = new IntegerSerializer();
     public static final Serializer<Long> LONG_SERIALIZER = new LongSerializer();
     public static final Serializer<Float> FLOAT_SERIALIZER = new FloatSerializer();
     public static final Serializer<Double> DOUBLE_SERIALIZER = new DoubleSerializer();
     public static final Serializer<File> FILE_SERIALIZER = new FileSerializer();
+    public static final Serializer<Path> PATH_SERIALIZER = new PathSerializer();
     public static final Serializer<byte[]> BYTE_ARRAY_SERIALIZER = new ByteArraySerializer();
     public static final Serializer<Map<String, String>> NO_NULL_STRING_MAP_SERIALIZER = new StringMapSerializer();
     public static final Serializer<Throwable> THROWABLE_SERIALIZER = new ThrowableSerializer();
@@ -64,6 +68,9 @@ public class BaseSerializerFactory {
         if (HashCode.class.isAssignableFrom(type)) {
             return (Serializer<T>) HASHCODE_SERIALIZER;
         }
+        if (Path.class.isAssignableFrom(type)) {
+            return (Serializer) PATH_SERIALIZER;
+        }
         return new DefaultSerializer<T>(type.getClassLoader());
     }
 
@@ -74,10 +81,12 @@ public class BaseSerializerFactory {
             this.type = type;
         }
 
+        @Override
         public T read(Decoder decoder) throws Exception {
             return type.getEnumConstants()[decoder.readSmallInt()];
         }
 
+        @Override
         public void write(Encoder encoder, T value) throws Exception {
             encoder.writeSmallInt((byte) value.ordinal());
         }
@@ -99,46 +108,67 @@ public class BaseSerializerFactory {
     }
 
     private static class LongSerializer extends AbstractSerializer<Long> {
+        @Override
         public Long read(Decoder decoder) throws Exception {
             return decoder.readLong();
         }
 
+        @Override
         public void write(Encoder encoder, Long value) throws Exception {
             encoder.writeLong(value);
         }
     }
 
     private static class StringSerializer extends AbstractSerializer<String> {
+        @Override
         public String read(Decoder decoder) throws Exception {
             return decoder.readString();
         }
 
+        @Override
         public void write(Encoder encoder, String value) throws Exception {
             encoder.writeString(value);
         }
     }
 
     private static class FileSerializer extends AbstractSerializer<File> {
+        @Override
         public File read(Decoder decoder) throws Exception {
             return new File(decoder.readString());
         }
 
+        @Override
         public void write(Encoder encoder, File value) throws Exception {
             encoder.writeString(value.getPath());
         }
     }
 
+    private static class PathSerializer extends AbstractSerializer<Path> {
+        @Override
+        public Path read(Decoder decoder) throws Exception {
+            return Paths.get(decoder.readString());
+        }
+
+        @Override
+        public void write(Encoder encoder, Path value) throws Exception {
+            encoder.writeString(value.toString());
+        }
+    }
+
     private static class ByteArraySerializer extends AbstractSerializer<byte[]> {
+        @Override
         public byte[] read(Decoder decoder) throws Exception {
             return decoder.readBinary();
         }
 
+        @Override
         public void write(Encoder encoder, byte[] value) throws Exception {
             encoder.writeBinary(value);
         }
     }
 
     private static class StringMapSerializer extends AbstractSerializer<Map<String, String>> {
+        @Override
         public Map<String, String> read(Decoder decoder) throws Exception {
             int pairs = decoder.readSmallInt();
             ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
@@ -148,6 +178,7 @@ public class BaseSerializerFactory {
             return builder.build();
         }
 
+        @Override
         public void write(Encoder encoder, Map<String, String> value) throws Exception {
             encoder.writeSmallInt(value.size());
             for (Map.Entry<String, String> entry : value.entrySet()) {
@@ -189,6 +220,18 @@ public class BaseSerializerFactory {
 
         @Override
         public void write(Encoder encoder, Short value) throws Exception {
+            encoder.writeInt(value);
+        }
+    }
+
+    private static class CharSerializer extends AbstractSerializer<Character> {
+        @Override
+        public Character read(Decoder decoder) throws Exception {
+            return (char) decoder.readInt();
+        }
+
+        @Override
+        public void write(Encoder encoder, Character value) throws Exception {
             encoder.writeInt(value);
         }
     }
@@ -236,10 +279,12 @@ public class BaseSerializerFactory {
     }
 
     private static class ThrowableSerializer extends AbstractSerializer<Throwable> {
+        @Override
         public Throwable read(Decoder decoder) throws Exception {
             return (Throwable) Message.receive(decoder.getInputStream(), getClass().getClassLoader());
         }
 
+        @Override
         public void write(Encoder encoder, Throwable value) throws Exception {
             Message.send(value, encoder.getOutputStream());
         }

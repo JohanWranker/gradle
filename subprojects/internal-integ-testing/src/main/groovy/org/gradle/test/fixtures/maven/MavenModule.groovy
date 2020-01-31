@@ -18,6 +18,7 @@ package org.gradle.test.fixtures.maven
 import org.gradle.test.fixtures.Module
 import org.gradle.test.fixtures.ModuleArtifact
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.fixtures.gradle.VariantMetadataSpec
 
 interface MavenModule extends Module {
     /**
@@ -42,11 +43,17 @@ interface MavenModule extends Module {
 
     MavenModule withNoPom()
 
+    MavenModule withoutExtraChecksums()
+
+    MavenModule withExtraChecksums()
+
     /**
      * Include the Gradle module metadata file in the published module.
      * @return this
      */
     MavenModule withModuleMetadata()
+
+    MavenModule withoutGradleMetadataRedirection();
 
     MavenModule parent(String group, String artifactId, String version)
 
@@ -75,6 +82,16 @@ interface MavenModule extends Module {
      * Define a variant with attributes. Variants are only published when using {@link #withModuleMetadata()}.
      */
     MavenModule variant(String variant, Map<String, String> attributes)
+
+    /**
+     * Define a variant with attributes. Variants are only published when using {@link #withModuleMetadata()}.
+     */
+    MavenModule variant(String variant, Map<String, String> attributes, @DelegatesTo(value= VariantMetadataSpec, strategy=Closure.DELEGATE_FIRST) Closure<?> variantConfiguration)
+
+    /**
+     * Clears all predefined variants
+     */
+    MavenModule adhocVariants()
 
     String getPublishArtifactVersion()
 
@@ -109,7 +126,7 @@ interface MavenModule extends Module {
     ModuleArtifact getArtifact(Map<String, ?> options)
 
     /**
-     * Returns a file relative to this module, use a relative path.
+     * Returns a file relative to this module, using a relative path.
      */
     ModuleArtifact getArtifact(String relativePath)
 

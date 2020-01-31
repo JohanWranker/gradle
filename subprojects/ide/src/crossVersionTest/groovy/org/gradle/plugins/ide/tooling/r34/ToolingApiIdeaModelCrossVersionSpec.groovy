@@ -75,7 +75,7 @@ class ToolingApiIdeaModelCrossVersionSpec extends ToolingApiSpecification {
     }
 
     @ToolingApiVersion(">=3.4")
-    @TargetGradleVersion(">=1.2 <3.4")
+    @TargetGradleVersion(">=2.6 <3.4")
     def "jdkName property from idea module model is not available in the tooling before 3.4"() {
         when:
         def ideaProject = withConnection { connection -> connection.getModel(IdeaProject) }
@@ -102,8 +102,8 @@ class ToolingApiIdeaModelCrossVersionSpec extends ToolingApiSpecification {
             }
             
             dependencies {
-                compile project(':a')
-                testCompile project(':f')
+                implementation project(':a')
+                testImplementation project(':f')
             }
             
             project(':a') {
@@ -153,8 +153,8 @@ class ToolingApiIdeaModelCrossVersionSpec extends ToolingApiSpecification {
             }
             
             dependencies {
-                compile project(':a')
-                testCompile project(':f')
+                implementation project(':a')
+                testImplementation project(':f')
             }
             
             project(':a') {

@@ -20,6 +20,7 @@ import org.apache.ivy.core.module.descriptor.ModuleDescriptor
 import org.gradle.api.Transformer
 import org.gradle.api.artifacts.ModuleVersionIdentifier
 import org.gradle.api.artifacts.ModuleVersionSelector
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier
 import org.gradle.api.internal.artifacts.ivyservice.IvyUtil
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
@@ -30,8 +31,9 @@ import org.gradle.internal.resolve.result.BuildableComponentResolveResult
 import spock.lang.Specification
 
 class ResolverProviderComponentMetaDataResolverTest extends Specification {
+    final org.gradle.internal.Factory<String> broken = { "broken" }
     final metaData = metaData("1.2")
-    final moduleComponentId = DefaultModuleComponentIdentifier.newId("group", "project", "1.0")
+    final moduleComponentId = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId("group", "project"), "1.0")
     final componentRequestMetaData = Mock(ComponentOverrideMetadata)
 
     final Transformer<ModuleComponentResolveMetadata, RepositoryChainModuleResolution> transformer = Mock(Transformer)
@@ -46,7 +48,7 @@ class ResolverProviderComponentMetaDataResolverTest extends Specification {
 
     ModuleVersionIdentifier moduleVersionIdentifier(ModuleDescriptor moduleDescriptor) {
         def moduleRevId = moduleDescriptor.moduleRevisionId
-        new DefaultModuleVersionIdentifier(moduleRevId.organisation, moduleRevId.name, moduleRevId.revision)
+        DefaultModuleVersionIdentifier.newId(DefaultModuleIdentifier.newId(moduleRevId.organisation, moduleRevId.name), moduleRevId.revision)
     }
 
     def addRepo1() {
@@ -444,7 +446,7 @@ class ResolverProviderComponentMetaDataResolverTest extends Specification {
 
         then:
         1 * localAccess.resolveComponentMetaData(moduleComponentId, componentRequestMetaData, _) >> { id, meta, result ->
-            result.failed(new ModuleVersionResolveException(id, "broken"))
+            result.failed(new ModuleVersionResolveException(id, broken))
         }
         1 * localAccess2.resolveComponentMetaData(moduleComponentId, componentRequestMetaData, _) >> { id, meta, result ->
             result.resolved(metaData)
@@ -477,7 +479,7 @@ class ResolverProviderComponentMetaDataResolverTest extends Specification {
         then:
         1 * localAccess.resolveComponentMetaData(moduleComponentId, componentRequestMetaData, _)
         1 * remoteAccess.resolveComponentMetaData(moduleComponentId, componentRequestMetaData, _) >> { id, meta, result ->
-            result.failed(new ModuleVersionResolveException(id, "broken"))
+            result.failed(new ModuleVersionResolveException(id, broken))
         }
         1 * localAccess2.resolveComponentMetaData(moduleComponentId, componentRequestMetaData, _)
         1 * remoteAccess2.resolveComponentMetaData(moduleComponentId, componentRequestMetaData, _) >> { id, meta, result ->
@@ -502,7 +504,7 @@ class ResolverProviderComponentMetaDataResolverTest extends Specification {
 
     def "rethrows failure to resolve local dependency when not available in any repository"() {
         given:
-        def failure = new ModuleVersionResolveException(Stub(ModuleVersionSelector), "broken")
+        def failure = new ModuleVersionResolveException(Stub(ModuleVersionSelector), broken)
         def repo1 = addRepo1()
         def repo2 = addRepo2()
 
@@ -529,7 +531,7 @@ class ResolverProviderComponentMetaDataResolverTest extends Specification {
 
     def "rethrows failure to resolve remote dependency when not available in any repository"() {
         given:
-        def failure = new ModuleVersionResolveException(Stub(ModuleVersionSelector), "broken")
+        def failure = new ModuleVersionResolveException(Stub(ModuleVersionSelector), broken)
         def repo1 = addRepo1()
         def repo2 = addRepo2()
 

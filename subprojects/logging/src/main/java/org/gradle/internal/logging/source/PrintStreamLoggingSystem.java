@@ -24,7 +24,8 @@ import org.gradle.internal.logging.config.LoggingSourceSystem;
 import org.gradle.internal.logging.events.LogLevelChangeEvent;
 import org.gradle.internal.logging.events.OutputEventListener;
 import org.gradle.internal.logging.events.StyledTextOutputEvent;
-import org.gradle.internal.operations.BuildOperationIdentifierRegistry;
+import org.gradle.internal.operations.CurrentBuildOperationRef;
+import org.gradle.internal.operations.OperationIdentifier;
 import org.gradle.internal.time.Clock;
 
 import javax.annotation.Nullable;
@@ -39,10 +40,12 @@ import java.util.concurrent.atomic.AtomicReference;
 abstract class PrintStreamLoggingSystem implements LoggingSourceSystem {
     private final AtomicReference<StandardOutputListener> destination = new AtomicReference<StandardOutputListener>();
     private final PrintStream outstr = new LinePerThreadBufferingOutputStream(new TextStream() {
+        @Override
         public void text(String output) {
             destination.get().onOutput(output);
         }
 
+        @Override
         public void endOfStream(@Nullable Throwable failure) {
         }
     });
@@ -67,10 +70,12 @@ abstract class PrintStreamLoggingSystem implements LoggingSourceSystem {
      */
     protected abstract void set(PrintStream printStream);
 
+    @Override
     public Snapshot snapshot() {
         return new SnapshotImpl(enabled, logLevel);
     }
 
+    @Override
     public void restore(Snapshot state) {
         SnapshotImpl snapshot = (SnapshotImpl) state;
         enabled = snapshot.enabled;
@@ -109,6 +114,7 @@ abstract class PrintStreamLoggingSystem implements LoggingSourceSystem {
             outstr.flush();
             destination.set(original);
             set(original.originalStream);
+            original = null;
         }
     }
 
@@ -133,6 +139,7 @@ abstract class PrintStreamLoggingSystem implements LoggingSourceSystem {
             this.originalStream = originalStream;
         }
 
+        @Override
         public void onOutput(CharSequence output) {
             originalStream.print(output);
         }
@@ -159,8 +166,9 @@ abstract class PrintStreamLoggingSystem implements LoggingSourceSystem {
             this.clock = clock;
         }
 
+        @Override
         public void onOutput(CharSequence output) {
-            Object buildOperationId = BuildOperationIdentifierRegistry.getCurrentOperationIdentifier();
+            OperationIdentifier buildOperationId = CurrentBuildOperationRef.instance().getId();
             StyledTextOutputEvent event = new StyledTextOutputEvent(clock.getCurrentTime(), category, null, buildOperationId, output.toString());
             listener.onOutput(event);
         }

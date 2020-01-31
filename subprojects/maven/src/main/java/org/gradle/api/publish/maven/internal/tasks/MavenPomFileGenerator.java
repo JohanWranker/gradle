@@ -16,19 +16,47 @@
 
 package org.gradle.api.publish.maven.internal.tasks;
 
+import com.google.common.base.Joiner;
+import com.google.common.collect.Iterables;
+import org.apache.maven.model.CiManagement;
+import org.apache.maven.model.Contributor;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
+import org.apache.maven.model.Developer;
+import org.apache.maven.model.DistributionManagement;
 import org.apache.maven.model.Exclusion;
+import org.apache.maven.model.IssueManagement;
+import org.apache.maven.model.License;
+import org.apache.maven.model.MailingList;
 import org.apache.maven.model.Model;
+import org.apache.maven.model.Organization;
+import org.apache.maven.model.Relocation;
+import org.apache.maven.model.Scm;
 import org.apache.maven.model.io.xpp3.MavenXpp3Writer;
 import org.gradle.api.Action;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.api.XmlProvider;
 import org.gradle.api.artifacts.DependencyArtifact;
 import org.gradle.api.artifacts.ExcludeRule;
+import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MetaDataParser;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.publication.maven.internal.VersionRangeMapper;
+import org.gradle.api.publish.internal.versionmapping.VersionMappingStrategyInternal;
 import org.gradle.api.publish.maven.MavenDependency;
+import org.gradle.api.publish.maven.MavenPomCiManagement;
+import org.gradle.api.publish.maven.MavenPomContributor;
+import org.gradle.api.publish.maven.MavenPomDeveloper;
+import org.gradle.api.publish.maven.MavenPomIssueManagement;
+import org.gradle.api.publish.maven.MavenPomLicense;
+import org.gradle.api.publish.maven.MavenPomMailingList;
+import org.gradle.api.publish.maven.MavenPomOrganization;
+import org.gradle.api.publish.maven.MavenPomRelocation;
+import org.gradle.api.publish.maven.MavenPomScm;
 import org.gradle.api.publish.maven.internal.dependencies.MavenDependencyInternal;
+import org.gradle.api.publish.maven.internal.publication.MavenPomDistributionManagementInternal;
+import org.gradle.api.publish.maven.internal.publication.MavenPomInternal;
 import org.gradle.api.publish.maven.internal.publisher.MavenProjectIdentity;
 import org.gradle.internal.xml.XmlTransformer;
 import org.gradle.util.GUtil;
@@ -36,32 +64,200 @@ import org.gradle.util.GUtil;
 import java.io.File;
 import java.io.IOException;
 import java.io.Writer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Properties;
 
 public class MavenPomFileGenerator {
 
     private static final String POM_FILE_ENCODING = "UTF-8";
     private static final String POM_VERSION = "4.0.0";
+    private static final Action<XmlProvider> ADD_GRADLE_METADATA_MARKER = new Action<XmlProvider>() {
+        @Override
+        public void execute(XmlProvider xmlProvider) {
+            StringBuilder builder = xmlProvider.asString();
+            int idx = builder.indexOf("<modelVersion");
+            builder.insert(idx, xmlComments(MetaDataParser.GRADLE_METADATA_MARKER_COMMENT_LINES)
+                    + "  "
+                    + xmlComment(MetaDataParser.GRADLE_6_METADATA_MARKER)
+                    + "  ");
+        }
+    };
 
-    private Model model = new Model();
-    private XmlTransformer xmlTransformer = new XmlTransformer();
+    private final Model model = new Model();
+    private final XmlTransformer xmlTransformer = new XmlTransformer();
     private final VersionRangeMapper versionRangeMapper;
+    private final VersionMappingStrategyInternal versionMappingStrategy;
+    private final ImmutableAttributes compileScopeAttributes;
+    private final ImmutableAttributes runtimeScopeAttributes;
 
-    public MavenPomFileGenerator(MavenProjectIdentity identity, VersionRangeMapper versionRangeMapper) {
+    public MavenPomFileGenerator(MavenProjectIdentity identity,
+                                 VersionRangeMapper versionRangeMapper,
+                                 VersionMappingStrategyInternal versionMappingStrategy,
+                                 ImmutableAttributes compileScopeAttributes,
+                                 ImmutableAttributes runtimeScopeAttributes,
+                                 boolean gradleMetadataMarker) {
         this.versionRangeMapper = versionRangeMapper;
+        this.versionMappingStrategy = versionMappingStrategy;
+        this.compileScopeAttributes = compileScopeAttributes;
+        this.runtimeScopeAttributes = runtimeScopeAttributes;
         model.setModelVersion(POM_VERSION);
-        Model model = getModel();
-        model.setGroupId(identity.getGroupId());
-        model.setArtifactId(identity.getArtifactId());
-        model.setVersion(identity.getVersion());
+        model.setGroupId(identity.getGroupId().get());
+        model.setArtifactId(identity.getArtifactId().get());
+        model.setVersion(identity.getVersion().get());
+        if (gradleMetadataMarker) {
+            xmlTransformer.addFinalizer(ADD_GRADLE_METADATA_MARKER);
+        }
     }
 
-    public MavenPomFileGenerator setPackaging(String packaging) {
-        getModel().setPackaging(packaging);
+    private static String xmlComments(String[] lines) {
+        return Joiner.on("  ").join(Iterables.transform(Arrays.asList(lines), MavenPomFileGenerator::xmlComment));
+    }
+
+    private static String xmlComment(String content) {
+        return "<!-- " + content + " -->\n";
+    }
+
+    public MavenPomFileGenerator configureFrom(MavenPomInternal pom) {
+        model.setPackaging(pom.getPackaging());
+        model.setName(pom.getName().getOrNull());
+        model.setDescription(pom.getDescription().getOrNull());
+        model.setUrl(pom.getUrl().getOrNull());
+        model.setInceptionYear(pom.getInceptionYear().getOrNull());
+        if (pom.getOrganization() != null) {
+            model.setOrganization(convertOrganization(pom.getOrganization()));
+        }
+        if (pom.getScm() != null) {
+            model.setScm(convertScm(pom.getScm()));
+        }
+        if (pom.getIssueManagement() != null) {
+            model.setIssueManagement(convertIssueManagement(pom.getIssueManagement()));
+        }
+        if (pom.getCiManagement() != null) {
+            model.setCiManagement(convertCiManagement(pom.getCiManagement()));
+        }
+        if (pom.getDistributionManagement() != null) {
+            model.setDistributionManagement(convertDistributionManagement(pom.getDistributionManagement()));
+        }
+        for (MavenPomLicense license : pom.getLicenses()) {
+            model.addLicense(convertLicense(license));
+        }
+        for (MavenPomDeveloper developer : pom.getDevelopers()) {
+            model.addDeveloper(convertDeveloper(developer));
+        }
+        for (MavenPomContributor contributor : pom.getContributors()) {
+            model.addContributor(convertContributor(contributor));
+        }
+        for (MavenPomMailingList mailingList : pom.getMailingLists()) {
+            model.addMailingList(convertMailingList(mailingList));
+        }
+        for (Map.Entry<String, String> property : pom.getProperties().get().entrySet()) {
+            model.addProperty(property.getKey(), property.getValue());
+        }
         return this;
     }
 
-    private Model getModel() {
-        return model;
+    private Organization convertOrganization(MavenPomOrganization source) {
+        Organization target = new Organization();
+        target.setName(source.getName().getOrNull());
+        target.setUrl(source.getUrl().getOrNull());
+        return target;
+    }
+
+    private License convertLicense(MavenPomLicense source) {
+        License target = new License();
+        target.setName(source.getName().getOrNull());
+        target.setUrl(source.getUrl().getOrNull());
+        target.setDistribution(source.getDistribution().getOrNull());
+        target.setComments(source.getComments().getOrNull());
+        return target;
+    }
+
+    private Developer convertDeveloper(MavenPomDeveloper source) {
+        Developer target = new Developer();
+        target.setId(source.getId().getOrNull());
+        target.setName(source.getName().getOrNull());
+        target.setEmail(source.getEmail().getOrNull());
+        target.setUrl(source.getUrl().getOrNull());
+        target.setOrganization(source.getOrganization().getOrNull());
+        target.setOrganizationUrl(source.getOrganizationUrl().getOrNull());
+        target.setRoles(new ArrayList<String>(source.getRoles().get()));
+        target.setTimezone(source.getTimezone().getOrNull());
+        target.setProperties(convertProperties(source.getProperties()));
+        return target;
+    }
+
+    private Contributor convertContributor(MavenPomContributor source) {
+        Contributor target = new Contributor();
+        target.setName(source.getName().getOrNull());
+        target.setEmail(source.getEmail().getOrNull());
+        target.setUrl(source.getUrl().getOrNull());
+        target.setOrganization(source.getOrganization().getOrNull());
+        target.setOrganizationUrl(source.getOrganizationUrl().getOrNull());
+        target.setRoles(new ArrayList<String>(source.getRoles().get()));
+        target.setTimezone(source.getTimezone().getOrNull());
+        target.setProperties(convertProperties(source.getProperties()));
+        return target;
+    }
+
+    private Properties convertProperties(Provider<Map<String, String>> source) {
+        Properties target = new Properties();
+        target.putAll(source.getOrElse(Collections.<String, String>emptyMap()));
+        return target;
+    }
+
+    private Scm convertScm(MavenPomScm source) {
+        Scm target = new Scm();
+        target.setConnection(source.getConnection().getOrNull());
+        target.setDeveloperConnection(source.getDeveloperConnection().getOrNull());
+        target.setUrl(source.getUrl().getOrNull());
+        target.setTag(source.getTag().getOrNull());
+        return target;
+    }
+
+    private IssueManagement convertIssueManagement(MavenPomIssueManagement source) {
+        IssueManagement target = new IssueManagement();
+        target.setSystem(source.getSystem().getOrNull());
+        target.setUrl(source.getUrl().getOrNull());
+        return target;
+    }
+
+    private CiManagement convertCiManagement(MavenPomCiManagement source) {
+        CiManagement target = new CiManagement();
+        target.setSystem(source.getSystem().getOrNull());
+        target.setUrl(source.getUrl().getOrNull());
+        return target;
+    }
+
+    private DistributionManagement convertDistributionManagement(MavenPomDistributionManagementInternal source) {
+        DistributionManagement target = new DistributionManagement();
+        target.setDownloadUrl(source.getDownloadUrl().getOrNull());
+        if (source.getRelocation() != null) {
+            target.setRelocation(convertRelocation(source.getRelocation()));
+        }
+        return target;
+    }
+
+    private Relocation convertRelocation(MavenPomRelocation source) {
+        Relocation target = new Relocation();
+        target.setGroupId(source.getGroupId().getOrNull());
+        target.setArtifactId(source.getArtifactId().getOrNull());
+        target.setVersion(source.getVersion().getOrNull());
+        target.setMessage(source.getMessage().getOrNull());
+        return target;
+    }
+
+    private MailingList convertMailingList(MavenPomMailingList source) {
+        MailingList target = new MailingList();
+        target.setName(source.getName().getOrNull());
+        target.setSubscribe(source.getSubscribe().getOrNull());
+        target.setUnsubscribe(source.getUnsubscribe().getOrNull());
+        target.setPost(source.getPost().getOrNull());
+        target.setArchive(source.getArchive().getOrNull());
+        target.setOtherArchives(new ArrayList<String>(source.getOtherArchives().get()));
+        return target;
     }
 
     public void addApiDependencyManagement(MavenDependency apiDependency) {
@@ -72,8 +268,18 @@ public class MavenPomFileGenerator {
         addDependencyManagement(dependency, "runtime");
     }
 
+    public void addImportDependencyManagement(MavenDependency dependency) {
+        addDependencyManagement(dependency, "import");
+    }
+
     public void addRuntimeDependency(MavenDependencyInternal dependency) {
         addDependency(dependency, "runtime");
+    }
+
+    public void addOptionalDependency(MavenDependencyInternal optionalDependency) {
+        // For Maven we don't really know if an optional dependency is required for runtime or compile
+        // so we use the safest: compile
+        addDependency(optionalDependency, "compile", true);
     }
 
     public void addApiDependency(MavenDependencyInternal apiDependency) {
@@ -81,23 +287,35 @@ public class MavenPomFileGenerator {
     }
 
     private void addDependency(MavenDependencyInternal mavenDependency, String scope) {
+        addDependency(mavenDependency, scope, false);
+    }
+
+    private void addDependency(MavenDependencyInternal mavenDependency, String scope, boolean optional) {
         if (mavenDependency.getArtifacts().size() == 0) {
-            addDependency(mavenDependency, mavenDependency.getArtifactId(), scope, null, null);
+            addDependency(mavenDependency, mavenDependency.getArtifactId(), scope, null, null, optional);
         } else {
             for (DependencyArtifact artifact : mavenDependency.getArtifacts()) {
-                addDependency(mavenDependency, artifact.getName(), scope, artifact.getType(), artifact.getClassifier());
+                addDependency(mavenDependency, artifact.getName(), scope, artifact.getType(), artifact.getClassifier(), optional);
             }
         }
     }
 
-    private void addDependency(MavenDependencyInternal dependency, String artifactId, String scope, String type, String classifier) {
+    private void addDependency(MavenDependencyInternal dependency, String artifactId, String scope, String type, String classifier, boolean optional) {
         Dependency mavenDependency = new Dependency();
-        mavenDependency.setGroupId(dependency.getGroupId());
-        mavenDependency.setArtifactId(artifactId);
-        mavenDependency.setVersion(mapToMavenSyntax(dependency.getVersion()));
+        String groupId = dependency.getGroupId();
+        String dependencyVersion = dependency.getVersion();
+        ImmutableAttributes attributes = attributesForScope(scope);
+        ModuleVersionIdentifier resolvedVersion = versionMappingStrategy.findStrategyForVariant(attributes).maybeResolveVersion(groupId, artifactId);
+        mavenDependency.setGroupId(resolvedVersion != null ? resolvedVersion.getGroup() : groupId);
+        mavenDependency.setArtifactId(resolvedVersion != null ? resolvedVersion.getName() : artifactId);
+        mavenDependency.setVersion(resolvedVersion != null ? resolvedVersion.getVersion() : mapToMavenSyntax(dependencyVersion));
         mavenDependency.setType(type);
         mavenDependency.setScope(scope);
         mavenDependency.setClassifier(classifier);
+        if (optional) {
+            // Not using setOptional(optional) in order to avoid <optional>false</optional> in the common case
+            mavenDependency.setOptional(true);
+        }
 
         for (ExcludeRule excludeRule : dependency.getExcludeRules()) {
             Exclusion exclusion = new Exclusion();
@@ -106,20 +324,40 @@ public class MavenPomFileGenerator {
             mavenDependency.addExclusion(exclusion);
         }
 
-        getModel().addDependency(mavenDependency);
+        model.addDependency(mavenDependency);
+    }
+
+    private ImmutableAttributes attributesForScope(String scope) {
+        if ("compile".equals(scope)) {
+            return compileScopeAttributes;
+        } else if ("runtime".equals(scope) || "import".equals(scope)) {
+            return runtimeScopeAttributes;
+        }
+        throw new IllegalStateException("Unexpected scope : " + scope);
     }
 
     private void addDependencyManagement(MavenDependency dependency, String scope) {
         Dependency mavenDependency = new Dependency();
-        mavenDependency.setGroupId(dependency.getGroupId());
-        mavenDependency.setArtifactId(dependency.getArtifactId());
-        mavenDependency.setVersion(mapToMavenSyntax(dependency.getVersion()));
-        mavenDependency.setScope(scope);
+        String groupId = dependency.getGroupId();
+        String artifactId = dependency.getArtifactId();
+        ImmutableAttributes attributes = attributesForScope(scope);
+        ModuleVersionIdentifier resolvedVersion = versionMappingStrategy.findStrategyForVariant(attributes).maybeResolveVersion(groupId, artifactId);
+        mavenDependency.setGroupId(resolvedVersion != null ? resolvedVersion.getGroup() : groupId);
+        mavenDependency.setArtifactId(resolvedVersion != null ? resolvedVersion.getName() : artifactId);
+        mavenDependency.setVersion(resolvedVersion == null ? mapToMavenSyntax(dependency.getVersion()) : resolvedVersion.getVersion());
+        String type = dependency.getType();
+        if (type != null) {
+            mavenDependency.setType(type);
+        }
+        // Only publish the import scope, others have too different meanings than what Gradle expresses
+        if ("import".equals(scope)) {
+            mavenDependency.setScope(scope);
+        }
 
-        DependencyManagement dependencyManagement = getModel().getDependencyManagement();
+        DependencyManagement dependencyManagement = model.getDependencyManagement();
         if (dependencyManagement == null) {
             dependencyManagement = new DependencyManagement();
-            getModel().setDependencyManagement(dependencyManagement);
+            model.setDependencyManagement(dependencyManagement);
         }
         dependencyManagement.addDependency(mavenDependency);
     }
@@ -135,6 +373,7 @@ public class MavenPomFileGenerator {
 
     public MavenPomFileGenerator writeTo(File file) {
         xmlTransformer.transform(file, POM_FILE_ENCODING, new Action<Writer>() {
+            @Override
             public void execute(Writer writer) {
                 try {
                     new MavenXpp3Writer().write(writer, model);

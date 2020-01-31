@@ -21,10 +21,10 @@ import org.gradle.api.artifacts.ExcludeRule;
 import org.gradle.api.artifacts.FileCollectionDependency;
 import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
-import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal;
 import org.gradle.api.internal.artifacts.dependencies.SelfResolvingDependencyInternal;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.file.FileCollectionInternal;
 import org.gradle.internal.component.local.model.BuildableLocalConfigurationMetadata;
 import org.gradle.internal.component.local.model.LocalFileDependencyMetadata;
 
@@ -46,6 +46,7 @@ public class DefaultLocalConfigurationMetadataBuilder implements LocalConfigurat
         configuration.runDependencyActions();
 
         addDependencies(metaData, configuration);
+        addDependencyConstraints(metaData, configuration);
         addExcludeRules(metaData, configuration);
     }
 
@@ -58,12 +59,16 @@ public class DefaultLocalConfigurationMetadataBuilder implements LocalConfigurat
             } else if (dependency instanceof FileCollectionDependency) {
                 final FileCollectionDependency fileDependency = (FileCollectionDependency) dependency;
                 configurationMetadata.addFiles(new DefaultLocalFileDependencyMetadata(fileDependency));
-            } else if (dependency instanceof DependencyConstraint) {
-                DependencyConstraint dependencyConstraint = (DependencyConstraint) dependency;
-                configurationMetadata.addDependency(dependencyDescriptorFactory.createDependencyConstraintDescriptor(configurationMetadata.getComponentId(), configuration.getName(), attributes, dependencyConstraint));
             } else {
                 throw new IllegalArgumentException("Cannot convert dependency " + dependency + " to local component dependency metadata.");
             }
+        }
+    }
+
+    private void addDependencyConstraints(BuildableLocalConfigurationMetadata configurationMetadata, ConfigurationInternal configuration) {
+        AttributeContainerInternal attributes = configuration.getAttributes();
+        for (DependencyConstraint dependencyConstraint : configuration.getDependencyConstraints()) {
+            configurationMetadata.addDependency(dependencyDescriptorFactory.createDependencyConstraintDescriptor(configurationMetadata.getComponentId(), configuration.getName(), attributes, dependencyConstraint));
         }
     }
 
@@ -91,8 +96,8 @@ public class DefaultLocalConfigurationMetadataBuilder implements LocalConfigurat
         }
 
         @Override
-        public FileCollection getFiles() {
-            return fileDependency.getFiles();
+        public FileCollectionInternal getFiles() {
+            return (FileCollectionInternal) fileDependency.getFiles();
         }
     }
 }

@@ -16,77 +16,45 @@
 
 package org.gradle.workers.internal;
 
-import net.jcip.annotations.ThreadSafe;
-import org.gradle.internal.concurrent.Stoppable;
-import org.gradle.internal.operations.BuildOperationContext;
 import org.gradle.internal.operations.BuildOperationExecutor;
-import org.gradle.internal.operations.CallableBuildOperation;
-import org.gradle.internal.progress.BuildOperationDescriptor;
-import org.gradle.internal.progress.BuildOperationState;
-import org.gradle.internal.work.WorkerLeaseRegistry;
-import org.gradle.internal.work.WorkerLeaseRegistry.WorkerLease;
-import org.gradle.process.internal.health.memory.MemoryManager;
-import org.gradle.process.internal.health.memory.TotalPhysicalMemoryProvider;
+import org.gradle.internal.operations.BuildOperationRef;
 import org.gradle.workers.IsolationMode;
+
+import javax.annotation.concurrent.ThreadSafe;
 
 /**
  * Controls the lifecycle of the worker daemon and provides access to it.
  */
 @ThreadSafe
-public class WorkerDaemonFactory implements WorkerFactory, Stoppable {
+public class WorkerDaemonFactory implements WorkerFactory {
     private final WorkerDaemonClientsManager clientsManager;
-    private final MemoryManager memoryManager;
-    private final WorkerDaemonExpiration workerDaemonExpiration;
-    private final WorkerLeaseRegistry workerLeaseRegistry;
     private final BuildOperationExecutor buildOperationExecutor;
 
-    public WorkerDaemonFactory(WorkerDaemonClientsManager clientsManager, MemoryManager memoryManager, WorkerLeaseRegistry workerLeaseRegistry, BuildOperationExecutor buildOperationExecutor) {
+    public WorkerDaemonFactory(WorkerDaemonClientsManager clientsManager, BuildOperationExecutor buildOperationExecutor) {
         this.clientsManager = clientsManager;
-        this.memoryManager = memoryManager;
-        this.workerDaemonExpiration = new WorkerDaemonExpiration(clientsManager, getTotalPhysicalMemory());
-        memoryManager.addMemoryHolder(workerDaemonExpiration);
-        this.workerLeaseRegistry = workerLeaseRegistry;
         this.buildOperationExecutor = buildOperationExecutor;
     }
 
     @Override
-    public Worker getWorker(final DaemonForkOptions forkOptions) {
-        return new Worker() {
-            public DefaultWorkResult execute(final ActionExecutionSpec spec, WorkerLease parentWorkerWorkerLease, final BuildOperationState parentBuildOperation) {
-                WorkerLeaseRegistry.WorkerLeaseCompletion workerLease = parentWorkerWorkerLease.startChild();
+    public BuildOperationAwareWorker getWorker(WorkerRequirement workerRequirement) {
+        return new AbstractWorker(buildOperationExecutor) {
+            @Override
+            public DefaultWorkResult execute(IsolatedParametersActionExecutionSpec<?> spec, BuildOperationRef parentBuildOperation) {
+                final WorkerDaemonClient client = reserveClient();
                 try {
-                    WorkerDaemonClient client = clientsManager.reserveIdleClient(forkOptions);
-                    if (client == null) {
-                        client = clientsManager.reserveNewClient(WorkerDaemonServer.class, forkOptions);
-                    }
-
-                    try {
-                        return executeInClient(client, spec, parentBuildOperation);
-                    } finally {
-                        clientsManager.release(client);
-                    }
+                    return executeWrappedInBuildOperation(spec, parentBuildOperation, client::execute);
                 } finally {
-                    workerLease.leaseFinish();
+                    clientsManager.release(client);
                 }
             }
 
-            @Override
-            public DefaultWorkResult execute(ActionExecutionSpec spec) {
-                return execute(spec, workerLeaseRegistry.getCurrentWorkerLease(), buildOperationExecutor.getCurrentOperation());
-            }
-
-            private DefaultWorkResult executeInClient(final WorkerDaemonClient client, final ActionExecutionSpec spec, final BuildOperationState parentBuildOperation) {
-                return buildOperationExecutor.call(new CallableBuildOperation<DefaultWorkResult>() {
-                    @Override
-                    public DefaultWorkResult call(BuildOperationContext context) {
-                        return client.execute(spec);
-                    }
-
-                    @Override
-                    public BuildOperationDescriptor.Builder description() {
-                        return BuildOperationDescriptor.displayName(spec.getDisplayName()).parent(parentBuildOperation);
-                    }
-                });
+            private WorkerDaemonClient reserveClient() {
+                DaemonForkOptions forkOptions = ((ForkedWorkerRequirement) workerRequirement).getForkOptions();
+                WorkerDaemonClient client = clientsManager.reserveIdleClient(forkOptions);
+                if (client == null) {
+                    client = clientsManager.reserveNewClient(WorkerDaemonServer.class, forkOptions);
+                }
+                return client;
             }
         };
     }
@@ -94,18 +62,5 @@ public class WorkerDaemonFactory implements WorkerFactory, Stoppable {
     @Override
     public IsolationMode getIsolationMode() {
         return IsolationMode.PROCESS;
-    }
-
-    @Override
-    public void stop() {
-        memoryManager.removeMemoryHolder(workerDaemonExpiration);
-    }
-
-    private static long getTotalPhysicalMemory() {
-        try {
-            return TotalPhysicalMemoryProvider.getTotalPhysicalMemory();
-        } catch (UnsupportedOperationException e) {
-            return -1;
-        }
     }
 }

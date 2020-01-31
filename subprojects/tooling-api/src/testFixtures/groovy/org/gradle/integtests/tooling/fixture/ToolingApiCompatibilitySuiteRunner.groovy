@@ -14,11 +14,25 @@
  * limitations under the License.
  */
 package org.gradle.integtests.tooling.fixture
+
 import org.gradle.integtests.fixtures.AbstractCompatibilityTestRunner
+import org.gradle.integtests.fixtures.GradleDistributionTool
 import org.gradle.integtests.fixtures.executer.GradleDistribution
 import org.gradle.integtests.fixtures.versions.ReleasedVersionDistributions
+import org.gradle.util.GradleVersion
 
 class ToolingApiCompatibilitySuiteRunner extends AbstractCompatibilityTestRunner {
+    private static final GradleVersion MINIMAL_VERSION = GradleVersion.version("2.6")
+
+    private static ToolingApiDistributionResolver resolver
+
+    private static ToolingApiDistributionResolver getResolver() {
+        if (resolver == null) {
+            resolver = new ToolingApiDistributionResolver().withDefaultRepository()
+        }
+        return resolver
+    }
+
     ToolingApiCompatibilitySuiteRunner(Class<? extends ToolingApiSpecification> target) {
         super(target)
     }
@@ -32,20 +46,35 @@ class ToolingApiCompatibilitySuiteRunner extends AbstractCompatibilityTestRunner
     }
 
     @Override
-    protected void createExecutions() {
-        def resolver = new ToolingApiDistributionResolver().withDefaultRepository()
-        try {
-            if (implicitVersion) {
-                add(new ToolingApiExecution(resolver.resolve(current.version.version), current))
+    protected void createExecutionsForContext(CoverageContext coverageContext) {
+        // current vs. current
+        add(new ToolingApiExecution(getResolver().resolve(current.version.version), current))
+        super.createExecutionsForContext(coverageContext)
+    }
+
+    @Override
+    protected Collection<ToolingApiExecution> createDistributionExecutionsFor(GradleDistributionTool versionedTool) {
+        def executions = []
+
+        def distribution = versionedTool.distribution
+        if (distribution.toolingApiSupported) {
+            // current vs. target
+            def currentVersion = current.version
+            if (currentVersion >= MINIMAL_VERSION) {
+                executions.add(new ToolingApiExecution(getResolver().resolve(currentVersion.version), distribution))
             }
-            previous.each {
-                if (it.toolingApiSupported) {
-                    add(new ToolingApiExecution(resolver.resolve(current.version.version), it))
-                    add(new ToolingApiExecution(resolver.resolve(it.version.version), current))
-                }
+            // target vs. current
+            def distribVersion = distribution.version
+            if (distribVersion >= MINIMAL_VERSION) {
+                executions.add(new ToolingApiExecution(getResolver().resolve(distribVersion.version), current))
             }
-        } finally {
-            resolver.stop()
         }
+
+        return executions
+    }
+
+    @Override
+    protected boolean isAvailable(GradleDistributionTool version) {
+        return version.distribution.toolingApiSupported
     }
 }

@@ -88,6 +88,7 @@ public class DefaultResourceLockCoordinationService implements ResourceLockCoord
         }
     }
 
+    @Override
     public void notifyStateChange() {
         synchronized (lock) {
             lock.notifyAll();
@@ -131,6 +132,7 @@ public class DefaultResourceLockCoordinationService implements ResourceLockCoord
                     for (ResourceLock resourceLock : lockedResources) {
                         resourceLock.unlock();
                     }
+                    lockedResources.clear();
                 } finally {
                     rollback = false;
                 }

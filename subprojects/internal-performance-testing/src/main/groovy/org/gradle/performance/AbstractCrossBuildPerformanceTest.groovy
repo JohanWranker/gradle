@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 the original author or authors.
+ * Copyright 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,49 +16,53 @@
 
 package org.gradle.performance
 
-import groovy.transform.CompileStatic
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
-import org.gradle.performance.fixture.BuildExperimentRunner
 import org.gradle.performance.fixture.BuildExperimentSpec
-import org.gradle.performance.fixture.CrossBuildPerformanceTestRunner
-import org.gradle.performance.fixture.GradleSessionProvider
+import org.gradle.performance.fixture.CrossBuildGradleProfilerPerformanceTestRunner
+import org.gradle.performance.fixture.GradleProfilerBuildExperimentRunner
 import org.gradle.performance.fixture.PerformanceTestDirectoryProvider
 import org.gradle.performance.fixture.PerformanceTestIdProvider
-import org.gradle.performance.results.CrossBuildPerformanceResults
+import org.gradle.performance.results.CompositeDataReporter
 import org.gradle.performance.results.CrossBuildResultsStore
-import org.gradle.performance.results.DataReporter
+import org.gradle.performance.results.GradleProfilerReporter
 import org.gradle.test.fixtures.file.CleanupTestDirectory
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
 import spock.lang.Specification
 
-@CompileStatic
 @CleanupTestDirectory
 class AbstractCrossBuildPerformanceTest extends Specification {
-    private static final DataReporter<CrossBuildPerformanceResults> RESULT_STORE = new CrossBuildResultsStore()
+    private static final CrossBuildResultsStore RESULT_STORE = new CrossBuildResultsStore()
+
+    protected final IntegrationTestBuildContext buildContext = new IntegrationTestBuildContext()
 
     @Rule
     TestNameTestDirectoryProvider temporaryFolder = new PerformanceTestDirectoryProvider()
 
-    protected final IntegrationTestBuildContext buildContext = new IntegrationTestBuildContext()
-
-    CrossBuildPerformanceTestRunner runner = new CrossBuildPerformanceTestRunner(new BuildExperimentRunner(new GradleSessionProvider(buildContext)), RESULT_STORE, buildContext) {
-        @Override
-        protected void defaultSpec(BuildExperimentSpec.Builder builder) {
-            super.defaultSpec(builder)
-            builder.workingDirectory = temporaryFolder.testDirectory
-            AbstractCrossBuildPerformanceTest.this.defaultSpec(builder)
-        }
-
-        @Override
-        protected void finalizeSpec(BuildExperimentSpec.Builder builder) {
-            super.finalizeSpec(builder)
-            AbstractCrossBuildPerformanceTest.this.finalizeSpec(builder)
-        }
-    }
-
     @Rule
-    PerformanceTestIdProvider performanceTestIdProvider = new PerformanceTestIdProvider(runner)
+    PerformanceTestIdProvider performanceTestIdProvider = new PerformanceTestIdProvider()
+
+    CrossBuildGradleProfilerPerformanceTestRunner runner
+
+    def setup() {
+        def gradleProfilerReporter = new GradleProfilerReporter(temporaryFolder.testDirectory)
+        def compositeReporter = CompositeDataReporter.of(RESULT_STORE, gradleProfilerReporter)
+        runner = new CrossBuildGradleProfilerPerformanceTestRunner(new GradleProfilerBuildExperimentRunner(gradleProfilerReporter.getResultCollector()), RESULT_STORE, compositeReporter, buildContext) {
+            @Override
+            protected void defaultSpec(BuildExperimentSpec.Builder builder) {
+                super.defaultSpec(builder)
+                builder.workingDirectory = temporaryFolder.testDirectory
+                AbstractCrossBuildPerformanceTest.this.defaultSpec(builder)
+            }
+
+            @Override
+            protected void finalizeSpec(BuildExperimentSpec.Builder builder) {
+                super.finalizeSpec(builder)
+                AbstractCrossBuildPerformanceTest.this.finalizeSpec(builder)
+            }
+        }
+        performanceTestIdProvider.setTestSpec(runner)
+    }
 
     protected void defaultSpec(BuildExperimentSpec.Builder builder) {
 
@@ -71,7 +75,7 @@ class AbstractCrossBuildPerformanceTest extends Specification {
     static {
         // TODO - find a better way to cleanup
         System.addShutdownHook {
-            ((Closeable)RESULT_STORE).close()
+            ((Closeable) RESULT_STORE).close()
         }
     }
 }

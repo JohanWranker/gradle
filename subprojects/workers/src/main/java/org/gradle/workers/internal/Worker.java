@@ -16,13 +16,9 @@
 
 package org.gradle.workers.internal;
 
-import org.gradle.internal.progress.BuildOperationState;
-import org.gradle.internal.work.WorkerLeaseRegistry.WorkerLease;
-
 /**
- * A service that executes work in a (potentially) long-lived process or in-process.
+ * A service that executes work locally.
  */
 public interface Worker {
-    DefaultWorkResult execute(ActionExecutionSpec spec);
-    DefaultWorkResult execute(ActionExecutionSpec spec, WorkerLease parentWorkerWorkerLease, final BuildOperationState parentBuildOperation);
+    DefaultWorkResult execute(SimpleActionExecutionSpec<?> spec);
 }

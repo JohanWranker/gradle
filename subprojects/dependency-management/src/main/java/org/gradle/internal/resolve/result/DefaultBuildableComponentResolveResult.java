@@ -17,6 +17,7 @@
 package org.gradle.internal.resolve.result;
 
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
@@ -24,11 +25,15 @@ import org.gradle.internal.resolve.ModuleVersionNotFoundException;
 import org.gradle.internal.resolve.ModuleVersionResolveException;
 
 public class DefaultBuildableComponentResolveResult extends DefaultResourceAwareResolveResult implements BuildableComponentResolveResult {
-    private ComponentResolveMetadata metaData;
+    private ComponentResolveMetadata metadata;
     private ModuleVersionResolveException failure;
 
+    public DefaultBuildableComponentResolveResult() {
+    }
+
+    @Override
     public DefaultBuildableComponentResolveResult failed(ModuleVersionResolveException failure) {
-        metaData = null;
+        metadata = null;
         this.failure = failure;
         return this;
     }
@@ -38,25 +43,36 @@ public class DefaultBuildableComponentResolveResult extends DefaultResourceAware
         failed(new ModuleVersionNotFoundException(DefaultModuleVersionIdentifier.newId(versionIdentifier), getAttempted()));
     }
 
+    @Override
     public void resolved(ComponentResolveMetadata metaData) {
-        this.metaData = metaData;
+        this.metadata = metaData;
     }
 
-    public void setMetaData(ComponentResolveMetadata metaData) {
+    @Override
+    public void setMetadata(ComponentResolveMetadata metadata) {
         assertResolved();
-        this.metaData = metaData;
+        this.metadata = metadata;
     }
 
-    public ModuleVersionIdentifier getId() throws ModuleVersionResolveException {
+    @Override
+    public ComponentIdentifier getId() {
         assertResolved();
-        return metaData.getId();
+        return metadata.getId();
     }
 
-    public ComponentResolveMetadata getMetaData() throws ModuleVersionResolveException {
+    @Override
+    public ModuleVersionIdentifier getModuleVersionId() throws ModuleVersionResolveException {
         assertResolved();
-        return metaData;
+        return metadata.getModuleVersionId();
     }
 
+    @Override
+    public ComponentResolveMetadata getMetadata() throws ModuleVersionResolveException {
+        assertResolved();
+        return metadata;
+    }
+
+    @Override
     public ModuleVersionResolveException getFailure() {
         assertHasResult();
         return failure;
@@ -75,8 +91,9 @@ public class DefaultBuildableComponentResolveResult extends DefaultResourceAware
         }
     }
 
+    @Override
     public boolean hasResult() {
-        return failure != null || metaData != null;
+        return failure != null || metadata != null;
     }
 
     public void applyTo(BuildableComponentIdResolveResult idResolve) {
@@ -84,8 +101,9 @@ public class DefaultBuildableComponentResolveResult extends DefaultResourceAware
         if (failure != null) {
             idResolve.failed(failure);
         }
-        if (metaData != null) {
-            idResolve.resolved(metaData);
+        if (metadata != null) {
+            idResolve.resolved(metadata);
         }
     }
+
 }

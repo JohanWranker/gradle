@@ -17,9 +17,12 @@
 package org.gradle.integtests.resolve.ivy
 
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
 import spock.lang.Unroll
 
 class IvyModuleResolveIntegrationTest extends AbstractHttpDependencyResolutionTest {
+    @ToBeFixedForInstantExecution
     def "wildcard on LHS of configuration mapping includes all public configurations of target module"() {
         given:
         buildFile << """
@@ -39,25 +42,25 @@ task retrieve(type: Sync) {
 """
         when: "projectA uses a wildcard configuration mapping for dependency on projectB"
         def moduleA = ivyRepo.module('ivy.configuration', 'projectA', '1.2')
-                .configuration('parent')
-                .artifact()
-                .dependsOn(organisation: 'ivy.configuration', module: 'projectB', revision: '1.5', conf: 'runtime->*')
-                .publish()
+            .configuration('parent')
+            .artifact()
+            .dependsOn(organisation: 'ivy.configuration', module: 'projectB', revision: '1.5', conf: 'runtime->*')
+            .publish()
 
         ivyRepo.module('ivy.configuration', 'projectB', '1.5')
-                .configuration('child')
-                .configuration('private', visibility: 'private')
-                .artifact()
-                .artifact([name: 'projectB', conf: 'runtime'])
-                .artifact([name: 'projectB-child', conf: 'child'])
-                .artifact([name: 'projectB-private', conf: 'private'])
-                .dependsOn(organisation: 'ivy.configuration', module: 'projectC', revision: '1.7', conf: 'child->*')
-                .dependsOn(organisation: 'ivy.configuration', module: 'projectD', revision: 'broken', conf: 'private->*')
-                .publish()
+            .configuration('child')
+            .configuration('private', visibility: 'private')
+            .artifact()
+            .artifact([name: 'projectB', conf: 'runtime'])
+            .artifact([name: 'projectB-child', conf: 'child'])
+            .artifact([name: 'projectB-private', conf: 'private'])
+            .dependsOn(organisation: 'ivy.configuration', module: 'projectC', revision: '1.7', conf: 'child->*')
+            .dependsOn(organisation: 'ivy.configuration', module: 'projectD', revision: 'broken', conf: 'private->*')
+            .publish()
 
         ivyRepo.module('ivy.configuration', 'projectC', '1.7')
-                .artifact()
-                .publish()
+            .artifact()
+            .publish()
 
         and:
         succeeds 'retrieve'
@@ -68,13 +71,13 @@ task retrieve(type: Sync) {
         when: "projectB-1.5 is replaced by conflict resolution with projectB-1.6 that has a different set of configurations"
 
         ivyRepo.module('ivy.configuration', 'projectB', '1.6')
-                .configuration('other')
-                .artifact([name: 'projectB-other', conf: 'other'])
-                .publish()
+            .configuration('other')
+            .artifact([name: 'projectB-other', conf: 'other'])
+            .publish()
 
         ivyRepo.module('ivy.configuration', 'projectD', '1.0')
-                .dependsOn('ivy.configuration', 'projectB', '1.6')
-                .publish()
+            .dependsOn('ivy.configuration', 'projectB', '1.6')
+            .publish()
 
         moduleA.dependsOn('ivy.configuration', 'projectD', '1.0').publish()
 
@@ -85,6 +88,7 @@ task retrieve(type: Sync) {
         file('libs').assertHasDescendants('projectA-1.2.jar', 'projectB-other-1.6.jar', 'projectD-1.0.jar')
     }
 
+    @ToBeFixedForInstantExecution
     def "fails when project dependency references a configuration that does not exist"() {
         ivyRepo.module('test', 'target', '1.0').publish()
 
@@ -109,6 +113,7 @@ task retrieve(type: Sync) {
         failure.assertHasCause("Project : declares a dependency from configuration 'compile' to configuration 'x86_windows' which is not declared in the descriptor for test:target:1.0.")
     }
 
+    @ToBeFixedForInstantExecution
     def "fails when ivy module references a configuration that does not exist"() {
         def b = ivyRepo.module('test', 'b', '1.0').publish()
         ivyRepo.module('test', 'a', '1.0')
@@ -157,25 +162,25 @@ task retrieve(type: Sync) {
 }
 """
         def projectA = ivyHttpRepo.module('ivy.configuration', 'projectA', '1.2')
-                .configuration("parent")
-                .configuration("a", extendsFrom: ["parent"])
-                .configuration("b")
-                .dependsOn(organisation: 'ivy.configuration', module: 'projectB', revision: '1.5', conf: rule)
-                .publish()
+            .configuration("parent")
+            .configuration("a", extendsFrom: ["parent"])
+            .configuration("b")
+            .dependsOn(organisation: 'ivy.configuration', module: 'projectB', revision: '1.5', conf: rule)
+            .publish()
 
         def projectB = ivyHttpRepo.module('ivy.configuration', 'projectB', '1.5')
-                .configuration('a')
-                .configuration('b')
-                .configuration('c')
-                .configuration('d', visibility: 'private')
-                .artifact([name: 'projectB-a', conf: 'a'])
-                .artifact([name: 'projectB-b', conf: 'b'])
-                .artifact([name: 'projectB-c', conf: 'c'])
-                .artifact([name: 'projectB-d', conf: 'd'])
-                .dependsOn(organisation: 'ivy.configuration', module: 'projectC', revision: '1.7', conf: 'a->default')
-                .dependsOn(organisation: 'ivy.configuration', module: 'projectD', revision: '1.7', conf: 'b->default')
-                .dependsOn(organisation: 'ivy.configuration', module: 'projectE', revision: '1.7', conf: 'd->default')
-                .publish()
+            .configuration('a')
+            .configuration('b')
+            .configuration('c')
+            .configuration('d', visibility: 'private')
+            .artifact([name: 'projectB-a', conf: 'a'])
+            .artifact([name: 'projectB-b', conf: 'b'])
+            .artifact([name: 'projectB-c', conf: 'c'])
+            .artifact([name: 'projectB-d', conf: 'd'])
+            .dependsOn(organisation: 'ivy.configuration', module: 'projectC', revision: '1.7', conf: 'a->default')
+            .dependsOn(organisation: 'ivy.configuration', module: 'projectD', revision: '1.7', conf: 'b->default')
+            .dependsOn(organisation: 'ivy.configuration', module: 'projectE', revision: '1.7', conf: 'd->default')
+            .publish()
 
         def projectC = ivyHttpRepo.module('ivy.configuration', 'projectC', '1.7').publish()
         def projectD = ivyHttpRepo.module('ivy.configuration', 'projectD', '1.7').publish()
@@ -224,6 +229,7 @@ task retrieve(type: Sync) {
         "a->a(*),b(*);b->b(*)"  | ["projectB-a-1.5.jar", "projectB-b-1.5.jar", "projectC-1.7.jar", "projectD-1.7.jar"]
     }
 
+    @ToBeFixedForInstantExecution
     def "prefers revConstraint over rev when dynamic resolve mode is used"() {
         given:
         buildFile << """
@@ -245,18 +251,18 @@ task retrieve(type: Sync) {
 }
 """
         ivyRepo.module('org', 'projectA', '1.2')
-                .dependsOn(organisation: 'org', module: 'projectB', revision: '1.5', revConstraint: '1.6')
-                .dependsOn(organisation: 'org', module: 'projectC', revision: 'alpha-12')
-                .publish()
+            .dependsOn(organisation: 'org', module: 'projectB', revision: '1.5', revConstraint: '1.6')
+            .dependsOn(organisation: 'org', module: 'projectC', revision: 'alpha-12')
+            .publish()
 
         ivyRepo.module('org', 'projectB', '1.5')
-                .publish()
+            .publish()
 
         ivyRepo.module('org', 'projectB', '1.6')
-                .publish()
+            .publish()
 
         ivyRepo.module('org', 'projectC', 'alpha-12')
-                .publish()
+            .publish()
 
         when:
         executer.withArguments("-PuseDynamicResolve=true")
@@ -283,8 +289,20 @@ task retrieve(type: Sync) {
         and:
         buildFile << """
 repositories {
-    ivy { url "${repo1.uri}" }
-    ivy { url "${repo2.uri}" }
+    ivy { 
+        url "${repo1.uri}" 
+        metadataSources {
+            ivyDescriptor()
+            artifact()
+        }
+    }
+    ivy { 
+        url "${repo2.uri}" 
+        metadataSources {
+            ivyDescriptor()
+            artifact()
+        }
+    }
 }
 configurations { compile }
 dependencies {
@@ -315,5 +333,57 @@ task retrieve(type: Sync) {
         then:
         file("libs").assertHasDescendants("test-1.45.jar")
         file("libs/test-1.45.jar").assertIsCopyOf(moduleWithMetaData.jarFile)
+    }
+
+    def "removes redundant configurations from resolution result"() {
+        given:
+        settingsFile << "rootProject.name = 'test'"
+
+        def resolve = new ResolveTestFixture(buildFile, "compile")
+        buildFile << """
+    group 'org.test'
+    version '1.0'
+    configurations {
+        compile
+    }
+    repositories {
+        ivy { url "${ivyRepo.uri}" }
+    }
+    dependencies {
+        compile group: 'ivy.configuration', name: 'projectA', version: '1.2', configuration: 'a'
+    }
+    task retrieve(type: Sync) {
+      from configurations.compile
+      into 'libs'
+    }
+    """
+        resolve.prepare()
+
+        ivyRepo.module('ivy.configuration', 'projectA', '1.2')
+            .configuration("a")
+            .dependsOn(organisation: 'ivy.configuration', module: 'projectB', revision: '1.5', conf: "a->parent,a,b,c")
+            .publish()
+
+        ivyRepo.module('ivy.configuration', 'projectB', '1.5')
+            .configuration("parent")
+            .configuration('a', extendsFrom: ["parent"])
+            .configuration('b', extendsFrom: ["parent"])
+            .configuration('c', extendsFrom: ["b"])
+            .publish()
+
+        when:
+        run ':checkDeps'
+
+        then:
+        resolve.expectGraph {
+            root(":", "org.test:test:1.0") {
+                module("ivy.configuration:projectA:1.2:a") {
+                    module("ivy.configuration:projectB:1.5") {
+                        variant('a', ['org.gradle.status': 'integration']) // b, parent are redundant
+                        variant('c', ['org.gradle.status': 'integration']) // b, parent are redundant
+                    }
+                }
+            }
+        }
     }
 }

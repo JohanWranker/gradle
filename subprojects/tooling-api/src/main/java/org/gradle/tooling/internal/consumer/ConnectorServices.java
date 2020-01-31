@@ -16,11 +16,11 @@
 
 package org.gradle.tooling.internal.consumer;
 
-import org.gradle.api.JavaVersion;
 import org.gradle.internal.Factory;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
 import org.gradle.internal.concurrent.ExecutorFactory;
-import org.gradle.internal.jvm.UnsupportedJavaRuntimeException;
+import org.gradle.internal.operations.BuildOperationIdFactory;
+import org.gradle.internal.operations.DefaultBuildOperationIdFactory;
 import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.internal.time.Clock;
 import org.gradle.internal.time.Time;
@@ -34,7 +34,6 @@ public class ConnectorServices {
     private static DefaultServiceRegistry singletonRegistry;
 
     static {
-        checkJavaVersion();
         singletonRegistry = new ConnectorServiceRegistry();
     }
 
@@ -58,14 +57,10 @@ public class ConnectorServices {
         singletonRegistry = new ConnectorServiceRegistry();
     }
 
-    private static void checkJavaVersion() {
-        UnsupportedJavaRuntimeException.javaDeprecationWarning();
-        UnsupportedJavaRuntimeException.assertUsingVersion("Gradle Tooling API", JavaVersion.VERSION_1_7);
-    }
-
     private static class ConnectorServiceRegistry extends DefaultServiceRegistry {
         protected Factory<DefaultGradleConnector> createConnectorFactory(final ConnectionFactory connectionFactory, final DistributionFactory distributionFactory) {
             return new Factory<DefaultGradleConnector>() {
+                @Override
                 public DefaultGradleConnector create() {
                     return new DefaultGradleConnector(connectionFactory, distributionFactory);
                 }
@@ -92,8 +87,12 @@ public class ConnectorServices {
             return new SynchronizedToolingImplementationLoader(new CachingToolingImplementationLoader(new DefaultToolingImplementationLoader()));
         }
 
-        protected LoggingProvider createLoggingProvider(Clock clock) {
-            return new SynchronizedLogging(clock);
+        protected BuildOperationIdFactory createBuildOperationIdFactory() {
+            return new DefaultBuildOperationIdFactory();
+        }
+
+        protected LoggingProvider createLoggingProvider(Clock clock, BuildOperationIdFactory buildOperationIdFactory) {
+            return new SynchronizedLogging(clock, buildOperationIdFactory);
         }
 
         protected ConnectionFactory createConnectionFactory(ToolingImplementationLoader toolingImplementationLoader, ExecutorFactory executorFactory, LoggingProvider loggingProvider) {

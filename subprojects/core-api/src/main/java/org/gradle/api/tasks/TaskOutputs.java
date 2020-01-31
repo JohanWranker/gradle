@@ -28,26 +28,37 @@ import org.gradle.internal.HasInternalProtocol;
  * <p>You can obtain a {@code TaskOutputs} instance using {@link org.gradle.api.Task#getOutputs()}.</p>
  */
 @HasInternalProtocol
-public interface TaskOutputs extends CompatibilityAdapterForTaskOutputs {
+public interface TaskOutputs {
     /**
-     * <p>Adds a predicate to determine whether the outputs of this task are up-to-date. The given closure is executed
-     * at task execution time. The closure is passed the task as a parameter. If the closure returns false, the task
-     * outputs are considered out-of-date and the task will be executed.</p>
+     * <p>
+     *     Adds a predicate to determine whether previous outputs of this task can be reused.
+     *     The given closure is executed at task execution time.
+     *     The closure is passed the task as a parameter.
+     *     If the closure returns false, previous outputs of this task cannot be reused and the task will be executed.
+     *     That means the task is out-of-date and no outputs will be loaded from the build cache.
+     * </p>
      *
-     * <p>You can add multiple such predicates. The task outputs are considered out-of-date when any predicate returns
-     * false.<p>
+     * <p>
+     *     You can add multiple such predicates.
+     *     The task outputs cannot be reused when any predicate returns false.
+     * </p>
      *
      * @param upToDateClosure The closure to use to determine whether the task outputs are up-to-date.
      */
     void upToDateWhen(Closure upToDateClosure);
 
     /**
-     * <p>Adds a predicate to determine whether the outputs of this task are up-to-date. The given spec is evaluated at
-     * task execution time. If the spec returns false, the task outputs are considered out-of-date and the task will be
-     * executed.</p>
+     * <p>
+     *     Adds a predicate to determine whether previous outputs of this task can be reused.
+     *     The given spec is evaluated at task execution time.
+     *     If the spec returns false, previous outputs of this task cannot be reused and the task will be executed.
+     *     That means the task is out-of-date and no outputs will be loaded from the build cache.
+     * </p>
      *
-     * <p>You can add multiple such predicates. The task outputs are considered out-of-date when any predicate returns
-     * false.<p>
+     * <p>
+     *     You can add multiple such predicates.
+     *     The task outputs cannot be reused when any predicate returns false.
+     * </p>
      *
      * @param upToDateSpec The spec to use to determine whether the task outputs are up-to-date.
      */
@@ -61,7 +72,7 @@ public interface TaskOutputs extends CompatibilityAdapterForTaskOutputs {
      * or if any of the predicates passed to {@link #doNotCacheIf(String, Spec)} returns {@code true}. If {@code cacheIf()} is not specified,
      * the task will not be cached unless the {@literal @}{@link CacheableTask} annotation is present on the task type.</p>
      *
-     * <p>Consider using {@link #cacheIf(String, Spec)} instead for also providing a reason for disabling caching.</p>
+     * <p>Consider using {@link #cacheIf(String, Spec)} instead for also providing a reason for enabling caching.</p>
      *
      * @param spec specifies if the results of the task should be cached.
      *
@@ -86,7 +97,9 @@ public interface TaskOutputs extends CompatibilityAdapterForTaskOutputs {
 
     /**
      * <p>Disable caching the results of the task if the given spec is satisfied. The spec will be evaluated at task execution time, not
-     * during configuration. If the spec is not satisfied, the results of the task will be cached according to {@link #cacheIf(Spec)}.</p>
+     * during configuration.</p>
+     *
+     * <p>As opposed to {@link #cacheIf(String, Spec)}, this method never enables caching for a task, it can only be used to disable caching.</p>
      *
      * <p>You may add multiple such predicates. The results of the task are not cached if any of the predicates return {@code true},
      * or if any of the predicates passed to {@link #cacheIf(String, Spec)} returns {@code false}.</p>
@@ -117,13 +130,13 @@ public interface TaskOutputs extends CompatibilityAdapterForTaskOutputs {
      * Registers some output files for this task.
      *
      * <p>When the given {@code paths} is a {@link java.util.Map}, then each output file
-     * will be associated with an identity. For cacheable tasks this is a requirement.
+     * will be associated with an identity.
      * The keys of the map must be non-empty strings.
      * The values of the map will be evaluated to individual files as per
      * {@link org.gradle.api.Project#file(Object)}.</p>
      *
-     * <p>Otherwise the given files will be evaluated as per {@link org.gradle.api.Project#files(Object...)},
-     * and task output caching will be disabled for the task.</p>
+     * <p>Otherwise the given files will be evaluated as per
+     * {@link org.gradle.api.Project#files(Object...)}.</p>
      *
      * @param paths The output files.
      *
@@ -135,13 +148,13 @@ public interface TaskOutputs extends CompatibilityAdapterForTaskOutputs {
      * Registers some output directories for this task.
      *
      * <p>When the given {@code paths} is a {@link java.util.Map}, then each output directory
-     * will be associated with an identity. For cacheable tasks this is a requirement.
+     * will be associated with an identity.
      * The keys of the map must be non-empty strings.
      * The values of the map will be evaluated to individual directories as per
      * {@link org.gradle.api.Project#file(Object)}.</p>
      *
-     * <p>Otherwise the given directories will be evaluated as per {@link org.gradle.api.Project#files(Object...)},
-     * and task output caching will be disabled for the task.</p>
+     * <p>Otherwise the given directories will be evaluated as per
+     * {@link org.gradle.api.Project#files(Object...)}.</p>
      *
      * @param paths The output files.
      *

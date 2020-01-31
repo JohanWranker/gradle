@@ -16,6 +16,7 @@
 
 package org.gradle.api.publish.maven.plugins
 
+
 import org.gradle.api.artifacts.PublishArtifactSet
 import org.gradle.api.component.ComponentWithVariants
 import org.gradle.api.file.FileCollection
@@ -27,7 +28,6 @@ import org.gradle.api.publish.maven.tasks.GenerateMavenPom
 import org.gradle.api.publish.maven.tasks.PublishToMavenLocal
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 import org.gradle.api.publish.tasks.GenerateModuleMetadata
-import org.gradle.api.tasks.TaskContainer
 import org.gradle.test.fixtures.AbstractProjectBuilderSpec
 
 class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
@@ -66,7 +66,6 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
     def "creates generation tasks for publication"() {
         when:
         publishing.publications.create("test", MavenPublication)
-        closeTaskContainer()
 
         then:
         project.tasks["generatePomFileForTestPublication"] instanceof GenerateMavenPom
@@ -78,7 +77,6 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
         when:
         def publication = publishing.publications.create("test", MavenPublication)
         publication.from(component)
-        closeTaskContainer()
 
         then:
         project.tasks["generateMetadataFileForTestPublication"] instanceof GenerateModuleMetadata
@@ -88,7 +86,6 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
         when:
         publishing.publications.create("test", MavenPublication)
         publishing.repositories { maven { url = "http://foo.com" } }
-        closeTaskContainer()
 
         then:
         project.tasks["publishTestPublicationToMavenRepository"] instanceof PublishToMavenRepository
@@ -97,7 +94,6 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
     def "creates task to publish each publication to mavenLocal"() {
         given:
         publishing.publications.create("test", MavenPublication)
-        closeTaskContainer()
 
         expect:
         publishLocalTasks.size() == 1
@@ -110,7 +106,6 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
 
         when:
         def mavenLocal = publishing.repositories.mavenLocal()
-        closeTaskContainer()
 
         then:
         publishTasks.size() == 1
@@ -127,7 +122,6 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
         def repo1 = publishing.repositories.maven { url "foo" }
         def repo2 = publishing.repositories.maven { url "foo"; name "other" }
         publishing.repositories.ivy {}
-        closeTaskContainer()
 
         then:
         publishTasks.size() == 2
@@ -141,17 +135,13 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
         project.tasks.withType(PublishToMavenLocal).sort { it.name }
     }
 
-    void closeTaskContainer() {
-        project.modelRegistry.get("tasks", TaskContainer)
-    }
-
     List<PublishToMavenRepository> getPublishTasks() {
         def allTasks = project.tasks.withType(PublishToMavenRepository).sort { it.name }
         allTasks.removeAll(publishLocalTasks)
         return allTasks
     }
 
-    def "publication identity is a snapshot of project properties"() {
+    def "publication identity is live"() {
         when:
         project.group = "group"
         project.version = "version"
@@ -161,8 +151,8 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         with(publishing.publications.test.mavenProjectIdentity) {
-            groupId == "group"
-            version == "version"
+            groupId.get() == "group"
+            version.get() == "version"
         }
 
         when:
@@ -171,8 +161,8 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         with(publishing.publications.test.mavenProjectIdentity) {
-            groupId == "group"
-            version == "version"
+            groupId.get() == "changed-group"
+            version.get() == "changed-version"
         }
     }
 
@@ -181,10 +171,27 @@ class MavenPublishPluginTest extends AbstractProjectBuilderSpec {
         publishing.publications.create("test", MavenPublication)
         def newBuildDir = project.file("changed")
         project.buildDir = newBuildDir
-        closeTaskContainer()
 
         then:
         project.tasks["generatePomFileForTestPublication"].destination == new File(newBuildDir, "publications/test/pom-default.xml")
+    }
+
+    def "creates publish tasks for all publications in a repository"() {
+        when:
+        publishing.publications.create("test", MavenPublication)
+        publishing.publications.create("test2", MavenPublication)
+        publishing.repositories { maven { url = "http://foo.com" } }
+        publishing.repositories { maven { name='other'; url = "http://bar.com" } }
+
+        then:
+        project.tasks["publishAllPublicationsToMavenRepository"].dependsOn.containsAll([
+                "publishTestPublicationToMavenRepository",
+                "publishTest2PublicationToMavenRepository"
+        ])
+        project.tasks["publishAllPublicationsToOtherRepository"].dependsOn.containsAll([
+                "publishTestPublicationToOtherRepository",
+                "publishTest2PublicationToOtherRepository"
+        ])
     }
 
     interface TestComponent extends SoftwareComponentInternal, ComponentWithVariants {

@@ -21,6 +21,7 @@ import org.gradle.internal.classloader.ClassLoaderFactory;
 import org.gradle.internal.classloader.DefaultClassLoaderFactory;
 import org.gradle.internal.classloader.FilteringClassLoader;
 import org.gradle.internal.classloader.VisitableURLClassLoader;
+import org.gradle.internal.classpath.ClassPath;
 import org.gradle.internal.classpath.DefaultClassPath;
 import org.gradle.internal.jvm.JavaInfo;
 import org.gradle.internal.jvm.Jvm;
@@ -66,8 +67,8 @@ public class JdkTools {
                                                 + javaInfo.getJavaHome().getAbsolutePath()
                                                 + " contains a valid JDK installation.");
             }
-            DefaultClassPath defaultClassPath = new DefaultClassPath(toolsJar);
-            isolatedToolsLoader = new VisitableURLClassLoader(filteringClassLoader, defaultClassPath.getAsURLs());
+            ClassPath defaultClassPath = DefaultClassPath.of(toolsJar);
+            isolatedToolsLoader = new VisitableURLClassLoader("jdk-tools", filteringClassLoader, defaultClassPath.getAsURLs());
             isJava9Compatible = false;
         } else {
             isolatedToolsLoader = filteringClassLoader;
@@ -90,11 +91,7 @@ public class JdkTools {
                 clazz = isolatedToolsLoader.loadClass("javax.tools.ToolProvider");
                 try {
                     return (JavaCompiler) clazz.getDeclaredMethod("getSystemJavaCompiler").invoke(null);
-                } catch (IllegalAccessException e) {
-                    cannotCreateJavaCompiler(e);
-                } catch (InvocationTargetException e) {
-                    cannotCreateJavaCompiler(e);
-                } catch (NoSuchMethodException e) {
+                } catch (IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
                     cannotCreateJavaCompiler(e);
                 }
             } else {

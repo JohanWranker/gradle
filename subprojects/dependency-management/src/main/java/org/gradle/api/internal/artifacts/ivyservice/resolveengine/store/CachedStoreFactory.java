@@ -33,6 +33,8 @@ import java.util.concurrent.atomic.AtomicLong;
 public class CachedStoreFactory<T> implements Closeable {
 
     private static final Logger LOG = Logging.getLogger(CachedStoreFactory.class);
+    private static final int CACHE_SIZE = Integer.getInteger("org.gradle.api.internal.artifacts.ivyservice.resolveengine.store.cacheSize", 100);
+    private static final int CACHE_EXPIRY = Integer.getInteger("org.gradle.api.internal.artifacts.ivyservice.resolveengine.store.cacheExpiryMs", 10000);
 
     private final Cache<Object, T> cache;
     private final Stats stats;
@@ -40,7 +42,7 @@ public class CachedStoreFactory<T> implements Closeable {
 
     public CachedStoreFactory(String displayName) {
         this.displayName = displayName;
-        cache = CacheBuilder.newBuilder().maximumSize(100).expireAfterAccess(10000, TimeUnit.MILLISECONDS).build();
+        cache = CacheBuilder.newBuilder().maximumSize(CACHE_SIZE).expireAfterAccess(CACHE_EXPIRY, TimeUnit.MILLISECONDS).build();
         stats = new Stats();
     }
 
@@ -48,6 +50,7 @@ public class CachedStoreFactory<T> implements Closeable {
         return new SimpleStore<T>(cache, id, stats);
     }
 
+    @Override
     public void close() {
         LOG.debug(displayName + " cache closed. Cache reads: "
                 + stats.readsFromCache + ", disk reads: "
@@ -87,6 +90,7 @@ public class CachedStoreFactory<T> implements Closeable {
             this.stats = stats;
         }
 
+        @Override
         public T load(Factory<T> createIfNotPresent) {
             T out = cache.getIfPresent(id);
             if (out != null) {

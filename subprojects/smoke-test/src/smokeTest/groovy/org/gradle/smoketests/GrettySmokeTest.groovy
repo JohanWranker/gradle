@@ -16,15 +16,31 @@
 
 package org.gradle.smoketests
 
+import spock.lang.Ignore
+
 import static org.gradle.testkit.runner.TaskOutcome.SUCCESS
 
+@Ignore("Ignored until https://github.com/gretty-gradle-plugin/gretty/issues/80 is resolved.")
 class GrettySmokeTest extends AbstractSmokeTest {
 
     def 'run with jetty'() {
         given:
         useSample('gretty-example')
         buildFile << """
+            plugins {
+                id "war"
+                id "org.gretty" version "${TestedVersions.gretty}"
+            }
+            
+            ${jcenterRepository()}
+
+            dependencies {
+                compile group: 'log4j', name: 'log4j', version: '1.2.15', ext: 'jar'
+            }
+            
             gretty {
+                contextPath = 'quickstart'
+
                 httpPort = 0
                 integrationTestTask = 'checkContainerUp'
                 servletContainer = 'jetty9'

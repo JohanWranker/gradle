@@ -15,8 +15,6 @@
  */
 package org.gradle.tooling.model;
 
-import org.gradle.api.Incubating;
-
 import javax.annotation.Nullable;
 
 /**
@@ -49,6 +47,7 @@ public interface Task extends Launchable {
      * @return The description of this task, or {@code null} if it has no description.
      * @since 1.0-milestone-3
      */
+    @Override
     @Nullable
     String getDescription();
 
@@ -58,7 +57,6 @@ public interface Task extends Launchable {
      * @return the group a task belongs to.
      * @since 2.5
      */
-    @Incubating
     @Nullable
     String getGroup();
 }

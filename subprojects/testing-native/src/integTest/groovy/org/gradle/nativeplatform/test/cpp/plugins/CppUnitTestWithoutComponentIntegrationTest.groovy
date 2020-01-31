@@ -16,9 +16,9 @@
 
 package org.gradle.nativeplatform.test.cpp.plugins
 
-import org.gradle.nativeplatform.test.AbstractNativeUnitTestIntegrationTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
-class CppUnitTestWithoutComponentIntegrationTest extends AbstractNativeUnitTestIntegrationTest {
+class CppUnitTestWithoutComponentIntegrationTest extends AbstractCppUnitTestIntegrationTest {
     @Override
     protected void makeSingleProject() {
         buildFile << """
@@ -26,24 +26,38 @@ class CppUnitTestWithoutComponentIntegrationTest extends AbstractNativeUnitTestI
         """
     }
 
-    def "builds and runs test suite when no main component"() {
-        buildFile << """
-            apply plugin: 'cpp-unit-test'
+    @Override
+    protected void writeTests() {
+        file("src/test/headers/tests.h") << """
+            extern int test();
         """
-
         file("src/test/cpp/test.cpp") << """
-int main() {
-    return 0;
-}
-"""
-
-        when:
-        succeeds("check")
-
-        then:
-        result.assertTasksExecuted( tasksToBuildAndRunUnitTest, ":test", ":check")
+            #include <tests.h>
+            int test() {
+                return 0;
+            }
+        """
+        file("src/test/cpp/test_main.cpp") << """
+            #include <tests.h>
+            int main() {
+                return test();
+            }
+        """
     }
 
+    @Override
+    protected void changeTestImplementation() {
+        file("src/test/cpp/test.cpp") << """
+            void test_func() { }
+        """
+    }
+
+    @Override
+    protected void assertTestCasesRan() {
+        // Ok
+    }
+
+    @ToBeFixedForInstantExecution
     def "test fails when test executable returns non-zero status"() {
         buildFile << """
             apply plugin: 'cpp-unit-test'
@@ -59,13 +73,13 @@ int main() {
         fails("check")
 
         then:
-        result.assertTasksExecuted( tasksToBuildAndRunUnitTest)
+        result.assertTasksExecuted(tasksToBuildAndRunUnitTest)
         failure.assertHasDescription("Execution failed for task ':runTest'.")
         failure.assertHasCause("There were failing tests. See the results at:")
     }
 
     @Override
-    String[] getTasksToBuildAndRunUnitTest() {
-        return [":compileTestCpp", ":linkTest", ":installTest", ":runTest"]
+    protected String getComponentUnderTestDsl() {
+        return null
     }
 }

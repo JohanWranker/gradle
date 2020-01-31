@@ -20,7 +20,7 @@ import groovy.lang.DelegatesTo;
 import org.gradle.api.Action;
 import org.gradle.api.logging.configuration.ConsoleOutput;
 import org.gradle.api.logging.configuration.WarningMode;
-import org.gradle.integtests.fixtures.AbstractConsoleFunctionalSpec;
+import org.gradle.integtests.fixtures.RichConsoleStyling;
 import org.gradle.internal.concurrent.Stoppable;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
 import org.gradle.test.fixtures.file.TestFile;
@@ -36,11 +36,6 @@ public interface GradleExecuter extends Stoppable {
      * Sets the working directory to use. Defaults to the test's temporary directory.
      */
     GradleExecuter inDirectory(File directory);
-
-    /**
-     * Enables search upwards. Defaults to false.
-     */
-    GradleExecuter withSearchUpwards();
 
     /**
      * Sets the task names to execute. Defaults to an empty list.
@@ -237,6 +232,20 @@ public interface GradleExecuter extends Stoppable {
     GradleExecuter withDaemonBaseDir(File baseDir);
 
     /**
+     * Sets the path to the read-only dependency cache
+     * @param cacheDir the path to the RO dependency cache
+     * @return this executer
+     */
+    GradleExecuter withReadOnlyCacheDir(File cacheDir);
+
+    /**
+     * Sets the path to the read-only dependency cache
+     * @param cacheDir the path to the RO dependency cache
+     * @return this executer
+     */
+    GradleExecuter withReadOnlyCacheDir(String cacheDir);
+
+    /**
      * Returns the working space for any daemons used by the builds.
      */
     File getDaemonBaseDir();
@@ -281,17 +290,41 @@ public interface GradleExecuter extends Stoppable {
     TestDirectoryProvider getTestDirectoryProvider();
 
     /**
+     * Default is enabled = true.
+     *
+     * All our tests should work with partial VFS invalidation.
+     * As soon as partial invalidation is enabled by default, we can remove this method and the field again.
+     */
+    GradleExecuter withPartialVfsInvalidation(boolean enabled);
+
+    /**
      * Expects exactly one deprecation warning in the build output. If more than one warning is produced,
      * or no warning is produced at all, the assertion fails.
      *
      * @see #expectDeprecationWarnings(int)
+     *
+     * @deprecated Use {@link #expectDeprecationWarning(String)} instead.
      */
+    @Deprecated
     GradleExecuter expectDeprecationWarning();
+
+    /**
+     * Expects exactly the given deprecation warning.
+     */
+    GradleExecuter expectDeprecationWarning(String warning);
+
+    /**
+     * Expects the given deprecation warning, allowing to pass documentation url with /current/ version and asserting against the actual current version instead.
+     */
+    GradleExecuter expectDocumentedDeprecationWarning(String warning);
 
     /**
      * Expects exactly the given number of deprecation warnings. If fewer or more warnings are produced during
      * the execution, the assertion fails.
+     *
+     * @deprecated Use {@link #expectDeprecationWarning(String)} instead.
      */
+    @Deprecated
     GradleExecuter expectDeprecationWarnings(int count);
 
     /**
@@ -423,12 +456,12 @@ public interface GradleExecuter extends Stoppable {
     /**
      * Executes the build with {@code "--console=rich, auto, verbose"} argument.
      *
-     * @see AbstractConsoleFunctionalSpec
+     * @see RichConsoleStyling
      */
     GradleExecuter withConsole(ConsoleOutput consoleOutput);
 
     /**
-     * Executes the build with {@code "--warning-mode=none, summary, all"} argument.
+     * Executes the build with {@code "--warning-mode=none, summary, fail, all"} argument.
      *
      * @see WarningMode
      */
@@ -438,4 +471,46 @@ public interface GradleExecuter extends Stoppable {
      * Execute the builds without adding the {@code "--stacktrace"} argument.
      */
     GradleExecuter withStacktraceDisabled();
+
+    /**
+     * Renders the welcome message users see upon first invocation of a Gradle distribution with a given Gradle user home directory.
+     * By default the message is never rendered.
+     */
+    GradleExecuter withWelcomeMessageEnabled();
+
+    /**
+     * Specifies we should use a test console that has both stdout and stderr attached.
+     */
+    GradleExecuter withTestConsoleAttached();
+
+    /**
+     * Specifies we should use a test console that only has stdout attached.
+     */
+    GradleExecuter withTestConsoleAttached(ConsoleAttachment consoleAttachment);
+
+    /**
+     * Apply an init script which replaces all external repositories with inner mirrors.
+     * Note this doesn't work for buildSrc and composite build.
+     *
+     * @see org.gradle.integtests.fixtures.RepoScriptBlockUtil
+     */
+    GradleExecuter withRepositoryMirrors();
+
+    /**
+     * Requires an isolated gradle user home and put an init script which replaces all external repositories with inner mirrors.
+     * This works for all scenarios.
+     *
+     * @see org.gradle.integtests.fixtures.RepoScriptBlockUtil
+     */
+    GradleExecuter withGlobalRepositoryMirrors();
+
+    /**
+     * Start the build with {@link org.gradle.api.internal.artifacts.BaseRepositoryFactory#PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}
+     * set to our inner mirror.
+     *
+     * @see org.gradle.integtests.fixtures.RepoScriptBlockUtil
+     */
+    GradleExecuter withPluginRepositoryMirror();
+
+    GradleExecuter ignoreMissingSettingsFile();
 }

@@ -22,13 +22,15 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.JavaVersion;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.internal.project.ProjectStateRegistry;
 import org.gradle.language.scala.ScalaPlatform;
 import org.gradle.plugins.ide.idea.model.internal.IdeaDependenciesProvider;
+import org.gradle.plugins.ide.internal.IdeArtifactRegistry;
+import org.gradle.plugins.ide.internal.resolver.DefaultGradleApiSourcesResolver;
 
 import java.io.File;
 import java.util.Collection;
@@ -68,6 +70,12 @@ import static org.gradle.util.ConfigureUtil.configure;
  *
  *     //and some extra test source dirs
  *     testSourceDirs += file('some-extra-test-dir')
+ *
+ *     //and some extra resource dirs
+ *     resourceDirs += file('some-extra-resource-dir')
+ *
+ *     //and some extra test resource dirs
+ *     testResourceDirs += file('some-extra-test-resource-dir')
  *
  *     //and hint to mark some of existing source dirs as generated sources
  *     generatedSourceDirs += file('some-extra-source-folder')
@@ -149,6 +157,8 @@ public class IdeaModule {
     private String name;
     private Set<File> sourceDirs;
     private Set<File> generatedSourceDirs = Sets.newLinkedHashSet();
+    private Set<File> resourceDirs = Sets.newLinkedHashSet();
+    private Set<File> testResourceDirs = Sets.newLinkedHashSet();
     private Map<String, Map<String, Collection<Configuration>>> scopes = Maps.newLinkedHashMap();
     private boolean downloadSources = true;
     private boolean downloadJavadoc;
@@ -209,7 +219,7 @@ public class IdeaModule {
 
     /**
      * The directories containing the production sources.
-     * <p>
+     *
      * For example see docs for {@link IdeaModule}
      */
     public Set<File> getSourceDirs() {
@@ -225,12 +235,10 @@ public class IdeaModule {
      * <p>
      * For example see docs for {@link IdeaModule}
      */
-    @Incubating
     public Set<File> getGeneratedSourceDirs() {
         return generatedSourceDirs;
     }
 
-    @Incubating
     public void setGeneratedSourceDirs(Set<File> generatedSourceDirs) {
         this.generatedSourceDirs = generatedSourceDirs;
     }
@@ -302,8 +310,11 @@ public class IdeaModule {
         this.contentRoot = contentRoot;
     }
 
+
     /**
-     * The directories containing the test sources. <p> For example see docs for {@link IdeaModule}
+     * The directories containing the test sources.
+     *
+     * For example see docs for {@link IdeaModule}
      */
     public Set<File> getTestSourceDirs() {
         return testSourceDirs;
@@ -313,6 +324,37 @@ public class IdeaModule {
         this.testSourceDirs = testSourceDirs;
     }
 
+    /**
+     * The directories containing resources. <p> For example see docs for {@link IdeaModule}
+     * @since 4.7
+     */
+    public Set<File> getResourceDirs() {
+        return resourceDirs;
+    }
+
+    /**
+     * Sets the directories containing resources. <p> For example see docs for {@link IdeaModule}
+     * @since 4.7
+     */
+    public void setResourceDirs(Set<File> resourceDirs) {
+        this.resourceDirs = resourceDirs;
+    }
+
+    /**
+     * The directories containing the test resources. <p> For example see docs for {@link IdeaModule}
+     * @since 4.7
+     */
+    public Set<File> getTestResourceDirs() {
+        return testResourceDirs;
+    }
+
+    /**
+     * Sets the directories containing the test resources. <p> For example see docs for {@link IdeaModule}
+     * @since 4.7
+     */
+    public void setTestResourceDirs(Set<File> testResourceDirs) {
+        this.testResourceDirs = testResourceDirs;
+    }
     /**
      * Directories to be excluded. <p> For example see docs for {@link IdeaModule}
      */
@@ -402,12 +444,10 @@ public class IdeaModule {
      * <p>
      * The Idea module language level is based on the {@code sourceCompatibility} settings for the associated Gradle project.
      */
-    @Incubating
     public IdeaLanguageLevel getLanguageLevel() {
         return languageLevel;
     }
 
-    @Incubating
     public void setLanguageLevel(IdeaLanguageLevel languageLevel) {
         this.languageLevel = languageLevel;
     }
@@ -418,12 +458,10 @@ public class IdeaModule {
      * <p>
      * The Idea module bytecode version is based on the {@code targetCompatibility} settings for the associated Gradle project.
      */
-    @Incubating
     public JavaVersion getTargetBytecodeVersion() {
         return targetBytecodeVersion;
     }
 
-    @Incubating
     public void setTargetBytecodeVersion(JavaVersion targetBytecodeVersion) {
         this.targetBytecodeVersion = targetBytecodeVersion;
     }
@@ -431,12 +469,10 @@ public class IdeaModule {
     /**
      * The Scala version used by this module.
      */
-    @Incubating
     public ScalaPlatform getScalaPlatform() {
         return scalaPlatform;
     }
 
-    @Incubating
     public void setScalaPlatform(ScalaPlatform scalaPlatform) {
         this.scalaPlatform = scalaPlatform;
     }
@@ -502,7 +538,7 @@ public class IdeaModule {
      * @since 3.5
      */
     public void iml(Action<? super IdeaModuleIml> action) {
-        action.execute(getIml());
+        action.execute(iml);
     }
 
     /**
@@ -519,7 +555,7 @@ public class IdeaModule {
 
     public void setOutputFile(File newOutputFile) {
         setName(newOutputFile.getName().replaceFirst("\\.iml$", ""));
-        iml.setGenerateTo(newOutputFile.getParentFile());
+        getIml().setGenerateTo(newOutputFile.getParentFile());
     }
 
     /**
@@ -529,7 +565,9 @@ public class IdeaModule {
      */
     public Set<Dependency> resolveDependencies() {
         ProjectInternal projectInternal = (ProjectInternal) project;
-        IdeaDependenciesProvider ideaDependenciesProvider = new IdeaDependenciesProvider(projectInternal.getServices());
+        IdeArtifactRegistry ideArtifactRegistry = projectInternal.getServices().get(IdeArtifactRegistry.class);
+        ProjectStateRegistry projectRegistry = projectInternal.getServices().get(ProjectStateRegistry.class);
+        IdeaDependenciesProvider ideaDependenciesProvider = new IdeaDependenciesProvider(projectInternal, ideArtifactRegistry, projectRegistry, new DefaultGradleApiSourcesResolver(project));
         return ideaDependenciesProvider.provide(this);
     }
 
@@ -540,6 +578,8 @@ public class IdeaModule {
         Set<Path> sourceFolders = pathsOf(existing(getSourceDirs()));
         Set<Path> generatedSourceFolders = pathsOf(existing(getGeneratedSourceDirs()));
         Set<Path> testSourceFolders = pathsOf(existing(getTestSourceDirs()));
+        Set<Path> resourceFolders = pathsOf(existing(getResourceDirs()));
+        Set<Path> testResourceFolders = pathsOf(existing(getTestResourceDirs()));
         Set<Path> excludeFolders = pathsOf(getExcludeDirs());
         Path outputDir = getOutputDir() != null ? getPathFactory().path(getOutputDir()) : null;
         Path testOutputDir = getTestOutputDir() != null ? getPathFactory().path(getTestOutputDir()) : null;
@@ -548,7 +588,10 @@ public class IdeaModule {
 
         xmlModule.configure(
             contentRoot,
-            sourceFolders, testSourceFolders, generatedSourceFolders, excludeFolders,
+            sourceFolders, testSourceFolders,
+            resourceFolders, testResourceFolders,
+            generatedSourceFolders,
+            excludeFolders,
             getInheritOutputDirs(), outputDir, testOutputDir,
             dependencies,
             getJdkName(), level
@@ -574,4 +617,5 @@ public class IdeaModule {
             }
         }));
     }
+
 }

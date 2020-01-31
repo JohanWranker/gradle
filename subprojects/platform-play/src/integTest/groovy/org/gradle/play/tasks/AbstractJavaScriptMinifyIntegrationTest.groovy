@@ -16,14 +16,15 @@
 
 package org.gradle.play.tasks
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.AbstractPluginIntegrationTest
 import org.gradle.test.fixtures.archive.JarTestFixture
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.TextUtil
 
-abstract class AbstractJavaScriptMinifyIntegrationTest extends AbstractIntegrationSpec {
+abstract class AbstractJavaScriptMinifyIntegrationTest extends AbstractPluginIntegrationTest {
 
     def setup() {
+        executer.noDeprecationChecks()
         settingsFile << """ rootProject.name = 'js-play-app' """
     }
 

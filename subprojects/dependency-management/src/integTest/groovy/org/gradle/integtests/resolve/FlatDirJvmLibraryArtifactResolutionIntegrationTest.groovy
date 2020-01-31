@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 package org.gradle.integtests.resolve
+
 import org.gradle.integtests.fixtures.AbstractDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class FlatDirJvmLibraryArtifactResolutionIntegrationTest extends AbstractDependencyResolutionTest {
     JvmLibraryArtifactResolveTestFixture fixture
@@ -28,6 +30,7 @@ repositories {
         fixture = new JvmLibraryArtifactResolveTestFixture(buildFile)
     }
 
+    @ToBeFixedForInstantExecution
     def "resolves and does not cache source and javadoc artifacts"() {
         publishModule()
         fixture.expectSourceArtifact("sources")
@@ -58,8 +61,8 @@ repositories {
         fails("verify")
         failure.assertHasCause("""Could not find some.group:some-artifact:1.0.
 Searched in the following locations:
-    ${location1}
-    ${location2}""")
+  - ${location1}
+  - ${location2}""")
     }
 
     def "resolve missing source and javadoc artifacts"() {
@@ -94,8 +97,8 @@ Searched in the following locations:
         fails("verify")
         failure.assertHasCause("""Could not find some.group:some-artifact:1.0.
 Searched in the following locations:
-    ${location1}
-    ${location2}""")
+  - ${location1}
+  - ${location2}""")
     }
 
     private publishModule() {

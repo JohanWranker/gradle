@@ -17,6 +17,7 @@ package org.gradle.integtests.resolve.maven
 
 import org.gradle.api.credentials.PasswordCredentials
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.executer.ProgressLoggingFixture
 import org.gradle.test.fixtures.encoding.Identifier
 import org.gradle.test.fixtures.server.http.HttpServer
@@ -131,6 +132,7 @@ task retrieve(type: Sync) {
         identifier << Identifier.all
     }
 
+    @ToBeFixedForInstantExecution
     def "can resolve and cache artifact-only dependencies from an HTTP Maven repository"() {
         given:
         def projectA = mavenHttpRepo.module('group', 'projectA', '1.2')
@@ -179,6 +181,7 @@ task listJars {
         succeeds('listJars')
     }
 
+    @ToBeFixedForInstantExecution
     def "can resolve and cache artifact-only dependencies with no pom from an HTTP Maven repository"() {
         given:
         def projectA = mavenHttpRepo.module('group', 'projectA', '1.2')
@@ -211,11 +214,9 @@ task listJars {
 """
 
         when:
-        projectA.pom.expectGetMissing()
-        projectA.artifact.expectHead()
+        projectA.pom.expectGet()
         projectA.artifact.expectGet()
-        projectB.pom.expectGetMissing()
-        projectB.artifact(classifier: 'classy').expectHead()
+        projectB.pom.expectGet()
         projectB.artifact(classifier: 'classy').expectGet()
 
         then:
@@ -229,6 +230,7 @@ task listJars {
         succeeds('listJars')
     }
 
+    @ToBeFixedForInstantExecution
     def "can resolve and cache dependencies from multiple HTTP Maven repositories"() {
         given:
         def repo1 = mavenHttpRepo("repo1")
@@ -261,9 +263,7 @@ task listJars {
         when:
         projectA.pom.expectGet()
 
-        // Looks for POM and JAR in repo1 before looking in repo2 (jar is an attempt to handle publication without module descriptor)
         missingProjectB.pom.expectGetMissing()
-        missingProjectB.artifact.expectHeadMissing()
         projectB.pom.expectGet()
 
         projectA.artifact.expectGet()
@@ -370,6 +370,7 @@ task listJars {
         file('libs/projectA-1.0.jar').assertHasNotChangedSince(snapshot)
     }
 
+    @ToBeFixedForInstantExecution
     void "fails when configured with AwsCredentials"() {
         given:
         mavenHttpRepo.module('group', 'projectA', '1.2').publish()
@@ -394,10 +395,11 @@ task listJars {
         """
 
         when:
-
         fails 'retrieve'
+
         then:
-        failure.assertHasDescription("Could not resolve all files for configuration ':compile'.")
+        failure.assertHasDescription("Execution failed for task ':retrieve'.")
+        failure.assertHasCause("Could not resolve all files for configuration ':compile'.")
         failure.assertHasCause("Could not resolve org.group.name:projectA:1.2.")
         failure.assertHasCause("Credentials must be an instance of: ${PasswordCredentials.canonicalName}")
     }
@@ -429,7 +431,7 @@ task listJars {
         then:
         fails 'listJars'
 
-        errorOutput.contains('Response 304: Not Modified has no content!')
+        failure.assertHasCause('Response 304: Not Modified has no content!')
     }
 
     def "does not query Maven repository for modules without a group, name or version"() {
@@ -462,12 +464,12 @@ task listJars {
 
         then:
 
-        errorOutput.contains('Could not find :name1:1.0.')
-        errorOutput.contains('Could not find any matches for :name2:[1.0, 2.0] as no versions of :name2 are available.')
-        errorOutput.contains('Could not find :name3:1.0-SNAPSHOT.')
-        errorOutput.contains('Could not find group1::1.0.')
-        errorOutput.contains('Could not find any matches for group2::[1.0, 2.0] as no versions of group2: are available.')
-        errorOutput.contains('Could not find group3::1.0-SNAPSHOT.')
-        errorOutput.contains('Could not find group:name:.')
+        failure.assertHasCause('Could not find :name1:1.0.')
+        failure.assertHasCause('Could not find any matches for :name2:[1.0, 2.0] as no versions of :name2 are available.')
+        failure.assertHasCause('Could not find :name3:1.0-SNAPSHOT.')
+        failure.assertHasCause('Could not find group1::1.0.')
+        failure.assertHasCause('Could not find any matches for group2::[1.0, 2.0] as no versions of group2: are available.')
+        failure.assertHasCause('Could not find group3::1.0-SNAPSHOT.')
+        failure.assertHasCause('Could not find group:name:.')
     }
 }

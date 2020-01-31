@@ -18,9 +18,11 @@ package org.gradle.api.internal.tasks.execution
 
 import org.gradle.api.internal.TaskInternal
 import org.gradle.api.internal.tasks.TaskExecuter
+import org.gradle.api.internal.tasks.TaskExecuterResult
 import org.gradle.api.internal.tasks.TaskExecutionContext
 import org.gradle.api.internal.tasks.TaskExecutionOutcome
 import org.gradle.api.internal.tasks.TaskStateInternal
+import org.gradle.api.tasks.TaskExecutionException
 import spock.lang.Specification
 
 class CatchExceptionTaskExecuterTest extends Specification {
@@ -37,13 +39,14 @@ class CatchExceptionTaskExecuterTest extends Specification {
         then:
         1 * delegate.execute(task, state, context) >> {
             state.setOutcome(TaskExecutionOutcome.EXECUTED)
+            return TaskExecuterResult.WITHOUT_OUTPUTS
         }
         0 * _
         state.outcome == TaskExecutionOutcome.EXECUTED
         !state.failure
     }
 
-    def 'should throw exception of delegate and set the outcome to failure'() {
+    def 'should catch exception of delegate and set the outcome to failure'() {
         given:
         def failure = new RuntimeException("Failure")
 
@@ -57,6 +60,7 @@ class CatchExceptionTaskExecuterTest extends Specification {
         0 * _
 
         state.outcome == TaskExecutionOutcome.EXECUTED
-        state.failure.is(failure)
+        state.failure instanceof TaskExecutionException
+        state.failure.cause.is(failure)
     }
 }

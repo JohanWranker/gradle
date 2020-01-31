@@ -760,7 +760,7 @@ class DefaultListenerManagerTest extends ConcurrentSpec {
         0 * _
     }
 
-    @Ignore("This test highlights a very pelicular use case which is not supported yet")
+    @Ignore("This test highlights a very peculiar use case which is not supported yet")
     def "can remove a listener which tries to notify a broadcaster itself trying to notify the same listener"() {
         given:
         def listener1 = {
@@ -909,6 +909,37 @@ class DefaultListenerManagerTest extends ConcurrentSpec {
 
         then:
         executor.failure == null
+    }
+
+    def "can query for registered listeners"() {
+        expect:
+        !manager.hasListeners(TestFooListener)
+
+        when:
+        manager.getBroadcaster(TestFooListener)
+
+        then:
+        !manager.hasListeners(TestFooListener)
+
+        when:
+        manager.addListener(fooListener1)
+
+        then:
+        manager.hasListeners(TestFooListener)
+        !manager.hasListeners(TestBarListener)
+
+        when:
+        manager.removeListener(fooListener1)
+
+        then:
+        !manager.hasListeners(TestFooListener)
+
+        when:
+        manager.addListener(Mock(BothListener))
+
+        then:
+        manager.hasListeners(TestFooListener)
+        manager.hasListeners(TestBarListener)
     }
 
     public interface TestFooListener {

@@ -17,67 +17,72 @@
 package org.gradle.nativeplatform.test.xctest
 
 import org.gradle.internal.os.OperatingSystem
+import org.gradle.language.swift.SwiftTaskNames
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
 import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.XCTestSourceElement
 import org.gradle.nativeplatform.test.AbstractNativeUnitTestIntegrationTest
 import org.junit.Assume
-import spock.lang.Unroll
 
 @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC)
-abstract class AbstractSwiftXCTestIntegrationTest extends AbstractNativeUnitTestIntegrationTest implements XCTestExecutionResult {
+abstract class AbstractSwiftXCTestIntegrationTest extends AbstractNativeUnitTestIntegrationTest implements XCTestExecutionResult, SwiftTaskNames {
     def setup() {
         // TODO: Temporarily disable XCTests with Swift3 on macOS
         Assume.assumeFalse(OperatingSystem.current().isMacOsX() && toolChain.version.major == 3)
     }
 
-    @Unroll
-    def "runs tests when #task lifecycle task executes"() {
-        given:
-        def fixture = getPassingTestFixture()
-        makeSingleProject()
-        settingsFile << "rootProject.name = '${fixture.projectName}'"
-        fixture.writeToProject(testDirectory)
-
-        when:
-        succeeds(task)
-
-        then:
-        result.assertTasksExecuted(tasksToBuildAndRunUnitTest, expectedLifecycleTasks)
-        fixture.assertTestCasesRan(testExecutionResult)
-
-        where:
-        task    | expectedLifecycleTasks
-        "test"  | [":test"]
-        "check" | [":test", ":check"]
-        "build" | [":test", ":check", ":build", taskToAssembleComponentUnderTest, ":assemble"]
+    @Override
+    protected void writeTests() {
+        settingsFile << "rootProject.name = '${passingTestFixture.projectName}'"
+        passingTestFixture.writeToProject(testDirectory)
     }
 
-    def "skips test tasks as up-to-date when nothing changes between invocation"() {
-        given:
-        def fixture = getPassingTestFixture()
-        makeSingleProject()
-        settingsFile << "rootProject.name = '${fixture.projectName}'"
-        fixture.writeToProject(testDirectory)
+    @Override
+    protected void changeTestImplementation() {
+        file(passingTestFixture.testSuites.first().sourceFile.withPath("src/test")) << """
+            func test() -> Int32 { return 1; }
+        """
+    }
 
-        succeeds("test")
-
-        when:
-        succeeds("test")
-
-        then:
-        result.assertTasksExecuted(tasksToBuildAndRunUnitTest, ":test")
-        result.assertTasksSkipped(tasksToBuildAndRunUnitTest, ":test")
+    @Override
+    protected void assertTestCasesRan() {
+        passingTestFixture.assertTestCasesRan(testExecutionResult)
     }
 
     @Override
     String[] getTasksToBuildAndRunUnitTest() {
-        return tasksToCompileComponentUnderTest + [":compileTestSwift", ":linkTest", ":installTest", ":xcTest"]
+        return tasks.test.allToInstall + [":xcTest"]
     }
 
-    protected abstract String[] getTaskToAssembleComponentUnderTest()
+    @Override
+    protected String getTestComponentDsl() {
+        return "xctest"
+    }
 
-    protected abstract String[] getTasksToCompileComponentUnderTest()
+    @Override
+    protected String getComponentUnderTestDsl() {
+        return null
+    }
+
+    @Override
+    protected String[] getTasksToBuildAndRunUnitTest(String architecture) {
+        return tasksToBuildAndRunUnitTest
+    }
+
+    @Override
+    protected String[] getTasksToCompileComponentUnderTest(String architecture) {
+        return tasksToCompileComponentUnderTest
+    }
+
+    @Override
+    protected String[] getTasksToRelocate() {
+        return getTasksToRelocate(null) + renameLinuxMainTasks()
+    }
 
     protected abstract XCTestSourceElement getPassingTestFixture()
+
+    @Override
+    String getLanguageTaskSuffix() {
+        return "Swift"
+    }
 }

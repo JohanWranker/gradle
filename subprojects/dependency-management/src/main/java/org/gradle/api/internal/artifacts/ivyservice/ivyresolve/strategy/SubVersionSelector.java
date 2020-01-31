@@ -30,18 +30,22 @@ public class SubVersionSelector extends AbstractStringVersionSelector {
         return prefix;
     }
 
+    @Override
     public boolean isDynamic() {
         return true;
     }
 
+    @Override
     public boolean requiresMetadata() {
         return false;
     }
 
+    @Override
     public boolean matchesUniqueVersion() {
         return false;
     }
 
+    @Override
     public boolean accept(String candidate) {
         return candidate.startsWith(prefix);
     }
@@ -50,4 +54,5 @@ public class SubVersionSelector extends AbstractStringVersionSelector {
     public boolean canShortCircuitWhenVersionAlreadyPreselected() {
         return false;
     }
+
 }

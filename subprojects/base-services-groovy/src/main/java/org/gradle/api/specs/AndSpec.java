@@ -17,7 +17,6 @@ package org.gradle.api.specs;
 
 import com.google.common.collect.ObjectArrays;
 import groovy.lang.Closure;
-import org.gradle.api.Incubating;
 import org.gradle.api.specs.internal.ClosureSpec;
 
 /**
@@ -41,6 +40,7 @@ public class AndSpec<T> extends CompositeSpec<T> {
         super(specs);
     }
 
+    @Override
     public boolean isSatisfiedBy(T object) {
         Spec<? super T>[] specs = getSpecsArray();
         for (Spec<? super T> spec : specs) {
@@ -71,7 +71,6 @@ public class AndSpec<T> extends CompositeSpec<T> {
      *
      * @since 4.3
      */
-    @Incubating
     @SuppressWarnings("unchecked")
     public AndSpec<T> and(Spec<? super T> spec) {
         return and(new Spec[]{spec});
@@ -86,8 +85,4 @@ public class AndSpec<T> extends CompositeSpec<T> {
         return uncheckedCast(EMPTY);
     }
 
-    @Override
-    public int hashCode() {
-        return 7 * super.hashCode();
-    }
 }

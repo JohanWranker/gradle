@@ -16,16 +16,20 @@
 
 package org.gradle.api.internal.notations
 
+import org.gradle.api.InvalidUserCodeException
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.DependencyArtifact
+import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.internal.artifacts.dependencies.DefaultClientModule
 import org.gradle.api.internal.artifacts.dependencies.DefaultExternalModuleDependency
-import org.gradle.internal.reflect.DirectInstantiator
 import org.gradle.internal.typeconversion.NotationParserBuilder
+import org.gradle.util.TestUtil
+import org.gradle.util.internal.SimpleMapInterner
 import spock.lang.Specification
+import spock.lang.Unroll
 
-public class DependencyStringNotationConverterTest extends Specification {
-    def parser = new DependencyStringNotationConverter(DirectInstantiator.INSTANCE, DefaultExternalModuleDependency.class);
+class DependencyStringNotationConverterTest extends Specification {
+    def parser = new DependencyStringNotationConverter(TestUtil.instantiatorFactory().decorateLenient(), DefaultExternalModuleDependency.class, SimpleMapInterner.notThreadSafe());
 
     def "with artifact"() {
         when:
@@ -35,7 +39,9 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.name == 'gradle-core'
         d.group == 'org.gradle'
         d.version == '4.4-beta2'
-        d.versionConstraint.preferredVersion == '4.4-beta2'
+        d.versionConstraint.requiredVersion == '4.4-beta2'
+        d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
 
         !d.force
@@ -54,7 +60,9 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.name == 'gradle-core'
         d.group == 'org.gradle'
         d.version == '10'
-        d.versionConstraint.preferredVersion == '10'
+        d.versionConstraint.requiredVersion == '10'
+        d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
 
         !d.force
@@ -73,7 +81,9 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.name == 'gradle-core'
         d.group == 'org.gradle'
         d.version == '10'
-        d.versionConstraint.preferredVersion == '10'
+        d.versionConstraint.requiredVersion == '10'
+        d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
         d.transitive
 
@@ -81,8 +91,10 @@ public class DependencyStringNotationConverterTest extends Specification {
         !d.changing
 
         d.artifacts.size() == 1
-        d.artifacts.find { it.name == 'gradle-core' && it.classifier == 'jdk-1.4' &&
-                it.type == DependencyArtifact.DEFAULT_TYPE && it.extension == DependencyArtifact.DEFAULT_TYPE }
+        d.artifacts.find {
+            it.name == 'gradle-core' && it.classifier == 'jdk-1.4' &&
+                it.type == DependencyArtifact.DEFAULT_TYPE && it.extension == DependencyArtifact.DEFAULT_TYPE
+        }
     }
 
     def "with 3-element GString"() {
@@ -95,7 +107,9 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.group == 'org.gradle'
         d.name == 'gradle-core'
         d.version == '1.0'
-        d.versionConstraint.preferredVersion == '1.0'
+        d.versionConstraint.requiredVersion == '1.0'
+        d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
         d.transitive
 
@@ -111,7 +125,9 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.group == null
         d.name == 'foo'
         d.version == '1.0'
-        d.versionConstraint.preferredVersion == '1.0'
+        d.versionConstraint.requiredVersion == '1.0'
+        d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
         d.transitive
 
@@ -127,7 +143,9 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.group == 'hey'
         d.name == 'foo'
         d.version == null
+        d.versionConstraint.requiredVersion == ''
         d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
         d.transitive
 
@@ -143,7 +161,9 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.group == null
         d.name == 'foo'
         d.version == null
+        d.versionConstraint.requiredVersion == ''
         d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
         d.transitive
 
@@ -152,7 +172,7 @@ public class DependencyStringNotationConverterTest extends Specification {
     }
 
     def "can create client module"() {
-        def parser = new DependencyStringNotationConverter(DirectInstantiator.INSTANCE, DefaultClientModule);
+        def parser = new DependencyStringNotationConverter(TestUtil.instantiatorFactory().decorateLenient(), DefaultClientModule, SimpleMapInterner.notThreadSafe());
 
         when:
         def d = parse(parser, 'org.gradle:gradle-core:10')
@@ -162,7 +182,9 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.name == 'gradle-core'
         d.group == 'org.gradle'
         d.version == '10'
-        d.versionConstraint.preferredVersion == '10'
+        d.versionConstraint.requiredVersion == '10'
+        d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
         d.transitive
 
@@ -170,7 +192,7 @@ public class DependencyStringNotationConverterTest extends Specification {
     }
 
     def "client module ignores the artifact only notation"() {
-        def parser = new DependencyStringNotationConverter(DirectInstantiator.INSTANCE, DefaultClientModule);
+        def parser = new DependencyStringNotationConverter(TestUtil.instantiatorFactory().decorateLenient(), DefaultClientModule, SimpleMapInterner.notThreadSafe());
 
         when:
         def d = parse(parser, 'org.gradle:gradle-core:10@jar')
@@ -180,12 +202,47 @@ public class DependencyStringNotationConverterTest extends Specification {
         d.name == 'gradle-core'
         d.group == 'org.gradle'
         d.version == '10@jar'
-        d.versionConstraint.preferredVersion == '10@jar'
+        d.versionConstraint.requiredVersion == '10@jar'
+        d.versionConstraint.preferredVersion == ''
+        d.versionConstraint.strictVersion == ''
         d.versionConstraint.rejectedVersions == []
         d.transitive
 
         !d.force
         d.artifacts.size() == 0
+    }
+
+    @Unroll
+    def "parses short hand-notation #notation for strict dependencies"() {
+        def parser = new DependencyStringNotationConverter(TestUtil.instantiatorFactory().decorateLenient(), DefaultClientModule, SimpleMapInterner.notThreadSafe());
+
+        when:
+        def d = parse(parser, "org.foo:bar:$notation")
+
+        then:
+        d instanceof ExternalModuleDependency
+        d.group == 'org.foo'
+        d.name == 'bar'
+        d.versionConstraint.requiredVersion == strict
+        d.versionConstraint.strictVersion == strict
+        d.versionConstraint.preferredVersion == preferred
+
+        where:
+        notation          | strict       | preferred
+        '1.0!!'           | '1.0'        | ""
+        '[1.0, 2.0]!!'    | '[1.0, 2.0]' | ""
+        '[1.0, 2.0]!!1.5' | '[1.0, 2.0]' | '1.5'
+    }
+
+    def "rejects short hand notation for strict if it starts with double-bang"() {
+        def parser = new DependencyStringNotationConverter(TestUtil.instantiatorFactory().decorateLenient(), DefaultClientModule, SimpleMapInterner.notThreadSafe());
+
+        when:
+        parse(parser, "org.foo:bar:!!1.0")
+
+        then:
+        def t = thrown(InvalidUserCodeException)
+        t.message == 'The strict version modifier (!!) must be appended to a valid version number'
     }
 
     def parse(def parser, def value) {

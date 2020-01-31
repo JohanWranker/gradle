@@ -15,11 +15,13 @@
  */
 package org.gradle.nativeplatform.test.googletest
 
-import groovy.transform.NotYetImplemented
 import org.gradle.ide.visualstudio.fixtures.ProjectFile
 import org.gradle.ide.visualstudio.fixtures.SolutionFile
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
+import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
+import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.CppHelloWorldApp
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
@@ -29,6 +31,7 @@ import spock.lang.Issue
 import static org.gradle.util.TextUtil.normaliseLineSeparators
 
 @Requires(TestPrecondition.CAN_INSTALL_EXECUTABLE)
+@RequiresInstalledToolChain(ToolChainRequirement.SUPPORTS_32)
 class GoogleTestIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
 
     def prebuiltDir = buildContext.getSamplesDir().file("native-binaries/google-test/libs")
@@ -92,6 +95,12 @@ model {
                 cppCompiler.args '-pthread'
                 linker.args '-pthread'
             }
+            if ((toolChain instanceof Gcc || toolChain instanceof Clang) && ${!toolChain.displayName.startsWith("gcc cygwin")}) {
+                // Use C++03 with the old ABIs, as this is what the googletest binaries were built with
+                // Later, Gradle's dependency management will understand ABI
+                cppCompiler.args '-std=c++03', '-D_GLIBCXX_USE_CXX11_ABI=0'
+                linker.args '-std=c++03'
+            }
         }
     }
 }
@@ -102,6 +111,7 @@ model {
         return OperatingSystem.current().getStaticLibraryName("gtest")
     }
 
+    @ToBeFixedForInstantExecution
     def "can build and run googleTest test suite"() {
         given:
         useConventionalSourceLocations()
@@ -121,6 +131,7 @@ model {
         testResults.checkTestCases(1, 1, 0)
     }
 
+    @ToBeFixedForInstantExecution
     def "assemble does not build or run tests"() {
         given:
         useConventionalSourceLocations()
@@ -135,6 +146,7 @@ model {
     }
 
     @Issue("GRADLE-3225")
+    @ToBeFixedForInstantExecution
     def "can build and run googleTest test suite with C and C++ plugins"() {
         given:
         useConventionalSourceLocations()
@@ -151,6 +163,7 @@ model {
             ":linkHelloTestGoogleTestExe", ":helloTestGoogleTestExe", ":runHelloTestGoogleTestExe"
     }
 
+    @ToBeFixedForInstantExecution
     def "can configure via testSuite component"() {
         given:
         useConventionalSourceLocations()
@@ -192,6 +205,7 @@ tasks.withType(RunTestExecutable) {
         testResults.checkTestCases(1, 1, 0)
     }
 
+    @ToBeFixedForInstantExecution
     def "can supply cppCompiler macro to googleTest sources"() {
         given:
         useConventionalSourceLocations()
@@ -215,6 +229,7 @@ model {
         testResults.checkTestCases(1, 1, 0)
     }
 
+    @ToBeFixedForInstantExecution
     def "can configure location of googleTest test sources"() {
         given:
         useStandardConfig()
@@ -240,6 +255,7 @@ model {
         succeeds "runHelloTestGoogleTestExe"
     }
 
+    @ToBeFixedForInstantExecution
     def "can configure location of googleTest test sources before component is declared"() {
         given:
         app.library.writeSources(file("src/hello"))
@@ -265,6 +281,7 @@ model {
         succeeds "runHelloTestGoogleTestExe"
     }
 
+    @ToBeFixedForInstantExecution
     def "variant-dependent sources are included in test binary"() {
         given:
         app.library.headerFiles*.writeToDir(file("src/hello"))
@@ -300,6 +317,7 @@ model {
         succeeds "runHelloTestGoogleTestExe"
     }
 
+    @ToBeFixedForInstantExecution
     def "can configure variant-dependent test sources"() {
         given:
         useStandardConfig()
@@ -328,9 +346,7 @@ model {
         succeeds "runHelloTestGoogleTestExe"
     }
 
-    // RunTestExecutable is not incremental yet
-    @Issue("GRADLE-3528")
-    @NotYetImplemented
+    @ToBeFixedForInstantExecution
     def "test suite skipped after successful run"() {
         given:
         useStandardConfig()
@@ -345,6 +361,7 @@ model {
         skipped ":helloTestGoogleTestExe", ":runHelloTestGoogleTestExe"
     }
 
+    @ToBeFixedForInstantExecution
     def "can build and run googleTest failing test suite"() {
         when:
         useStandardConfig()
@@ -367,6 +384,7 @@ model {
         testResults.checkTestCases(1, 0, 1)
     }
 
+    @ToBeFixedForInstantExecution
     def "build does not break for failing tests if ignoreFailures is true"() {
         when:
         useStandardConfig()
@@ -386,6 +404,7 @@ tasks.withType(RunTestExecutable) {
         file("build/test-results/helloTest/test_detail.xml").assertExists()
     }
 
+    @ToBeFixedForInstantExecution
     def "test suite not skipped after failing run"() {
         given:
         useStandardConfig()
@@ -399,6 +418,7 @@ tasks.withType(RunTestExecutable) {
         executedAndNotSkipped ":runHelloTestGoogleTestExe"
     }
 
+    @ToBeFixedForInstantExecution
     def "creates visual studio solution and project for googleTest test suite"() {
         given:
         useStandardConfig()
@@ -430,6 +450,7 @@ tasks.withType(RunTestExecutable) {
         }
     }
 
+    @ToBeFixedForInstantExecution
     def "non-buildable binaries are not attached to check task"() {
         given:
         useConventionalSourceLocations()
@@ -460,6 +481,7 @@ model {
         executedAndNotSkipped ":runHelloTestGoogleTestExe"
     }
 
+    @ToBeFixedForInstantExecution
     def "google test run task is properly wired to binaries check tasks and lifecycle check task"() {
         given:
         useStandardConfig()
@@ -494,6 +516,7 @@ model {
     }
 
     @Issue("https://github.com/gradle/gradle/issues/1000")
+    @ToBeFixedForInstantExecution
     def "can configure legacy plugin"() {
         given:
         buildFile << """

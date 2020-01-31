@@ -16,15 +16,18 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine;
 
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionDescriptorInternal;
-import org.gradle.api.internal.artifacts.ResolvedVersionConstraint;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.StringVersioned;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionReasonInternal;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder.VirtualPlatformState;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionDescriptorInternal;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
 
 import javax.annotation.Nullable;
+import java.util.Set;
 
 public interface ComponentResolutionState extends StringVersioned {
+    ComponentIdentifier getComponentId();
+
     ModuleVersionIdentifier getId();
 
     /**
@@ -33,14 +36,15 @@ public interface ComponentResolutionState extends StringVersioned {
      * @return null if the meta-data is not available due to some failure.
      */
     @Nullable
-    ComponentResolveMetadata getMetaData();
+    ComponentResolveMetadata getMetadata();
 
-    ResolvedVersionConstraint getVersionConstraint();
+    void addCause(ComponentSelectionDescriptorInternal componentSelectionDescriptor);
 
-    boolean isResolved();
+    void reject();
 
-    ComponentSelectionReasonInternal getSelectionReason();
+    boolean isRejected();
 
-    void addCause(ComponentSelectionDescriptorInternal componentSelectionDescription);
+    Set<VirtualPlatformState> getPlatformOwners();
 
+    VirtualPlatformState getPlatformState();
 }

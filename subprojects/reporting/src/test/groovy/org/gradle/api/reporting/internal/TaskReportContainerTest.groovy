@@ -19,6 +19,7 @@ package org.gradle.api.reporting.internal
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.internal.CollectionCallbackActionDecorator
 import org.gradle.api.reporting.Report
 import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.TaskPropertyTestUtils
@@ -31,6 +32,7 @@ class TaskReportContainerTest extends Specification {
 
     final Project project = ProjectBuilder.builder().build()
     final TestTask task = project.task("testTask", type: TestTask)
+
     def container = createContainer {
         dir("b")
         file("a")
@@ -43,14 +45,14 @@ class TaskReportContainerTest extends Specification {
 
     static class TestReportContainer extends TaskReportContainer<Report> {
         TestReportContainer(Task task, Closure c) {
-            super(Report, task)
+            super(Report, task, CollectionCallbackActionDecorator.NOOP)
 
             c.delegate = new Object() {
                 Report file(String name) {
-                    add(TaskGeneratedReport, name, Report.OutputType.FILE, task)
+                    add(TaskGeneratedSingleFileReport, name, task)
                 }
                 Report dir(String name) {
-                    add(TaskGeneratedReport, name, Report.OutputType.DIRECTORY, task)
+                    add(TaskGeneratedSingleDirectoryReport, name, task, null)
                 }
             }
 
@@ -73,7 +75,13 @@ class TaskReportContainerTest extends Specification {
     }
 
     List<String> getInputPropertyValue() {
-        TaskPropertyTestUtils.getProperties(task)["reports.enabledReportNames"] as List<String>
+        TaskPropertyTestUtils.getProperties(task).keySet().findAll {
+            (it.startsWith('reports.enabledReports.'))
+        }.collect {
+            it.substring('reports.enabledReports.'.length())
+        }.findAll {
+            !it.contains('.')
+        }.unique().sort()
     }
 
     @Unroll("tasks inputs and outputs are wired correctly A: #aEnabled, B: #bEnabled")

@@ -17,13 +17,11 @@
 package org.gradle.java
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.FeaturePreviewsFixture
 
 class JavaLibraryConsumptionIntegrationTest extends AbstractIntegrationSpec {
 
     def "runtime dependencies from maven modules do not leak into compile classpath"() {
         given:
-        FeaturePreviewsFixture.enableAdvancedPomSupport(propertiesFile)
         buildFile << """
             apply plugin: 'java-library'
             ${jcenterRepository()}
@@ -43,6 +41,6 @@ class JavaLibraryConsumptionIntegrationTest extends AbstractIntegrationSpec {
         then:
         fails 'checkForRxJavaDependency', 'build'
         failure.assertHasCause('Compilation failed; see the compiler error output for details.')
-        failure.error.contains('error: package rx.observers does not exist')
+        failure.assertHasErrorOutput('error: package rx.observers does not exist')
     }
 }

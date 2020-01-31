@@ -16,28 +16,30 @@
 
 package org.gradle.play.tasks
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.play.integtest.fixtures.PlayApp
 import org.gradle.play.integtest.fixtures.PlayMultiVersionRunApplicationIntegrationTest
 import org.gradle.play.integtest.fixtures.app.BasicPlayApp
 
 class PlayRunIntegrationTest extends PlayMultiVersionRunApplicationIntegrationTest {
-    PlayApp playApp = new BasicPlayApp()
+    PlayApp playApp = new BasicPlayApp(versionNumber)
 
     def setup() {
         buildFile << """
             model {
                 tasks.runPlayBinary {
                     httpPort = 0
+                    ${java9AddJavaSqlModuleArgs()}
                 }
             }
         """
     }
 
+    @ToBeFixedForInstantExecution
     def "play run container classloader is isolated from the worker process classloader"() {
         withLoadProjectClassController()
 
         setup:
-        patchForPlay()
         // build once to speed up the playRun build and avoid spurious timeouts
         succeeds "assemble"
 

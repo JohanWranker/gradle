@@ -17,6 +17,7 @@
 package org.gradle.integtests.resolve
 
 import org.gradle.integtests.fixtures.AbstractDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolutionTest {
     def "artifacts in a Maven repo have standard attributes defined"() {
@@ -70,15 +71,15 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run 'show'
 
         then:
-        output.contains("test-jar-1.2.jar {artifactType=jar}")
-        output.contains("test-aar-1.2.aar {artifactType=aar}")
-        output.contains("test-thing-1.2.thing {artifactType=thing}")
-        output.contains("test-1.2.jar {artifactType=jar}")
-        output.contains("test-1.2.aar {artifactType=aar}")
-        output.contains("test-1.2.thing {artifactType=thing}")
-        output.contains("test-1.2-util.jar {artifactType=jar}")
-        output.contains("test-1.2-util.aar {artifactType=aar}")
-        output.contains("test-api-1.2.jar {artifactType=jar}")
+        outputContains("test-jar-1.2.jar {artifactType=jar, org.gradle.status=release}")
+        outputContains("test-aar-1.2.aar {artifactType=aar, org.gradle.status=release}")
+        outputContains("test-thing-1.2.thing {artifactType=thing, org.gradle.status=release}")
+        outputContains("test-1.2.jar {artifactType=jar, org.gradle.status=release}")
+        outputContains("test-1.2.aar {artifactType=aar, org.gradle.status=release}")
+        outputContains("test-1.2.thing {artifactType=thing, org.gradle.status=release}")
+        outputContains("test-1.2-util.jar {artifactType=jar, org.gradle.status=release}")
+        outputContains("test-1.2-util.aar {artifactType=aar, org.gradle.status=release}")
+        outputContains("test-api-1.2.jar {artifactType=jar, org.gradle.status=release}")
     }
 
     def "artifacts in an Ivy repo have standard attributes defined based on their type"() {
@@ -138,16 +139,16 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run 'show'
 
         then:
-        output.contains("test-jar-1.2.jar {artifactType=jar}")
-        output.contains("test-aar-1.2.aar {artifactType=aar}")
-        output.contains("test-thing-1.2.thing {artifactType=thing}")
-        output.contains("test-1.2.jar {artifactType=jar}")
-        output.contains("test-1.2.aar {artifactType=aar}")
-        output.contains("test-1.2.thing {artifactType=thing}")
-        output.contains("test-1.2-util.jar {artifactType=jar}")
-        output.contains("test-1.2-util.aar {artifactType=aar}")
-        output.contains("test-api-1.2.jar {artifactType=custom}")
-        output.contains("test-api-1.2 {artifactType=}")
+        outputContains("test-jar-1.2.jar {artifactType=jar, org.gradle.status=integration}")
+        outputContains("test-aar-1.2.aar {artifactType=aar, org.gradle.status=integration}")
+        outputContains("test-thing-1.2.thing {artifactType=thing, org.gradle.status=integration}")
+        outputContains("test-1.2.jar {artifactType=jar, org.gradle.status=integration}")
+        outputContains("test-1.2.aar {artifactType=aar, org.gradle.status=integration}")
+        outputContains("test-1.2.thing {artifactType=thing, org.gradle.status=integration}")
+        outputContains("test-1.2-util.jar {artifactType=jar, org.gradle.status=integration}")
+        outputContains("test-1.2-util.aar {artifactType=aar, org.gradle.status=integration}")
+        outputContains("test-api-1.2.jar {artifactType=custom, org.gradle.status=integration}")
+        outputContains("test-api-1.2 {artifactType=, org.gradle.status=integration}")
     }
 
     def "artifacts in a file dependency have standard attributes defined based on their extension"() {
@@ -176,12 +177,13 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run 'show'
 
         then:
-        output.contains("test.jar {artifactType=jar}")
-        output.contains("test.aar {artifactType=aar}")
-        output.contains("test.thing {artifactType=thing}")
-        output.contains("test {artifactType=}")
+        outputContains("test.jar {artifactType=jar}")
+        outputContains("test.aar {artifactType=aar}")
+        outputContains("test.thing {artifactType=thing}")
+        outputContains("test {artifactType=}")
     }
 
+    @ToBeFixedForInstantExecution
     def "artifacts from a Gradle project have standard attributes defined based on their type when none defined for the outgoing variant"() {
         settingsFile << 'include "a", "b", "c"'
 
@@ -228,9 +230,9 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run 'show'
 
         then:
-        output.contains("a.custom {artifactType=custom}")
-        output.contains("b.jar {artifactType=jar}")
-        output.contains("c.jar {artifactType=other}")
+        outputContains("a.custom {artifactType=custom}")
+        outputContains("b.jar {artifactType=jar}")
+        outputContains("c.jar {artifactType=other}")
     }
 
     def "can attach attributes to an artifact in a Maven repo"() {
@@ -285,9 +287,9 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run 'show'
 
         then:
-        output.contains("test-jar-1.2.jar {artifactType=jar, javaVersion=1.8, usage=java-runtime}")
-        output.contains("test-aar-1.2.aar {androidType=library-archive, artifactType=aar}")
-        output.contains("test-thing-1.2.thing {artifactType=widget, usage=unknown}")
+        outputContains("test-jar-1.2.jar {artifactType=jar, javaVersion=1.8, org.gradle.status=release, usage=java-runtime}")
+        outputContains("test-aar-1.2.aar {androidType=library-archive, artifactType=aar, org.gradle.status=release}")
+        outputContains("test-thing-1.2.thing {artifactType=widget, org.gradle.status=release, usage=unknown}")
     }
 
     def "can attach attributes to an artifact in an Ivy repo"() {
@@ -340,9 +342,9 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run 'show'
 
         then:
-        output.contains("test-jar-1.2.jar {artifactType=jar, javaVersion=1.8, usage=java-runtime}")
-        output.contains("test-aar-1.2.aar {androidType=library-archive, artifactType=aar}")
-        output.contains("test-thing-1.2.thing {artifactType=widget, usage=unknown}")
+        outputContains("test-jar-1.2.jar {artifactType=jar, javaVersion=1.8, org.gradle.status=integration, usage=java-runtime}")
+        outputContains("test-aar-1.2.aar {androidType=library-archive, artifactType=aar, org.gradle.status=integration}")
+        outputContains("test-thing-1.2.thing {artifactType=widget, org.gradle.status=integration, usage=unknown}")
     }
 
     def "can attach attributes to an artifact provided by a file dependency"() {
@@ -384,11 +386,12 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run 'show'
 
         then:
-        output.contains("test.jar {artifactType=jar, javaVersion=1.8, usage=java-runtime}")
-        output.contains("test.aar {androidType=library-archive, artifactType=aar}")
-        output.contains("test.thing {artifactType=widget, usage=unknown}")
+        outputContains("test.jar {artifactType=jar, javaVersion=1.8, usage=java-runtime}")
+        outputContains("test.aar {androidType=library-archive, artifactType=aar}")
+        outputContains("test.thing {artifactType=widget, usage=unknown}")
     }
 
+    @ToBeFixedForInstantExecution
     def "can attach attributes to an artifact provided by a Gradle project"() {
         settingsFile << 'include "a", "b", "c"'
 
@@ -449,11 +452,12 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run 'show'
 
         then:
-        output.contains("a.jar {artifactType=jar, javaVersion=1.8, usage=java-runtime}")
-        output.contains("b.aar {androidType=library-archive, artifactType=aar}")
-        output.contains("c.thing {artifactType=widget, usage=unknown}")
+        outputContains("a.jar {artifactType=jar, javaVersion=1.8, usage=java-runtime}")
+        outputContains("b.aar {androidType=library-archive, artifactType=aar}")
+        outputContains("c.thing {artifactType=widget, usage=unknown}")
     }
 
+    @ToBeFixedForInstantExecution
     def "each project can define different artifact types"() {
         mavenRepo.module("test", "test-jar", "1.2").publish()
         mavenRepo.module("test", "test-aar", "1.2")
@@ -530,17 +534,17 @@ class ExternalModuleVariantsIntegrationTest extends AbstractDependencyResolution
         run ':a:show'
 
         then:
-        output.contains("test-jar-1.2.jar {artifactType=jar, javaVersion=1.8, usage=java-runtime}")
-        output.contains("test-aar-1.2.aar {androidType=library-archive, artifactType=aar}")
-        output.contains("test-thing-1.2.thing {artifactType=widget, usage=unknown}")
+        outputContains("test-jar-1.2.jar {artifactType=jar, javaVersion=1.8, org.gradle.status=release, usage=java-runtime}")
+        outputContains("test-aar-1.2.aar {androidType=library-archive, artifactType=aar, org.gradle.status=release}")
+        outputContains("test-thing-1.2.thing {artifactType=widget, org.gradle.status=release, usage=unknown}")
 
         when:
         run ':b:show'
 
         then:
-        output.contains("a.jar {artifactType=jar}")
-        output.contains("test-jar-1.2.jar {artifactType=jar}")
-        output.contains("test-aar-1.2.aar {artifactType=android-lib}")
-        output.contains("test-thing-1.2.thing {artifactType=a-thing, usage=a-thing}")
+        outputContains("a.jar {artifactType=jar}")
+        outputContains("test-jar-1.2.jar {artifactType=jar, org.gradle.status=release}")
+        outputContains("test-aar-1.2.aar {artifactType=android-lib, org.gradle.status=release}")
+        outputContains("test-thing-1.2.thing {artifactType=a-thing, org.gradle.status=release, usage=a-thing}")
     }
 }

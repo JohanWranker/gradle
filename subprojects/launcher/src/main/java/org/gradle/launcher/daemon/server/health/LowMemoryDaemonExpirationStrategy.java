@@ -37,7 +37,7 @@ public class LowMemoryDaemonExpirationStrategy implements DaemonExpirationStrate
     private OsMemoryStatus memoryStatus;
     private final double minFreeMemoryPercentage;
     private long memoryThresholdInBytes;
-    private static final Logger LOG = Logging.getLogger(LowMemoryDaemonExpirationStrategy.class);
+    private static final Logger LOGGER = Logging.getLogger(LowMemoryDaemonExpirationStrategy.class);
 
     public static final String EXPIRATION_REASON = "to reclaim system memory";
 
@@ -55,14 +55,17 @@ public class LowMemoryDaemonExpirationStrategy implements DaemonExpirationStrate
         return Math.min(maxValue, Math.max(minValue, thresholdIn));
     }
 
+    @Override
     public DaemonExpirationResult checkExpiration() {
         lock.lock();
         try {
             if (memoryStatus != null) {
                 long freeMem = memoryStatus.getFreePhysicalMemory();
                 if (freeMem < memoryThresholdInBytes) {
-                    LOG.info("after free system memory (" + NumberUtil.formatBytes(freeMem) + ") fell below threshold of " + NumberUtil.formatBytes(memoryThresholdInBytes));
+                    LOGGER.info("after free system memory (" + NumberUtil.formatBytes(freeMem) + ") fell below threshold of " + NumberUtil.formatBytes(memoryThresholdInBytes));
                     return new DaemonExpirationResult(GRACEFUL_EXPIRE, EXPIRATION_REASON);
+                } else if (freeMem < memoryThresholdInBytes * 2) {
+                    LOGGER.debug("Nearing low memory threshold - {}", memoryStatus);
                 }
             }
         } finally {
@@ -76,7 +79,6 @@ public class LowMemoryDaemonExpirationStrategy implements DaemonExpirationStrate
     public void onOsMemoryStatus(OsMemoryStatus newStatus) {
         lock.lock();
         try {
-            LOG.debug("Received memory status update: " + newStatus.toString());
             this.memoryStatus = newStatus;
             this.memoryThresholdInBytes = normalizeThreshold((long) (memoryStatus.getTotalPhysicalMemory() * minFreeMemoryPercentage), MIN_THRESHOLD_BYTES, MAX_THRESHOLD_BYTES);
         } finally {

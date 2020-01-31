@@ -38,6 +38,7 @@ public class OrSpec<T> extends CompositeSpec<T> {
         super(specs);
     }
 
+    @Override
     public boolean isSatisfiedBy(T object) {
         Spec<? super T>[] specs = getSpecsArray();
         if (specs.length == 0) {
@@ -70,8 +71,4 @@ public class OrSpec<T> extends CompositeSpec<T> {
         return uncheckedCast(EMPTY);
     }
 
-    @Override
-    public int hashCode() {
-        return 13 * super.hashCode();
-    }
 }

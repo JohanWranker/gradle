@@ -16,10 +16,9 @@
 
 package org.gradle.language.nativeplatform;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.component.SoftwareComponent;
 import org.gradle.api.provider.Provider;
-import org.gradle.nativeplatform.platform.NativePlatform;
+import org.gradle.nativeplatform.TargetMachine;
 import org.gradle.nativeplatform.toolchain.NativeToolChain;
 
 /**
@@ -27,7 +26,6 @@ import org.gradle.nativeplatform.toolchain.NativeToolChain;
  *
  * @since 4.5
  */
-@Incubating
 public interface ComponentWithNativeRuntime extends SoftwareComponent {
     /**
      * Returns the base name of this component. This is used to calculate output file names.
@@ -45,9 +43,11 @@ public interface ComponentWithNativeRuntime extends SoftwareComponent {
     boolean isOptimized();
 
     /**
-     * Returns the target platform for this component.
+     * Returns the target machine for this component.
+     *
+     * @since 5.2
      */
-    NativePlatform getTargetPlatform();
+    TargetMachine getTargetMachine();
 
     /**
      * Returns the tool chain for this component.

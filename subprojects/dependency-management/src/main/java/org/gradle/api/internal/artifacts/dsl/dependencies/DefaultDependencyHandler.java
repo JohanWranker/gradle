@@ -21,27 +21,40 @@ import org.gradle.api.Action;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.ExternalModuleDependency;
+import org.gradle.api.artifacts.ModuleDependency;
+import org.gradle.api.artifacts.ProjectDependency;
 import org.gradle.api.artifacts.dsl.ComponentMetadataHandler;
 import org.gradle.api.artifacts.dsl.ComponentModuleMetadataHandler;
 import org.gradle.api.artifacts.dsl.DependencyConstraintHandler;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.artifacts.query.ArtifactResolutionQuery;
+import org.gradle.api.artifacts.transform.TransformAction;
+import org.gradle.api.artifacts.transform.TransformParameters;
+import org.gradle.api.artifacts.transform.TransformSpec;
 import org.gradle.api.artifacts.transform.VariantTransform;
 import org.gradle.api.artifacts.type.ArtifactTypeContainer;
 import org.gradle.api.attributes.AttributesSchema;
+import org.gradle.api.attributes.Category;
+import org.gradle.api.attributes.HasConfigurableAttributes;
 import org.gradle.api.internal.artifacts.VariantTransformRegistry;
 import org.gradle.api.internal.artifacts.query.ArtifactResolutionQueryFactory;
+import org.gradle.api.internal.model.NamedObjectInstantiator;
+import org.gradle.internal.component.external.model.ProjectTestFixtures;
 import org.gradle.internal.Factory;
+import org.gradle.internal.component.external.model.ImmutableCapability;
 import org.gradle.internal.metaobject.MethodAccess;
 import org.gradle.internal.metaobject.MethodMixIn;
 import org.gradle.util.ConfigureUtil;
+import org.gradle.internal.deprecation.DeprecationLogger;
 
 import javax.annotation.Nullable;
 import java.util.Map;
 
 import static org.gradle.api.internal.artifacts.ArtifactAttributes.ARTIFACT_FORMAT;
+import static org.gradle.internal.component.external.model.TestFixturesSupport.TEST_FIXTURES_CAPABILITY_APPENDIX;
 
-public class DefaultDependencyHandler implements DependencyHandler, MethodMixIn {
+public abstract class DefaultDependencyHandler implements DependencyHandler, MethodMixIn {
     private final ConfigurationContainer configurationContainer;
     private final DependencyFactory dependencyFactory;
     private final ProjectFinder projectFinder;
@@ -52,6 +65,8 @@ public class DefaultDependencyHandler implements DependencyHandler, MethodMixIn 
     private final AttributesSchema attributesSchema;
     private final VariantTransformRegistry transforms;
     private final Factory<ArtifactTypeContainer> artifactTypeContainer;
+    private final NamedObjectInstantiator namedObjectInstantiator;
+    private final PlatformSupport platformSupport;
     private final DynamicAddDependencyMethods dynamicMethods;
 
     public DefaultDependencyHandler(ConfigurationContainer configurationContainer,
@@ -63,7 +78,9 @@ public class DefaultDependencyHandler implements DependencyHandler, MethodMixIn 
                                     ArtifactResolutionQueryFactory resolutionQueryFactory,
                                     AttributesSchema attributesSchema,
                                     VariantTransformRegistry transforms,
-                                    Factory<ArtifactTypeContainer> artifactTypeContainer) {
+                                    Factory<ArtifactTypeContainer> artifactTypeContainer,
+                                    NamedObjectInstantiator namedObjectInstantiator,
+                                    PlatformSupport platformSupport) {
         this.configurationContainer = configurationContainer;
         this.dependencyFactory = dependencyFactory;
         this.projectFinder = projectFinder;
@@ -74,6 +91,8 @@ public class DefaultDependencyHandler implements DependencyHandler, MethodMixIn 
         this.attributesSchema = attributesSchema;
         this.transforms = transforms;
         this.artifactTypeContainer = artifactTypeContainer;
+        this.namedObjectInstantiator = namedObjectInstantiator;
+        this.platformSupport = platformSupport;
         configureSchema();
         dynamicMethods = new DynamicAddDependencyMethods(configurationContainer, new DirectDependencyAdder());
     }
@@ -159,22 +178,27 @@ public class DefaultDependencyHandler implements DependencyHandler, MethodMixIn 
         return dependencyConstraintHandler;
     }
 
+    @Override
     public void components(Action<? super ComponentMetadataHandler> configureAction) {
         configureAction.execute(getComponents());
     }
 
+    @Override
     public ComponentMetadataHandler getComponents() {
         return componentMetadataHandler;
     }
 
+    @Override
     public void modules(Action<? super ComponentModuleMetadataHandler> configureAction) {
         configureAction.execute(getModules());
     }
 
+    @Override
     public ComponentModuleMetadataHandler getModules() {
         return componentModuleMetadataHandler;
     }
 
+    @Override
     public ArtifactResolutionQuery createArtifactResolutionQuery() {
         return resolutionQueryFactory.createArtifactResolutionQuery();
     }
@@ -209,7 +233,81 @@ public class DefaultDependencyHandler implements DependencyHandler, MethodMixIn 
         transforms.registerTransform(registrationAction);
     }
 
-    private class DirectDependencyAdder implements DynamicAddDependencyMethods.DependencyAdder {
+    @Override
+    public <T extends TransformParameters> void registerTransform(Class<? extends TransformAction<T>> actionType, Action<? super TransformSpec<T>> registrationAction) {
+        transforms.registerTransform(actionType, registrationAction);
+    }
+
+    @Override
+    public Dependency platform(Object notation) {
+        Dependency dependency = create(notation);
+        if (dependency instanceof ModuleDependency) {
+            ModuleDependency moduleDependency = (ModuleDependency) dependency;
+            moduleDependency.endorseStrictVersions();
+            platformSupport.addPlatformAttribute(moduleDependency, toCategory(Category.REGULAR_PLATFORM));
+        } else if (dependency instanceof HasConfigurableAttributes) {
+            platformSupport.addPlatformAttribute((HasConfigurableAttributes<?>) dependency, toCategory(Category.REGULAR_PLATFORM));
+        }
+        return dependency;
+    }
+
+    @Override
+    public Dependency platform(Object notation, Action<? super Dependency> configureAction) {
+        Dependency dep = platform(notation);
+        configureAction.execute(dep);
+        return dep;
+    }
+
+    @Override
+    public Dependency enforcedPlatform(Object notation) {
+        Dependency platformDependency = create(notation);
+        if (platformDependency instanceof ExternalModuleDependency) {
+            ExternalModuleDependency externalModuleDependency = (ExternalModuleDependency) platformDependency;
+            DeprecationLogger.whileDisabled(() -> externalModuleDependency.setForce(true));
+            platformSupport.addPlatformAttribute(externalModuleDependency, toCategory(Category.ENFORCED_PLATFORM));
+        } else if (platformDependency instanceof HasConfigurableAttributes) {
+            platformSupport.addPlatformAttribute((HasConfigurableAttributes<?>) platformDependency, toCategory(Category.ENFORCED_PLATFORM));
+        }
+        return platformDependency;
+    }
+
+    @Override
+    public Dependency enforcedPlatform(Object notation, Action<? super Dependency> configureAction) {
+        Dependency dep = enforcedPlatform(notation);
+        configureAction.execute(dep);
+        return dep;
+    }
+
+    @Override
+    public Dependency testFixtures(Object notation) {
+        Dependency testFixturesDependency = create(notation);
+        if (testFixturesDependency instanceof ProjectDependency) {
+            ProjectDependency projectDependency = (ProjectDependency) testFixturesDependency;
+            projectDependency.capabilities(new ProjectTestFixtures(projectDependency.getDependencyProject()));
+        } else if (testFixturesDependency instanceof ModuleDependency) {
+            ModuleDependency moduleDependency = (ModuleDependency) testFixturesDependency;
+            moduleDependency.capabilities(capabilities -> {
+                capabilities.requireCapability(new ImmutableCapability(
+                    moduleDependency.getGroup(),
+                    moduleDependency.getName() + TEST_FIXTURES_CAPABILITY_APPENDIX,
+                    null));
+            });
+        }
+        return testFixturesDependency;
+    }
+
+    @Override
+    public Dependency testFixtures(Object notation, Action<? super Dependency> configureAction) {
+        Dependency testFixturesDependency = testFixtures(notation);
+        configureAction.execute(testFixturesDependency);
+        return testFixturesDependency;
+    }
+
+    private Category toCategory(String category) {
+        return namedObjectInstantiator.named(Category.class, category);
+    }
+
+    private class DirectDependencyAdder implements DynamicAddDependencyMethods.DependencyAdder<Dependency> {
 
         @Override
         public Dependency add(Configuration configuration, Object dependencyNotation, @Nullable Closure configureAction) {

@@ -32,22 +32,19 @@ import java.util.List;
 class InetAddresses {
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private List<InetAddress> loopback = new ArrayList<InetAddress>();
-    private List<InetAddress> remote = new ArrayList<InetAddress>();
-    private List<NetworkInterface> multicastInterfaces = new ArrayList<NetworkInterface>();
+    private final List<InetAddress> loopback = new ArrayList<InetAddress>();
+    private final List<InetAddress> remote = new ArrayList<InetAddress>();
 
     InetAddresses() throws SocketException {
         analyzeNetworkInterfaces();
-
-        if (multicastInterfaces.isEmpty()) {
-            useMulticastFallback();
-        }
     }
 
     private void analyzeNetworkInterfaces() throws SocketException {
         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-        while (interfaces.hasMoreElements()) {
-            analyzeNetworkInterface(interfaces.nextElement());
+        if (interfaces != null) {
+            while (interfaces.hasMoreElements()) {
+                analyzeNetworkInterface(interfaces.nextElement());
+            }   
         }
     }
 
@@ -56,9 +53,6 @@ class InetAddresses {
         try {
             boolean isLoopbackInterface = networkInterface.isLoopback();
             logger.debug("Is this a loopback interface? {}", isLoopbackInterface);
-            boolean isMulticast = networkInterface.supportsMulticast();
-            logger.debug("Is this a multicast interface? {}", isMulticast);
-            boolean isRemote = false;
 
             Enumeration<InetAddress> candidates = networkInterface.getInetAddresses();
             while (candidates.hasMoreElements()) {
@@ -76,19 +70,7 @@ class InetAddresses {
                     } else {
                         logger.debug("Adding remote address {}", candidate);
                         remote.add(candidate);
-                        isRemote = true;
                     }
-                }
-            }
-
-            if (isMulticast) {
-                // Prefer remotely reachable interfaces over loopback interfaces for multicast
-                if (isRemote) {
-                    logger.debug("Adding remote multicast interface {}", networkInterface.getDisplayName());
-                    multicastInterfaces.add(0, networkInterface);
-                } else {
-                    logger.debug("Adding loopback multicast interface {}", networkInterface.getDisplayName());
-                    multicastInterfaces.add(networkInterface);
                 }
             }
         } catch (SocketException e) {
@@ -99,26 +81,11 @@ class InetAddresses {
         }
     }
 
-    private void useMulticastFallback() throws SocketException {
-        logger.debug("No multicast interfaces, using fallbacks");
-        Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-        while (networkInterfaces.hasMoreElements()) {
-            multicastInterfaces.add(networkInterfaces.nextElement());
-        }
-    }
-
     public List<InetAddress> getLoopback() {
         return loopback;
     }
 
     public List<InetAddress> getRemote() {
         return remote;
-    }
-
-    /**
-     * Locates the network interfaces that should be used for multicast, in order of preference.
-     */
-    public List<NetworkInterface> getMulticastInterfaces() {
-        return multicastInterfaces;
     }
 }

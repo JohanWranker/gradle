@@ -15,33 +15,46 @@
  */
 package org.gradle.testing.jacoco.plugins;
 
+import com.google.common.collect.ImmutableList;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
+import org.gradle.api.GradleException;
+import org.gradle.api.Named;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
-import org.gradle.api.internal.TaskInternal;
+import org.gradle.api.file.ProjectLayout;
+import org.gradle.api.internal.file.FileOperations;
+import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
+import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.specs.Spec;
+import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.TaskCollection;
 import org.gradle.internal.jacoco.JacocoAgentJar;
+import org.gradle.process.CommandLineArgumentProvider;
 import org.gradle.process.JavaForkOptions;
 
+import javax.annotation.Nullable;
 import java.io.File;
+import java.util.Collections;
 import java.util.concurrent.Callable;
 
 /**
  * Extension including common properties and methods for Jacoco.
  */
-@Incubating
 public class JacocoPluginExtension {
 
     public static final String TASK_EXTENSION_NAME = "jacoco";
 
     private static final Logger LOGGER = Logging.getLogger(JacocoPluginExtension.class);
     protected final Project project;
+    private final ProviderFactory providerFactory;
+    private final ProjectLayout projectLayout;
+    private final FileOperations fileOperations;
     private final JacocoAgentJar agent;
 
     private String toolVersion;
@@ -56,6 +69,9 @@ public class JacocoPluginExtension {
     public JacocoPluginExtension(Project project, JacocoAgentJar agent) {
         this.project = project;
         this.agent = agent;
+        this.providerFactory = project.getProviders();
+        this.projectLayout = project.getLayout();
+        this.fileOperations = ((ProjectInternal) project).getServices().get(FileOperations.class);
         reportsDir = project.getObjects().property(File.class);
     }
 
@@ -103,32 +119,29 @@ public class JacocoPluginExtension {
         final String taskName = task.getName();
         LOGGER.debug("Applying Jacoco to " + taskName);
         final JacocoTaskExtension extension = task.getExtensions().create(TASK_EXTENSION_NAME, JacocoTaskExtension.class, project, agent, task);
-        extension.setDestinationFile(project.provider(new Callable<File>() {
+        extension.setDestinationFile(providerFactory.provider(new Callable<File>() {
             @Override
-            public File call() throws Exception {
-                return project.file(String.valueOf(project.getBuildDir()) + "/jacoco/" + taskName + ".exec");
+            public File call() {
+                return fileOperations.file(projectLayout.getBuildDirectory().get().getAsFile() + "/jacoco/" + taskName + ".exec");
             }
         }));
 
-        // Capture some of the JaCoCo contributed inputs to the task
-        task.getInputs().property("jacoco.jvmArg", new Callable<String>() {
+        task.getJvmArgumentProviders().add(new JacocoAgent(extension));
+        task.doFirst(new Action<Task>() {
             @Override
-            public String call() throws Exception {
-                return extension.isEnabled() ? extension.getAsJvmArg() : null;
+            public void execute(Task task) {
+                if (extension.isEnabled() && extension.getOutput() == JacocoTaskExtension.Output.FILE) {
+                    // Delete the coverage file before the task executes, so we don't append to a leftover file from the last execution.
+                    // This makes the task cacheable even if multiple JVMs write to same destination file, e.g. when executing tests in parallel.
+                    // The JaCoCo agent supports writing in parallel to the same file, see https://github.com/jacoco/jacoco/pull/52.
+                    File coverageFile = extension.getDestinationFile();
+                    if (coverageFile == null) {
+                        throw new GradleException("JaCoCo destination file must not be null if output type is FILE");
+                    }
+                    fileOperations.delete(coverageFile);
+                }
             }
-        }).optional(true);
-        task.getOutputs().file(new Callable<File>() {
-            @Override
-            public File call() throws Exception {
-                return extension.isEnabled() ? extension.getDestinationFile() : null;
-            }
-        }).optional().withPropertyName("jacoco.destinationFile");
-        task.getOutputs().dir(new Callable<File>() {
-            @Override
-            public File call() throws Exception {
-                return extension.isEnabled() ? extension.getClassDumpDir() : null;
-            }
-        }).optional().withPropertyName("jacoco.classDumpDir");
+        });
 
         // Do not cache the task if we are not writing execution data to a file
         task.getOutputs().doNotCacheIf("JaCoCo configured to not produce its output as a file", new Spec<Task>() {
@@ -138,24 +151,33 @@ public class JacocoPluginExtension {
                 return extension.isEnabled() && extension.getOutput() != JacocoTaskExtension.Output.FILE;
             }
         });
+    }
 
-        // Do not cache the Test task if we are appending to the Jacoco output
-        task.getOutputs().doNotCacheIf("JaCoCo agent configured with `append = true`", new Spec<Task>() {
-            @Override
-            public boolean isSatisfiedBy(Task element) {
-                return extension.isEnabled() && extension.isAppend();
-            }
-        });
+    private static class JacocoAgent implements CommandLineArgumentProvider, Named {
 
-        TaskInternal taskInternal = (TaskInternal) task;
-        taskInternal.prependParallelSafeAction(new Action<Task>() {
-            @Override
-            public void execute(Task input) {
-                if (extension.isEnabled()) {
-                    task.jvmArgs(extension.getAsJvmArg());
-                }
-            }
-        });
+        private final JacocoTaskExtension jacoco;
+
+        public JacocoAgent(JacocoTaskExtension jacoco) {
+            this.jacoco = jacoco;
+        }
+
+        @Nullable
+        @Optional
+        @Nested
+        public JacocoTaskExtension getJacoco() {
+            return jacoco.isEnabled() ? jacoco : null;
+        }
+
+        @Override
+        public Iterable<String> asArguments() {
+            return jacoco.isEnabled() ? ImmutableList.of(jacoco.getAsJvmArg()) : Collections.<String>emptyList();
+        }
+
+        @Internal
+        @Override
+        public String getName() {
+            return "jacocoAgent";
+        }
     }
 
     /**

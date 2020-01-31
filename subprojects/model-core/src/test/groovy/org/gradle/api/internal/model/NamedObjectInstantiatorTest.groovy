@@ -18,6 +18,8 @@ package org.gradle.api.internal.model
 
 import org.gradle.api.Named
 import org.gradle.api.reflect.ObjectInstantiationException
+import org.gradle.cache.internal.TestCrossBuildInMemoryCacheFactory
+import org.gradle.internal.state.Managed
 import org.gradle.test.fixtures.concurrent.ConcurrentSpec
 import org.gradle.util.Matchers
 import spock.lang.Ignore
@@ -26,7 +28,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CyclicBarrier
 
 class NamedObjectInstantiatorTest extends ConcurrentSpec {
-    static factory = new NamedObjectInstantiator()
+    static factory = new NamedObjectInstantiator(new TestCrossBuildInMemoryCacheFactory())
 
     def "creates instance of Named"() {
         expect:
@@ -51,8 +53,19 @@ class NamedObjectInstantiatorTest extends ConcurrentSpec {
 
         n1.is(factory.named(Named, "a"))
         n2.is(factory.named(Named, "b"))
+    }
 
-        n1 instanceof NamedObjectInstantiator.Managed
+    def "can unpack and recreate Named instance"() {
+        expect:
+        def n1 = factory.named(Named, "a")
+        n1 instanceof Managed
+        n1.publicType() == Named
+        n1.isImmutable()
+        def state = n1.unpackState()
+        state == "a"
+
+        def n2 = factory.fromState(Named, state)
+        n2.is(n1)
     }
 
     def "creates instance of subtype of Named"() {
@@ -82,7 +95,20 @@ class NamedObjectInstantiatorTest extends ConcurrentSpec {
         !n1.is(factory.named(Named, "a"))
         !n2.is(factory.named(Named, "b"))
 
-        n1 instanceof NamedObjectInstantiator.Managed
+        n1 instanceof Managed
+    }
+
+    def "can unpack and recreate instance of subtype of Named"() {
+        expect:
+        def n1 = factory.named(CustomNamed, "a")
+        n1 instanceof Managed
+        n1.publicType() == CustomNamed
+        n1.isImmutable()
+        def state = n1.unpackState()
+        state == "a"
+
+        def n2 = factory.fromState(CustomNamed, state)
+        n2.is(n1)
     }
 
     def "multiple threads can create different instances of same type"() {
@@ -153,9 +179,20 @@ class NamedObjectInstantiatorTest extends ConcurrentSpec {
         !n1.is(factory.named(Named, "a"))
         !n2.is(factory.named(Named, "b"))
 
-        n1 instanceof NamedObjectInstantiator.Managed
-
         AbstractNamed.counter == 2
+    }
+
+    def "can unpack and recreate instance of abstract Java class"() {
+        expect:
+        def n1 = factory.named(AbstractNamed, "a")
+        n1 instanceof Managed
+        n1.publicType() == AbstractNamed
+        n1.isImmutable()
+        def state = n1.unpackState()
+        state == "a"
+
+        def n2 = factory.fromState(AbstractNamed, state)
+        n2.is(n1)
     }
 
     def "creates instance of Java class with dummy getName() implementation"() {

@@ -16,9 +16,10 @@
 package org.gradle.internal.resource.local;
 
 import org.gradle.api.Action;
-import org.gradle.api.Transformer;
+import org.gradle.api.Namer;
 import org.gradle.api.internal.file.TemporaryFileProvider;
-import org.gradle.internal.hash.HashUtil;
+import org.gradle.internal.file.FileAccessTimeJournal;
+import org.gradle.internal.hash.ChecksumService;
 
 import java.io.File;
 import java.util.Set;
@@ -28,55 +29,91 @@ import java.util.Set;
  */
 public class GroupedAndNamedUniqueFileStore<K> implements FileStore<K>, FileStoreSearcher<K> {
 
+    protected static final int NUMBER_OF_CHECKSUM_DIRS = 1;
+
     private final PathKeyFileStore delegate;
     private final TemporaryFileProvider temporaryFileProvider;
-    private final Transformer<String, K> grouper;
-    private final Transformer<String, K> namer;
+    private final Grouper<K> grouper;
+    private final Namer<K> namer;
+    private final FileAccessTracker checksumDirAccessTracker;
+    private final File baseDir;
+    private final ChecksumService checksumService;
 
-    public GroupedAndNamedUniqueFileStore(PathKeyFileStore delegate, TemporaryFileProvider temporaryFileProvider, Transformer<String, K> grouper, Transformer<String, K> namer) {
-        this.delegate = delegate;
+    public GroupedAndNamedUniqueFileStore(File baseDir, TemporaryFileProvider temporaryFileProvider, FileAccessTimeJournal fileAccessTimeJournal, Grouper<K> grouper, Namer<K> namer, ChecksumService checksumService) {
+        this.delegate = new UniquePathKeyFileStore(checksumService, baseDir);
         this.temporaryFileProvider = temporaryFileProvider;
         this.grouper = grouper;
         this.namer = namer;
+        this.checksumDirAccessTracker = new SingleDepthFileAccessTracker(fileAccessTimeJournal, baseDir, grouper.getNumberOfGroupingDirs() + NUMBER_OF_CHECKSUM_DIRS);
+        this.baseDir = baseDir;
+        this.checksumService = checksumService;
     }
 
+    @Override
     public LocallyAvailableResource move(K key, File source) {
-        return delegate.move(toPath(key, getChecksum(source)), source);
+        return markAccessed(delegate.move(toPath(key, getChecksum(source)), source));
     }
 
-    public LocallyAvailableResource copy(K key, File source) {
-        return delegate.copy(toPath(key, getChecksum(source)), source);
-    }
-
+    @Override
     public Set<? extends LocallyAvailableResource> search(K key) {
         return delegate.search(toPath(key, "*"));
     }
 
-    private String toPath(K key, String checksumPart) {
-        String group = grouper.transform(key);
-        String name = namer.transform(key);
+    public FileAccessTracker getFileAccessTracker() {
+        return checksumDirAccessTracker;
+    }
 
-        return group + "/" + checksumPart + "/" + name;
+    private String toPath(K key, String checksumPart) {
+        String group = grouper.determineGroup(key);
+        String name = namer.determineName(key);
+
+        return group + "/" + stripLeadingZeros(checksumPart) + "/" + name;
+    }
+
+    // We do this for backwards compatibility: older Gradle versions
+    // used to store files in the binary cache with a checksum which removes
+    // the leading zeros
+    private String stripLeadingZeros(String checksumPart) {
+        if (checksumPart.charAt(0) == '0') {
+            int i = 1;
+            while (checksumPart.charAt(i) == '0') {
+                i++;
+            }
+            return checksumPart.substring(i);
+        }
+        return checksumPart;
     }
 
     private String getChecksum(File contentFile) {
-        return HashUtil.createHash(contentFile, "SHA1").asHexString();
+        return checksumService.sha1(contentFile).toString();
     }
 
-    public File getTempFile() {
+    private File getTempFile() {
         return temporaryFileProvider.createTemporaryFile("filestore", "bin");
     }
 
-    public void moveFilestore(File destination) {
-        delegate.moveFilestore(destination);
+    public File whereIs(K key, String checksum) {
+        return new File(baseDir, toPath(key, checksum));
     }
 
+    @Override
     public LocallyAvailableResource add(K key, Action<File> addAction) {
         //We cannot just delegate to the add method as we need the file content for checksum calculation here
         //and reexecuting the action isn't acceptable
         final File tempFile = getTempFile();
         addAction.execute(tempFile);
         final String groupedAndNamedKey = toPath(key, getChecksum(tempFile));
-        return delegate.move(groupedAndNamedKey, tempFile);
+        return markAccessed(delegate.move(groupedAndNamedKey, tempFile));
     }
+
+    private LocallyAvailableResource markAccessed(LocallyAvailableResource resource) {
+        checksumDirAccessTracker.markAccessed(resource.getFile());
+        return resource;
+    }
+
+    public interface Grouper<K> {
+        String determineGroup(K key);
+        int getNumberOfGroupingDirs();
+    }
+
 }

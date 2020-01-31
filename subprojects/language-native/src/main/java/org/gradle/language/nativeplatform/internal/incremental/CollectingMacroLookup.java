@@ -16,25 +16,34 @@
 
 package org.gradle.language.nativeplatform.internal.incremental;
 
+import com.google.common.collect.Iterators;
 import org.gradle.language.nativeplatform.internal.IncludeDirectives;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 public class CollectingMacroLookup implements MacroLookup {
-    private final List<MacroSource> uncollected = new ArrayList<MacroSource>();
+    private final Deque<MacroSource> uncollected = new ArrayDeque<>();
+    private final IncludeDirectives includeDirectives;
     private Map<File, IncludeDirectives> visible;
+
+    public CollectingMacroLookup(IncludeDirectives includeDirectives) {
+        this.includeDirectives = includeDirectives;
+    }
+
+    public CollectingMacroLookup() {
+        this(IncludeDirectives.EMPTY);
+    }
 
     /**
      * Appends a single file.
      */
     public void append(File file, IncludeDirectives includeDirectives) {
-        if (includeDirectives.getMacros().isEmpty() && includeDirectives.getMacrosFunctions().isEmpty()) {
+        if (!includeDirectives.hasMacros() && !includeDirectives.hasMacroFunctions()) {
             // Ignore
             return;
         }
@@ -56,10 +65,12 @@ public class CollectingMacroLookup implements MacroLookup {
     @Override
     public Iterator<IncludeDirectives> iterator() {
         collectAll();
-        if (visible == null) {
-            return Collections.emptyIterator();
+
+        Iterator<IncludeDirectives> initialDirectives = Iterators.singletonIterator(includeDirectives);
+        if (visible == null || visible.isEmpty()) {
+            return initialDirectives;
         }
-        return visible.values().iterator();
+        return Iterators.concat(initialDirectives, visible.values().iterator());
     }
 
     public void appendTo(CollectingMacroLookup lookup) {
@@ -73,7 +84,7 @@ public class CollectingMacroLookup implements MacroLookup {
 
     private void collectAll() {
         while (!uncollected.isEmpty()) {
-            MacroSource source = uncollected.remove(0);
+            MacroSource source = uncollected.removeFirst();
             source.collectInto(this);
         }
     }

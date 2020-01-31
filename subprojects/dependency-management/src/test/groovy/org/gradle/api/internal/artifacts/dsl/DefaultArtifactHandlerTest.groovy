@@ -18,13 +18,13 @@ package org.gradle.api.internal.artifacts.dsl
 
 import org.gradle.api.Action
 import org.gradle.api.artifacts.ConfigurablePublishArtifact
-import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.ConfigurationContainer
 import org.gradle.api.artifacts.PublishArtifact
 import org.gradle.api.artifacts.PublishArtifactSet
-import org.gradle.api.internal.AsmBackedClassGenerator
 import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact
+import org.gradle.internal.deprecation.DeprecatableConfiguration
 import org.gradle.internal.typeconversion.NotationParser
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class DefaultArtifactHandlerTest extends Specification {
@@ -33,10 +33,10 @@ class DefaultArtifactHandlerTest extends Specification {
 
     private ConfigurationContainer configurationContainerStub = Mock()
     private NotationParser<Object, PublishArtifact> artifactFactoryStub = Mock()
-    private Configuration configurationMock = Mock()
+    private DeprecatableConfiguration configurationMock = Mock()
     private PublishArtifactSet artifactsMock = Mock()
 
-    private DefaultArtifactHandler artifactHandler = new AsmBackedClassGenerator().newInstance(DefaultArtifactHandler, configurationContainerStub, artifactFactoryStub)
+    private DefaultArtifactHandler artifactHandler = TestUtil.instantiatorFactory().decorateLenient().newInstance(DefaultArtifactHandler, configurationContainerStub, artifactFactoryStub)
 
     void setup() {
         configurationContainerStub.findByName(TEST_CONF_NAME) >> configurationMock

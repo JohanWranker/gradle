@@ -25,22 +25,37 @@ class DefaultImmutableVersionConstraintTest extends Specification {
         def v = new DefaultImmutableVersionConstraint('1.0')
 
         expect:
-        v.preferredVersion == '1.0'
+        v.requiredVersion == '1.0'
+        v.preferredVersion == ''
+        v.strictVersion == ''
         v.rejectedVersions == []
     }
 
     def "can create an immutable version constraint with rejects"() {
         given:
-        def v = new DefaultImmutableVersionConstraint('1.0', ['1.1','2.0'])
+        def v = new DefaultImmutableVersionConstraint('1.1', '1.0', '1.1.1', ['1.2', '2.0'], null)
 
         expect:
-        v.preferredVersion == '1.0'
-        v.rejectedVersions == ['1.1','2.0']
+        v.requiredVersion == '1.0'
+        v.preferredVersion == '1.1'
+        v.strictVersion == '1.1.1'
+        v.rejectedVersions == ['1.2','2.0']
+    }
+
+    def "can create an immutable version constraint that is strict"() {
+        given:
+        def v = new DefaultImmutableVersionConstraint('', '', '1.0', [], null)
+
+        expect:
+        v.requiredVersion == ''
+        v.preferredVersion == ''
+        v.strictVersion =='1.0'
+        v.rejectedVersions == []
     }
 
     def "cannot mutate rejection list"() {
         given:
-        def v = new DefaultImmutableVersionConstraint('1.0', ['1.1','2.0'])
+        def v = new DefaultImmutableVersionConstraint('1.1', '1.0', '1.1.1', ['1.2', '2.0'], null)
 
         when:
         v.rejectedVersions.add('3.0')
@@ -49,58 +64,67 @@ class DefaultImmutableVersionConstraintTest extends Specification {
         def e = thrown(UnsupportedOperationException)
     }
 
-    def "cannot use null as preferred version"() {
+    def "cannot use null as any version"() {
         when:
-        new DefaultImmutableVersionConstraint(null)
+        new DefaultImmutableVersionConstraint('1.1', null, '1.1', ['1.2', '2.0'], null)
 
         then:
         def e = thrown(IllegalArgumentException)
-        e.message == 'Preferred version must not be null'
+        e.message == 'Required version must not be null'
 
         when:
-        new DefaultImmutableVersionConstraint(null, [])
+        new DefaultImmutableVersionConstraint(null, '1.0', '1.0', ['1.2', '2.0'], null)
 
         then:
         e = thrown(IllegalArgumentException)
         e.message == 'Preferred version must not be null'
+
+        when:
+        new DefaultImmutableVersionConstraint('1.0', '1.0', null, ['1.2', '2.0'], null)
+
+        then:
+        e = thrown(IllegalArgumentException)
+        e.message == 'Strict version must not be null'
     }
 
     def "cannot use empty or null as rejected version"() {
 
         when:
-        new DefaultImmutableVersionConstraint('', [null])
+        new DefaultImmutableVersionConstraint('', '', '', [null], null)
 
         then:
         def e = thrown(IllegalArgumentException)
         e.message == 'Rejected version must not be empty'
 
         when:
-        new DefaultImmutableVersionConstraint('', [''])
+        new DefaultImmutableVersionConstraint('', '', '', [''], null)
 
         then:
         e = thrown(IllegalArgumentException)
         e.message == 'Rejected version must not be empty'
     }
 
-    def "can use empty as preferred version"() {
+    def "can use empty as preferred and strict version"() {
         when:
         def v = new DefaultImmutableVersionConstraint('')
 
         then:
         v.preferredVersion == ''
+        v.strictVersion == ''
         v.rejectedVersions.empty
 
         when:
-        v = new DefaultImmutableVersionConstraint('', ['1.1','2.0'])
+        v = new DefaultImmutableVersionConstraint('', '', '', ['1.1', '2.0'], null)
 
         then:
         v.preferredVersion == ''
+        v.strictVersion == ''
         v.rejectedVersions == ['1.1', '2.0']
     }
 
     def "cannot use null as rejected versions"() {
         when:
-        def v = new DefaultImmutableVersionConstraint('1.0', null)
+        def v = new DefaultImmutableVersionConstraint('', '1.0', '', null, null)
 
         then:
         def e = thrown(IllegalArgumentException)
@@ -120,7 +144,7 @@ class DefaultImmutableVersionConstraintTest extends Specification {
 
     def "can convert mutable version constraint to immutable version constraint"() {
         given:
-        def v = new DefaultMutableVersionConstraint('1.0', ['1.1', '2.0'])
+        def v = new DefaultMutableVersionConstraint('1.0', '2.0', '3.0', ['1.1', '2.0'])
 
         when:
         def c = DefaultImmutableVersionConstraint.of(v)
@@ -128,7 +152,32 @@ class DefaultImmutableVersionConstraintTest extends Specification {
         then:
         !v.is(c)
         c instanceof ImmutableVersionConstraint
+        c.requiredVersion == v.requiredVersion
         c.preferredVersion == v.preferredVersion
+        c.strictVersion == v.strictVersion
         c.rejectedVersions == v.rejectedVersions
     }
+
+
+    def "has useful displayName"() {
+        expect:
+        displayNameFor('1.0', '', '', []) == "{prefer 1.0}"
+        displayNameFor('', '1.0', '', []) == "1.0"
+        displayNameFor('', '', '1.0', []) == "{strictly 1.0}"
+        displayNameFor('', '', '', ['1.0', '2.0']) == "{reject 1.0 & 2.0}"
+        displayNameFor('', '', '', ['+']) == "{reject all versions}"
+
+        displayNameFor('1.0', '2.0', '3.0', ['1.0', '2.0']) == "{strictly 3.0; require 2.0; prefer 1.0; reject 1.0 & 2.0}"
+        displayNameFor('1.0', '', '', [], 'br') == "{prefer 1.0; branch br}"
+
+        displayNameFor('1.0', '1.0', '', []) == "1.0" // prefer == require
+        displayNameFor('', '1.0', '1.0', []) == "{strictly 1.0}" // strictly == require
+        displayNameFor('1.0', '', '1.0', []) == "{strictly 1.0}" // strictly == prefer
+        displayNameFor('1.0', '1.0', '1.0', []) == "{strictly 1.0}" // strictly == prefer == require
+    }
+
+    private String displayNameFor(String preferred, String required, String strict, List<String> rejects, branch = null) {
+        new DefaultImmutableVersionConstraint(preferred, required, strict, rejects, branch).displayName
+    }
+
 }

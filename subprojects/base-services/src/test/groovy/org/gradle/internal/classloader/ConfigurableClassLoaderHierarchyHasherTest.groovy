@@ -21,7 +21,7 @@ import org.gradle.internal.hash.Hashing
 import spock.lang.Specification
 
 class ConfigurableClassLoaderHierarchyHasherTest extends Specification {
-    def classLoaderHasher = Mock(ClassLoaderHasher)
+    def classLoaderFactory = Mock(HashingClassLoaderFactory)
     def runtimeLoader = getClass().getClassLoader()
     def hasher = hasher((runtimeLoader): "system")
 
@@ -44,7 +44,7 @@ class ConfigurableClassLoaderHierarchyHasherTest extends Specification {
         hasher.getClassLoaderHash(hashedLoader) == hashFor(hashedLoaderHash)
 
         then:
-        _ * classLoaderHasher.getHash(hashedLoader) >> hashedLoaderHash
+        _ * classLoaderFactory.getClassLoaderClasspathHash(hashedLoader) >> hashedLoaderHash
     }
 
     def "hashes known classloader with parent"() {
@@ -66,11 +66,11 @@ class ConfigurableClassLoaderHierarchyHasherTest extends Specification {
     private ConfigurableClassLoaderHierarchyHasher hasher(Map<ClassLoader, String> classLoaders) {
         classLoaders = new HashMap<>(classLoaders)
         classLoaders.put(ClassLoader.getSystemClassLoader(), "system")
-        return new ConfigurableClassLoaderHierarchyHasher(classLoaders, classLoaderHasher)
+        return new ConfigurableClassLoaderHierarchyHasher(classLoaders, classLoaderFactory)
     }
 
     private static HashCode hashFor(Object... values) {
-        def hasher = Hashing.md5().newHasher()
+        def hasher = Hashing.newHasher()
         values.each {
             if (it instanceof String) {
                 hasher.putString(it)

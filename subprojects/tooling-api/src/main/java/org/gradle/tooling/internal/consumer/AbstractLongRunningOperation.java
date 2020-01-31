@@ -73,6 +73,18 @@ public abstract class AbstractLongRunningOperation<T extends AbstractLongRunning
     }
 
     @Override
+    public T addArguments(String... arguments) {
+        operationParamsBuilder.addArguments(CollectionUtils.toList(Preconditions.checkNotNull(arguments)));
+        return getThis();
+    }
+
+    @Override
+    public T addArguments(Iterable<String> arguments) {
+        operationParamsBuilder.addArguments(CollectionUtils.toList(Preconditions.checkNotNull(arguments)));
+        return getThis();
+    }
+
+    @Override
     public T setStandardOutput(OutputStream outputStream) {
         operationParamsBuilder.setStdout(outputStream);
         return getThis();
@@ -109,6 +121,18 @@ public abstract class AbstractLongRunningOperation<T extends AbstractLongRunning
     }
 
     @Override
+    public T addJvmArguments(String... jvmArguments) {
+        operationParamsBuilder.addJvmArguments(CollectionUtils.toList(Preconditions.checkNotNull(jvmArguments)));
+        return getThis();
+    }
+
+    @Override
+    public T addJvmArguments(Iterable<String> jvmArguments) {
+        operationParamsBuilder.addJvmArguments(CollectionUtils.toList(Preconditions.checkNotNull(jvmArguments)));
+        return getThis();
+    }
+
+    @Override
     public T setJvmArguments(Iterable<String> jvmArguments) {
         operationParamsBuilder.setJvmArguments(rationalizeInput(jvmArguments));
         return getThis();
@@ -138,15 +162,7 @@ public abstract class AbstractLongRunningOperation<T extends AbstractLongRunning
 
     @Override
     public T addProgressListener(org.gradle.tooling.events.ProgressListener listener, Set<OperationType> eventTypes) {
-        if (eventTypes.contains(OperationType.TEST)) {
-            operationParamsBuilder.addTestProgressListener(listener);
-        }
-        if (eventTypes.contains(OperationType.TASK)) {
-            operationParamsBuilder.addTaskProgressListener(listener);
-        }
-        if (eventTypes.contains(OperationType.GENERIC)) {
-            operationParamsBuilder.addBuildOperationProgressListeners(listener);
-        }
+        operationParamsBuilder.addProgressListener(listener, eventTypes);
         return getThis();
     }
 

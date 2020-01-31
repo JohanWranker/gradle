@@ -14,13 +14,33 @@
  * limitations under the License.
  */
 
+import org.gradle.gradlebuild.unittestandcompile.ModuleType
+
+import java.util.concurrent.TimeUnit
+
 apply from: 'templates.gradle'
 
 dependencies {
-    compile project(':distributionsDependencies')
-
-    performanceTestImplementation libraries.commons_compress.coordinate
+    performanceTestImplementation project(":baseServices")
+    performanceTestImplementation project(":core")
+    performanceTestImplementation project(":modelCore")
+    performanceTestImplementation project(":coreApi")
+    performanceTestImplementation project(":buildOption")
+    performanceTestImplementation project(":internalIntegTesting")
+    performanceTestImplementation libraries.slf4j_api.coordinates
+    performanceTestImplementation libraries.commons_io.coordinates
+    performanceTestImplementation libraries.commons_compress.coordinates
+    performanceTestImplementation testLibraries.jetty
+    performanceTestImplementation(testFixtures(project(":toolingApi")))
 
     // so that all Gradle features are available
-    performanceTestRuntime allTestRuntimeDependencies
+    performanceTestRuntimeOnly allTestRuntimeDependencies
+}
+
+configurations.partialDistribution {
+    exclude(group: "org.gradle.profiler", module: "gradle-profiler")
+}
+
+gradlebuildJava {
+    moduleType = ModuleType.INTERNAL
 }

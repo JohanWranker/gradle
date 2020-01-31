@@ -17,7 +17,8 @@
 package org.gradle.api.internal.tasks.compile.processing
 
 import org.gradle.api.file.FileCollection
-import org.gradle.api.internal.file.collections.SimpleFileCollection
+import org.gradle.api.internal.file.collections.ImmutableFileCollection
+import org.gradle.api.internal.tasks.compile.incremental.processing.IncrementalAnnotationProcessorType
 import org.gradle.api.logging.Logger
 import org.gradle.cache.internal.TestFileContentCacheFactory
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
@@ -48,7 +49,7 @@ class AnnotationProcessorDetectorTest extends Specification {
         def processors = detector.detectProcessors(cp)
 
         then:
-        processors == []
+        processors == [:]
         1 * logger.warn({ it.contains("no annotation processors") }, { it.message.contains("archive is not a ZIP archive") })
     }
 
@@ -61,7 +62,7 @@ class AnnotationProcessorDetectorTest extends Specification {
         def cp = files(jar, dir)
 
         expect:
-        detector.detectProcessors(cp) == []
+        detector.detectProcessors(cp) == [:]
     }
 
     def "detects no processors when processor declaration is missing"() {
@@ -72,19 +73,19 @@ class AnnotationProcessorDetectorTest extends Specification {
         def cp = files(jar, dir)
 
         expect:
-        detector.detectProcessors(cp) == []
+        detector.detectProcessors(cp) == [:]
     }
 
     def "detects no processors when processor declaration is missing, even if Gradle metadata is present"() {
         given:
         def jar = tmpDir.file("classes.jar")
-        jar << JarUtils.jarWithContents((INCREMENTAL_PROCESSOR_DECLARATION): "InJar,SINGLE_ORIGIN")
+        jar << JarUtils.jarWithContents((INCREMENTAL_PROCESSOR_DECLARATION): "InJar,ISOLATING")
         def dir = tmpDir.file("classes")
-        dir.file(INCREMENTAL_PROCESSOR_DECLARATION) << "InDir,SINGLE_ORIGIN"
+        dir.file(INCREMENTAL_PROCESSOR_DECLARATION) << "InDir,ISOLATING"
         def cp = files(jar, dir)
 
         expect:
-        detector.detectProcessors(cp) == []
+        detector.detectProcessors(cp) == [:]
     }
 
     def "detects no processors when processor declaration is not a file"() {
@@ -94,7 +95,7 @@ class AnnotationProcessorDetectorTest extends Specification {
         def cp = files(dir)
 
         expect:
-        detector.detectProcessors(cp) == []
+        detector.detectProcessors(cp) == [:]
     }
 
     def "uses UNKNOWN as the default for processors that don't provide Gradle metadata"() {
@@ -106,7 +107,7 @@ class AnnotationProcessorDetectorTest extends Specification {
         def cp = files(jar, dir)
 
         expect:
-        detector.detectProcessors(cp) == [
+        detector.detectProcessors(cp).values().asList() == [
             new AnnotationProcessorDeclaration("InJar", IncrementalAnnotationProcessorType.UNKNOWN),
             new AnnotationProcessorDeclaration("InDir", IncrementalAnnotationProcessorType.UNKNOWN)
         ]
@@ -125,7 +126,7 @@ class AnnotationProcessorDetectorTest extends Specification {
         def cp = files(jar, dir)
 
         when:
-        def processors = detector.detectProcessors(cp)
+        def processors = detector.detectProcessors(cp).values().asList()
 
         then:
         processors == [
@@ -148,7 +149,7 @@ class AnnotationProcessorDetectorTest extends Specification {
         def cp = files(jar, dir)
 
         expect:
-        detector.detectProcessors(cp) == [
+        detector.detectProcessors(cp).values().asList() == [
             new AnnotationProcessorDeclaration("InJar", IncrementalAnnotationProcessorType.UNKNOWN),
             new AnnotationProcessorDeclaration("InDir", IncrementalAnnotationProcessorType.UNKNOWN)
         ]
@@ -159,17 +160,17 @@ class AnnotationProcessorDetectorTest extends Specification {
         def jar = tmpDir.file("classes.jar")
         jar << JarUtils.jarWithContents(
             (PROCESSOR_DECLARATION): "InJar",
-            (INCREMENTAL_PROCESSOR_DECLARATION): "InJar,MULTIPLE_ORIGIN,Foo,Bar,Baz"
+            (INCREMENTAL_PROCESSOR_DECLARATION): "InJar,AGGREGATING,Foo,Bar,Baz"
         )
         def dir = tmpDir.file("classes")
         dir.file(PROCESSOR_DECLARATION) << "InDir"
-        dir.file(INCREMENTAL_PROCESSOR_DECLARATION) << "InDir,SINGLE_ORIGIN,Foo,Bar,Baz"
+        dir.file(INCREMENTAL_PROCESSOR_DECLARATION) << "InDir,ISOLATING,Foo,Bar,Baz"
         def cp = files(jar, dir)
 
         expect:
-        detector.detectProcessors(cp) == [
-            new AnnotationProcessorDeclaration("InJar", IncrementalAnnotationProcessorType.MULTIPLE_ORIGIN),
-            new AnnotationProcessorDeclaration("InDir", IncrementalAnnotationProcessorType.SINGLE_ORIGIN)
+        detector.detectProcessors(cp).values().asList() == [
+            new AnnotationProcessorDeclaration("InJar", IncrementalAnnotationProcessorType.AGGREGATING),
+            new AnnotationProcessorDeclaration("InDir", IncrementalAnnotationProcessorType.ISOLATING)
         ]
     }
 
@@ -178,17 +179,35 @@ class AnnotationProcessorDetectorTest extends Specification {
         def jar = tmpDir.file("classes.jar")
         jar << JarUtils.jarWithContents(
             (PROCESSOR_DECLARATION): "InJar",
-            (INCREMENTAL_PROCESSOR_DECLARATION): "InJar,MULTIPLE_ORIGIN"
+            (INCREMENTAL_PROCESSOR_DECLARATION): "InJar,AGGREGATING"
         )
         def dir = tmpDir.file("classes")
         dir.file(PROCESSOR_DECLARATION) << "InDir"
-        dir.file(INCREMENTAL_PROCESSOR_DECLARATION) << "InDir,SINGLE_ORIGIN"
+        dir.file(INCREMENTAL_PROCESSOR_DECLARATION) << "InDir,ISOLATING"
         def cp = files(jar, dir)
 
         expect:
-        detector.detectProcessors(cp) == [
-            new AnnotationProcessorDeclaration("InJar", IncrementalAnnotationProcessorType.MULTIPLE_ORIGIN),
-            new AnnotationProcessorDeclaration("InDir", IncrementalAnnotationProcessorType.SINGLE_ORIGIN)
+        detector.detectProcessors(cp).values().asList() == [
+            new AnnotationProcessorDeclaration("InJar", IncrementalAnnotationProcessorType.AGGREGATING),
+            new AnnotationProcessorDeclaration("InDir", IncrementalAnnotationProcessorType.ISOLATING)
+        ]
+    }
+
+    def "uses the first occurrence if the same processor is present multiple times"() {
+        given:
+        def jar = tmpDir.file("classes.jar")
+        jar << JarUtils.jarWithContents(
+            (PROCESSOR_DECLARATION): "Foo",
+            (INCREMENTAL_PROCESSOR_DECLARATION): "Foo,AGGREGATING"
+        )
+        def dir = tmpDir.file("classes")
+        dir.file(PROCESSOR_DECLARATION) << "Foo"
+        dir.file(INCREMENTAL_PROCESSOR_DECLARATION) << "Foo,ISOLATING"
+        def cp = files(jar, dir)
+
+        expect:
+        detector.detectProcessors(cp).values().asList() == [
+            new AnnotationProcessorDeclaration("Foo", IncrementalAnnotationProcessorType.AGGREGATING)
         ]
     }
 
@@ -201,8 +220,8 @@ class AnnotationProcessorDetectorTest extends Specification {
         def cp = files(jar, dir)
 
         when:
-        def first = detector.detectProcessors(cp)
-        def second = detector.detectProcessors(cp)
+        def first = detector.detectProcessors(cp).values().asList()
+        def second = detector.detectProcessors(cp).values().asList()
 
         then:
         for (int i = 0; i < first.size(); i++) {
@@ -211,6 +230,6 @@ class AnnotationProcessorDetectorTest extends Specification {
     }
 
     FileCollection files(File... files) {
-        new SimpleFileCollection(files)
+        ImmutableFileCollection.of(files)
     }
 }

@@ -24,9 +24,9 @@ import javax.annotation.Nullable;
 /**
  * The result of attempting to resolve a component id to the meta-data for the component.
  */
-public interface BuildableModuleComponentMetaDataResolveResult extends ResourceAwareResolveResult, ResolveResult {
+public interface BuildableModuleComponentMetaDataResolveResult extends ResourceAwareResolveResult, ErroringResolveResult<ModuleVersionResolveException> {
     enum State {
-        Resolved, Missing, Failed, Unknown
+        Resolved, Missing, Failed, Unknown, Redirect
     }
 
     /**
@@ -41,6 +41,7 @@ public interface BuildableModuleComponentMetaDataResolveResult extends ResourceA
      */
     ModuleComponentResolveMetadata getMetaData() throws ModuleVersionResolveException;
 
+    @Override
     @Nullable
     ModuleVersionResolveException getFailure();
 
@@ -57,6 +58,7 @@ public interface BuildableModuleComponentMetaDataResolveResult extends ResourceA
     /**
      * Marks the resolve as failed with the given exception.
      */
+    @Override
     void failed(ModuleVersionResolveException failure);
 
     /**
@@ -70,4 +72,12 @@ public interface BuildableModuleComponentMetaDataResolveResult extends ResourceA
     boolean isAuthoritative();
 
     void setAuthoritative(boolean authoritative);
+
+    /**
+     * Marks this result as being redirected to Gradle metadata, which
+     * is a temporary performance only optimization
+     */
+    void redirectToGradleMetadata();
+
+    boolean shouldUseGradleMetatada();
 }

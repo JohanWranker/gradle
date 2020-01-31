@@ -16,20 +16,22 @@
 
 package org.gradle.ide.xcode
 
-import org.gradle.ide.xcode.fixtures.AbstractXcodeIntegrationSpec
 import org.gradle.ide.xcode.fixtures.ProjectFile
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.language.swift.SwiftVersion
 import org.gradle.nativeplatform.fixtures.app.Swift3
 import org.gradle.nativeplatform.fixtures.app.Swift4
+import org.gradle.nativeplatform.fixtures.app.Swift5
 import org.gradle.nativeplatform.fixtures.app.SwiftSourceElement
 import spock.lang.Unroll
 
-abstract class AbstractXcodeSwiftProjectIntegrationTest extends AbstractXcodeIntegrationSpec {
+abstract class AbstractXcodeSwiftProjectIntegrationTest extends AbstractXcodeNativeProjectIntegrationTest {
     def setup() {
         requireSwiftToolChain()
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "detect Swift source compatibility from selected Swift #sourceCompatibility compiler"() {
         assumeSwiftCompilerVersion(sourceCompatibility)
 
@@ -50,11 +52,14 @@ abstract class AbstractXcodeSwiftProjectIntegrationTest extends AbstractXcodeInt
         fixture         | sourceCompatibility
         swift3Component | SwiftVersion.SWIFT3
         swift4Component | SwiftVersion.SWIFT4
+        swift5Component | SwiftVersion.SWIFT5
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "take specified Swift source compatibility (#sourceCompatibility) regardless of the selected Swift compiler"() {
         given:
+        assumeSwiftCompilerSupportsLanguageVersion(sourceCompatibility)
         settingsFile << "rootProject.name = '${fixture.projectName}'"
         makeSingleProject()
         buildFile << """
@@ -74,9 +79,38 @@ abstract class AbstractXcodeSwiftProjectIntegrationTest extends AbstractXcodeInt
         fixture         | sourceCompatibility
         swift3Component | SwiftVersion.SWIFT3
         swift4Component | SwiftVersion.SWIFT4
+        swift5Component | SwiftVersion.SWIFT5
     }
 
-    abstract void makeSingleProject()
+    @Unroll
+    @ToBeFixedForInstantExecution
+    def "can create xcode project for unbuildable swift component with #sourceCompatibility source compatibility"() {
+        given:
+        makeSingleProject()
+        buildFile << configureTargetMachines("machines.os('os-family')")
+        buildFile << """
+            ${componentUnderTestDsl}.sourceCompatibility = ${sourceCompatibility}
+        """
+        componentUnderTest.writeToProject(testDirectory)
+
+        when:
+        succeeds("xcode")
+
+        then:
+        def project = rootXcodeProject.projectFile
+        project.targets.each { target ->
+            assert target.buildConfigurationList.buildConfigurations.each {
+                it.buildSettings.SWIFT_VERSION == expectedSwiftVersion
+            }
+        }
+
+        where:
+        sourceCompatibility   | expectedSwiftVersion
+        "null"                | null
+        "SwiftVersion.SWIFT3" | "3.0"
+        "SwiftVersion.SWIFT4" | "4.0"
+        "SwiftVersion.SWIFT5" | "5.0"
+    }
 
     SwiftSourceElement getSwift3Component() {
         return new Swift3(rootProjectName)
@@ -86,7 +120,9 @@ abstract class AbstractXcodeSwiftProjectIntegrationTest extends AbstractXcodeInt
         return new Swift4(rootProjectName)
     }
 
-    abstract String getComponentUnderTestDsl()
+    SwiftSourceElement getSwift5Component() {
+        return new Swift5(rootProjectName);
+    }
 
     void assertHasSwiftVersion(SwiftVersion expectedSwiftVersion, List<ProjectFile.PBXTarget> targets) {
         assert !targets.empty
@@ -98,4 +134,14 @@ abstract class AbstractXcodeSwiftProjectIntegrationTest extends AbstractXcodeInt
             }
         }
     }
+
+    @Override
+    protected void assertXcodeProjectSources(List<String> rootChildren) {
+        def project = rootXcodeProject.projectFile
+        project.mainGroup.assertHasChildren(rootChildren + ['Sources'])
+        project.sources.assertHasChildren(componentUnderTest.files*.name)
+    }
+
+    @Override
+    protected abstract SwiftSourceElement getComponentUnderTest()
 }

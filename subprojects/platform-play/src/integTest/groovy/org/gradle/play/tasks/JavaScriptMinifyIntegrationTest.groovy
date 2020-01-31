@@ -16,9 +16,11 @@
 
 package org.gradle.play.tasks
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.test.fixtures.file.TestFile
-import org.hamcrest.Matchers
-import static org.gradle.play.integtest.fixtures.Repositories.*
+import org.hamcrest.CoreMatchers
+
+import static org.gradle.play.integtest.fixtures.Repositories.PLAY_REPOSITORIES
 
 class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegrationTest {
 
@@ -68,12 +70,14 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
         hasProcessedJavaScript("test")
     }
 
+    @ToBeFixedForInstantExecution
     def "does not re-minify when inputs and outputs are unchanged"() {
         given:
         withJavaScriptSource("app/assets/test.js")
         succeeds "assemble"
 
         when:
+        executer.noDeprecationChecks()
         succeeds "assemble"
 
         then:
@@ -83,6 +87,7 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
                 ":playBinary")
     }
 
+    @ToBeFixedForInstantExecution
     def "re-minifies when an output is removed" () {
         given:
         withJavaScriptSource("app/assets/test.js")
@@ -90,6 +95,7 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
 
         // Detects missing output
         when:
+        executer.noDeprecationChecks()
         processedJavaScript("test.min.js").delete()
         assetsJar.file.delete()
         succeeds "assemble"
@@ -102,6 +108,7 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
         hasProcessedJavaScript("test")
     }
 
+    @ToBeFixedForInstantExecution
     def "re-minifies when an input is changed" () {
         given:
         withJavaScriptSource("app/assets/test.js")
@@ -109,6 +116,7 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
 
         // Detects changed input
         when:
+        executer.noDeprecationChecks()
         file("app/assets/test.js") << "alert('this is a change!');"
         succeeds "assemble"
 
@@ -119,6 +127,7 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
                 ":playBinary")
     }
 
+    @ToBeFixedForInstantExecution
     def "cleans removed source file on minify" () {
         given:
         withJavaScriptSource("app/assets/test1.js")
@@ -138,6 +147,7 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
         )
 
         when:
+        executer.noDeprecationChecks()
         source2.delete()
         succeeds "assemble"
 
@@ -148,6 +158,7 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
         assetsJar.countFiles("public/test2.js") == 0
     }
 
+    @ToBeFixedForInstantExecution
     def "minifies multiple javascript source sets as part of play application build" () {
         given:
         withJavaScriptSource("app/assets/test1.js")
@@ -193,6 +204,7 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
         )
 
         when:
+        executer.noDeprecationChecks()
         succeeds "assemble"
 
         then:
@@ -218,10 +230,10 @@ class JavaScriptMinifyIntegrationTest extends AbstractJavaScriptMinifyIntegratio
         failure.assertHasDescription("Execution failed for task ':minifyPlayBinaryPlayJavaScript'.")
 
         String slash = File.separator
-        failure.assertThatCause(Matchers.allOf([
-                Matchers.startsWith("Minification failed with the following errors:"),
-                Matchers.containsString("app${slash}assets${slash}javascripts${slash}test1.js line 1 : 4"),
-                Matchers.containsString("app${slash}assets${slash}javascripts${slash}test2.js line 1 : 4")
+        failure.assertThatCause(CoreMatchers.allOf([
+            CoreMatchers.startsWith("Minification failed with the following errors:"),
+            CoreMatchers.containsString("app${slash}assets${slash}javascripts${slash}test1.js line 1 : 4"),
+            CoreMatchers.containsString("app${slash}assets${slash}javascripts${slash}test2.js line 1 : 4")
         ]))
     }
 }

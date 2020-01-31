@@ -20,6 +20,7 @@ import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.artifacts.PublishException;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.internal.artifacts.ArtifactPublisher;
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier;
 import org.gradle.api.internal.artifacts.Module;
 import org.gradle.api.internal.artifacts.ModuleVersionPublisher;
 import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal;
@@ -51,6 +52,7 @@ public class DefaultArtifactPublisher implements ArtifactPublisher {
         this.ivyModuleDescriptorWriter = ivyModuleDescriptorWriter;
     }
 
+    @Override
     public void publish(final Iterable<? extends PublicationAwareRepository> repositories, final Module module, final Configuration configuration, final File descriptor) throws PublishException {
         Set<ConfigurationInternal> allConfigurations = Cast.uncheckedCast(configuration.getAll());
         Set<ConfigurationInternal> configurationsToPublish = Cast.uncheckedCast(configuration.getHierarchy());
@@ -59,7 +61,6 @@ public class DefaultArtifactPublisher implements ArtifactPublisher {
         if (descriptor != null) {
             // Convert once, in order to write the Ivy descriptor with _all_ configurations
             DefaultIvyModulePublishMetadata publishMetaData = toPublishMetaData(module, allConfigurations, false);
-            validatePublishMetaData(publishMetaData);
             ivyModuleDescriptorWriter.write(publishMetaData, descriptor);
         }
 
@@ -77,29 +78,21 @@ public class DefaultArtifactPublisher implements ArtifactPublisher {
         }
     }
 
-    private void validatePublishMetaData(IvyModulePublishMetadata publishMetaData) {
-        for (IvyModuleArtifactPublishMetadata metadata : publishMetaData.getArtifacts()) {
-            if (metadata.getFile().isDirectory()) {
-                throw new IllegalArgumentException("Cannot publish a directory (" + metadata.getFile() + ")");
-            }
-        }
-    }
-
-    private DefaultIvyModulePublishMetadata toPublishMetaData(Module module, Set<? extends ConfigurationInternal> configurations, boolean artifactsMustExist) {
-        ModuleComponentIdentifier id = DefaultModuleComponentIdentifier.newId(module.getGroup(), module.getName(), module.getVersion());
+    private DefaultIvyModulePublishMetadata toPublishMetaData(Module module, Set<? extends ConfigurationInternal> configurations, boolean validateArtifacts) {
+        ModuleComponentIdentifier id = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId(module.getGroup(), module.getName()), module.getVersion());
         DefaultIvyModulePublishMetadata publishMetaData = new DefaultIvyModulePublishMetadata(id, module.getStatus());
-        addConfigurations(publishMetaData, configurations, artifactsMustExist);
+        addConfigurations(publishMetaData, configurations, validateArtifacts);
         return publishMetaData;
     }
 
-    private void addConfigurations(DefaultIvyModulePublishMetadata metaData, Collection<? extends ConfigurationInternal> configurations, boolean artifactsMustExist) {
+    private void addConfigurations(DefaultIvyModulePublishMetadata metaData, Collection<? extends ConfigurationInternal> configurations, boolean validateArtifacts) {
         for (ConfigurationInternal configuration : configurations) {
             BuildableLocalConfigurationMetadata configurationMetadata = addConfiguration(metaData, configuration);
             dependenciesConverter.addDependenciesAndExcludes(configurationMetadata, configuration);
 
             OutgoingVariant outgoingVariant = configuration.convertToOutgoingVariant();
             for (PublishArtifact publishArtifact : outgoingVariant.getArtifacts()) {
-                if (!artifactsMustExist || checkArtifactFileExists(publishArtifact)) {
+                if (!validateArtifacts || isValidToPublish(publishArtifact)) {
                     metaData.addArtifact(configuration.getName(), publishArtifact);
                 }
             }
@@ -111,8 +104,12 @@ public class DefaultArtifactPublisher implements ArtifactPublisher {
         return metaData.addConfiguration(configuration.getName(), Configurations.getNames(configuration.getExtendsFrom()), configuration.isVisible(), configuration.isTransitive());
     }
 
-    private boolean checkArtifactFileExists(PublishArtifact artifact) {
+    private boolean isValidToPublish(PublishArtifact artifact) {
         File artifactFile = artifact.getFile();
+        if (artifactFile.isDirectory()) {
+            throw new IllegalArgumentException("Cannot publish a directory (" + artifactFile + ")");
+        }
+
         if (artifactFile.exists()) {
             return true;
         }

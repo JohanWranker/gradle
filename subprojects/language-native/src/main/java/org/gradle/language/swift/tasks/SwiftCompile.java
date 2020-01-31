@@ -18,12 +18,11 @@ package org.gradle.language.swift.tasks;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
-import org.gradle.api.Incubating;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.CacheableTask;
@@ -39,8 +38,8 @@ import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SkipWhenEmpty;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.WorkResult;
-import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
-import org.gradle.api.tasks.incremental.InputFileDetails;
+import org.gradle.internal.Cast;
+import org.gradle.internal.file.Deleter;
 import org.gradle.internal.operations.logging.BuildOperationLogger;
 import org.gradle.internal.operations.logging.BuildOperationLoggerFactory;
 import org.gradle.language.base.compile.CompilerVersion;
@@ -57,6 +56,9 @@ import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.SwiftCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.swift.IncrementalSwiftCompiler;
+import org.gradle.work.ChangeType;
+import org.gradle.work.FileChange;
+import org.gradle.work.InputChanges;
 
 import javax.inject.Inject;
 import java.io.File;
@@ -71,13 +73,8 @@ import java.util.Set;
  *
  * @since 4.1
  */
-@Incubating
 @CacheableTask
 public class SwiftCompile extends DefaultTask {
-    private NativeToolChainInternal toolChain;
-    private NativePlatformInternal targetPlatform;
-    private boolean debug;
-    private boolean optimize;
     private final Property<String> moduleName;
     private final RegularFileProperty moduleFile;
     private final ConfigurableFileCollection modules;
@@ -85,57 +82,56 @@ public class SwiftCompile extends DefaultTask {
     private final DirectoryProperty objectFileDir;
     private final ConfigurableFileCollection source;
     private final Property<SwiftVersion> sourceCompatibility;
+    private final ListProperty<String> macros;
+    private final Property<Boolean> debuggable;
+    private final Property<Boolean> optimize;
+    private final Property<NativePlatform> targetPlatform;
+    private final Property<NativeToolChain> toolChain;
+
     private final CompilerOutputFileNamingSchemeFactory compilerOutputFileNamingSchemeFactory;
-    private final Map<String, String> macros = new LinkedHashMap<String, String>();
+    private final Deleter deleter;
 
     @Inject
-    public SwiftCompile(CompilerOutputFileNamingSchemeFactory compilerOutputFileNamingSchemeFactory) {
+    public SwiftCompile(
+        CompilerOutputFileNamingSchemeFactory compilerOutputFileNamingSchemeFactory,
+        Deleter deleter
+    ) {
         this.compilerOutputFileNamingSchemeFactory = compilerOutputFileNamingSchemeFactory;
-        source = getProject().files();
-        compilerArgs = getProject().getObjects().listProperty(String.class);
-        objectFileDir = newOutputDirectory();
-        moduleName = getProject().getObjects().property(String.class);
-        moduleFile = newOutputFile();
-        modules = getProject().files();
-        sourceCompatibility = getProject().getObjects().property(SwiftVersion.class);
+        this.deleter = deleter;
+
+        ObjectFactory objectFactory = getProject().getObjects();
+        this.moduleName = objectFactory.property(String.class);
+        this.moduleFile = objectFactory.fileProperty();
+        this.modules = getProject().files();
+        this.compilerArgs = objectFactory.listProperty(String.class);
+        this.objectFileDir = objectFactory.directoryProperty();
+        this.source = getProject().files();
+        this.sourceCompatibility = objectFactory.property(SwiftVersion.class);
+        this.macros = objectFactory.listProperty(String.class);
+        this.debuggable = objectFactory.property(Boolean.class).value(false);
+        this.optimize = objectFactory.property(Boolean.class).value(false);
+        this.targetPlatform = objectFactory.property(NativePlatform.class);
+        this.toolChain = objectFactory.property(NativeToolChain.class);
     }
 
     /**
      * The tool chain used for compilation.
      *
-     * @since 4.4
+     * @since 4.7
      */
     @Internal
-    public NativeToolChain getToolChain() {
+    public Property<NativeToolChain> getToolChain() {
         return toolChain;
-    }
-
-    /**
-     * Sets the tool chain to use for compilation.
-     *
-     * @since 4.4
-     */
-    public void setToolChain(NativeToolChain toolChain) {
-        this.toolChain = (NativeToolChainInternal) toolChain;
     }
 
     /**
      * The platform being compiled for.
      *
-     * @since 4.4
+     * @since 4.7
      */
     @Nested
-    public NativePlatform getTargetPlatform() {
+    public Property<NativePlatform> getTargetPlatform() {
         return targetPlatform;
-    }
-
-    /**
-     * Sets the platform being compiled for.
-     *
-     * @since 4.4
-     */
-    public void setTargetPlatform(NativePlatform targetPlatform) {
-        this.targetPlatform = (NativePlatformInternal) targetPlatform;
     }
 
     /**
@@ -153,59 +149,53 @@ public class SwiftCompile extends DefaultTask {
     /**
      * Macros that should be defined for the compiler.
      *
-     * @since 4.4
+     * <p>Macros do not have values in Swift; they are either present or absent.</p>
+     *
+     * @since 4.7
      */
     @Input
-    public Map<String, String> getMacros() {
+    public ListProperty<String> getMacros() {
         return macros;
     }
 
     /**
-     * Sets the macros that should be defined when compiling.
-     *
-     * @since 4.4
-     */
-    public void setMacros(Map<String, String> macros) {
-        this.macros.clear();
-        this.macros.putAll(macros);
-    }
-
-    /**
      * Should the compiler generate debuggable code?
      *
-     * @since 4.4
+     * @since 4.7
      */
-    @Input
+    @Internal
     public boolean isDebuggable() {
-        return debug;
+        return debuggable.get();
     }
 
     /**
      * Should the compiler generate debuggable code?
      *
-     * @since 4.4
-     */
-    public void setDebuggable(boolean debug) {
-        this.debug = debug;
-    }
-
-    /**
-     * Should the compiler generate optimized code?
-     *
-     * @since 4.4
+     * @since 4.7
      */
     @Input
+    public Property<Boolean> getDebuggable() {
+        return debuggable;
+    }
+
+    /**
+     * Should the compiler generate debuggable code?
+     *
+     * @since 4.7
+     */
+    @Internal
     public boolean isOptimized() {
-        return optimize;
+        return optimize.get();
     }
 
     /**
      * Should the compiler generate optimized code?
      *
-     * @since 4.4
+     * @since 4.7
      */
-    public void setOptimized(boolean optimize) {
-        this.optimize = optimize;
+    @Input
+    public Property<Boolean> getOptimized() {
+        return optimize;
     }
 
     /**
@@ -275,59 +265,52 @@ public class SwiftCompile extends DefaultTask {
      */
     @Nested
     protected CompilerVersion getCompilerVersion() {
-        NativeToolChainInternal toolChain = (NativeToolChainInternal) getToolChain();
-        NativePlatformInternal targetPlatform = (NativePlatformInternal) getTargetPlatform();
+        return ((VersionAwareCompiler)createCompiler()).getVersion();
+    }
+
+    private Compiler<SwiftCompileSpec> createCompiler() {
+        NativePlatformInternal targetPlatform = Cast.cast(NativePlatformInternal.class, this.targetPlatform.get());
+        NativeToolChainInternal toolChain = Cast.cast(NativeToolChainInternal.class, getToolChain().get());
         PlatformToolProvider toolProvider = toolChain.select(targetPlatform);
-        VersionAwareCompiler<?> compiler = (VersionAwareCompiler<?>) toolProvider.newCompiler(SwiftCompileSpec.class);
-        return compiler.getVersion();
+        return toolProvider.newCompiler(SwiftCompileSpec.class);
     }
 
     @TaskAction
-    void compile(IncrementalTaskInputs inputs) {
+    protected void compile(InputChanges inputs) {
         final List<File> removedFiles = Lists.newArrayList();
         final Set<File> changedFiles = Sets.newHashSet();
         boolean isIncremental = inputs.isIncremental();
 
         // TODO: This should become smarter and move into the compiler infrastructure instead
-        // of the task, similar to how the other native languages are done.
-        // For now, this does a rudimentary incremental build analysis by looking at
-        // which files changed and marking the compilation incremental or not.
+        //   of the task, similar to how the other native languages are done.
+        //   For now, this does a rudimentary incremental build analysis by looking at
+        //   which files changed .
         if (isIncremental) {
-            inputs.outOfDate(new Action<InputFileDetails>() {
-                @Override
-                public void execute(InputFileDetails inputFileDetails) {
-                    if (inputFileDetails.isModified()) {
-                        changedFiles.add(inputFileDetails.getFile());
-                    }
+            for (FileChange fileChange : inputs.getFileChanges(getSource())) {
+                if (fileChange.getChangeType() == ChangeType.REMOVED) {
+                    removedFiles.add(fileChange.getFile());
+                } else {
+                    changedFiles.add(fileChange.getFile());
                 }
-            });
-            inputs.removed(new Action<InputFileDetails>() {
-                @Override
-                public void execute(InputFileDetails removed) {
-                    removedFiles.add(removed.getFile());
-                }
-            });
-
-            Set<File> allSourceFiles = getSource().getFiles();
-            if (!allSourceFiles.containsAll(changedFiles)) {
-                // If a non-source file changed, the compilation cannot be incremental
-                // due to the way the Swift compiler detects changes from other modules
-                isIncremental = false;
             }
         }
 
         BuildOperationLogger operationLogger = getServices().get(BuildOperationLoggerFactory.class).newOperationLogger(getName(), getTemporaryDir());
 
-        SwiftCompileSpec spec = createSpec(operationLogger, isIncremental, changedFiles, removedFiles);
-
-        PlatformToolProvider platformToolProvider = toolChain.select(targetPlatform);
-        Compiler<SwiftCompileSpec> baseCompiler = new IncrementalSwiftCompiler(platformToolProvider.newCompiler(SwiftCompileSpec.class), getOutputs(), compilerOutputFileNamingSchemeFactory);
+        NativePlatformInternal targetPlatform = Cast.cast(NativePlatformInternal.class, this.targetPlatform.get());
+        SwiftCompileSpec spec = createSpec(operationLogger, isIncremental, changedFiles, removedFiles, targetPlatform);
+        Compiler<SwiftCompileSpec> baseCompiler = new IncrementalSwiftCompiler(
+            createCompiler(),
+            getOutputs(),
+            compilerOutputFileNamingSchemeFactory,
+            deleter
+        );
         Compiler<SwiftCompileSpec> loggingCompiler = BuildOperationLoggingCompilerDecorator.wrap(baseCompiler);
         WorkResult result = loggingCompiler.execute(spec);
         setDidWork(result.getDidWork());
     }
 
-    private SwiftCompileSpec createSpec(BuildOperationLogger operationLogger, boolean isIncremental, Collection<File> changedFiles, Collection<File> removedFiles) {
+    private SwiftCompileSpec createSpec(BuildOperationLogger operationLogger, boolean isIncremental, Collection<File> changedFiles, Collection<File> removedFiles, NativePlatformInternal targetPlatform) {
         SwiftCompileSpec spec = new DefaultSwiftCompileSpec();
         spec.setModuleName(moduleName.getOrNull());
         spec.setModuleFile(moduleFile.get().getAsFile());
@@ -345,10 +328,16 @@ public class SwiftCompile extends DefaultTask {
         spec.source(getSource());
         spec.setRemovedSourceFiles(removedFiles);
         spec.setChangedFiles(changedFiles);
-        spec.setMacros(getMacros());
+
+        // Convert Swift-like macros to a Map like NativeCompileSpec expects
+        Map<String, String> macros = new LinkedHashMap<>();
+        for (String macro : getMacros().get()) {
+            macros.put(macro, null);
+        }
+        spec.setMacros(macros);
         spec.args(getCompilerArgs().get());
-        spec.setDebuggable(isDebuggable());
-        spec.setOptimized(isOptimized());
+        spec.setDebuggable(getDebuggable().get());
+        spec.setOptimized(getOptimized().get());
         spec.setIncrementalCompile(isIncremental);
         spec.setOperationLogger(operationLogger);
         spec.setSourceCompatibility(sourceCompatibility.get());

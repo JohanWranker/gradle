@@ -16,7 +16,6 @@
 
 package org.gradle.tooling.events.task;
 
-import org.gradle.api.Incubating;
 import org.gradle.tooling.events.SuccessResult;
 
 /**
@@ -24,8 +23,7 @@ import org.gradle.tooling.events.SuccessResult;
  *
  * @since 2.5
  */
-@Incubating
-public interface TaskSuccessResult extends TaskOperationResult, SuccessResult {
+public interface TaskSuccessResult extends TaskExecutionResult, SuccessResult {
     /**
      * Returns whether this task was up-to-date.
      *

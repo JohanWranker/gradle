@@ -16,12 +16,12 @@
 package org.gradle.integtests.fixtures.executer;
 
 import org.gradle.api.JavaVersion;
+import org.gradle.cache.internal.CacheVersion;
 import org.gradle.internal.jvm.Jvm;
 import org.gradle.internal.os.OperatingSystem;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.util.GradleVersion;
-import org.gradle.util.VersionNumber;
 
 public interface GradleDistribution {
     /**
@@ -70,24 +70,14 @@ public interface GradleDistribution {
     boolean isToolingApiTargetJvmSupported(JavaVersion javaVersion);
 
     /**
-     * Returns true if the tooling API of this distribution correctly handles non-ASCII characters in logging output.
-     */
-    boolean isToolingApiNonAsciiOutputSupported();
-
-    /**
      * Returns true if the tooling API of this distribution correctly handles logging in embedded mode.
      */
     boolean isToolingApiLoggingInEmbeddedModeSupported();
 
     /**
-     * Returns true if the tooling API of this distribution supports specifying the daemon base dir.
+     * Returns true if this version handles the client provided standard input stream when running in embedded mode.
      */
-    boolean isToolingApiDaemonBaseDirSupported();
-
-    /**
-     * Returns true if the tooling API of this distribution correctly implements progress events when in embedded mode.
-     */
-    boolean isToolingApiEventsInEmbeddedModeSupported();
+    boolean isToolingApiStdinInEmbeddedModeSupported();
 
     /**
      * Returns true if the tooling API of this distribution incorrectly locks build action implementation classes.
@@ -97,12 +87,7 @@ public interface GradleDistribution {
     /**
      * Returns the version of the artifact cache layout
      */
-    VersionNumber getArtifactCacheLayoutVersion();
-
-    /**
-     * Returns true if the open API is supported by this distribution.
-     */
-    boolean isOpenApiSupported();
+    CacheVersion getArtifactCacheLayoutVersion();
 
     /**
      * Returns true if the wrapper from this distribution can execute a build using the specified version.
@@ -125,4 +110,54 @@ public interface GradleDistribution {
      * Returns true if the wrapper for this version honours the --gradle-user-home command-line option.
      */
     boolean isWrapperSupportsGradleUserHomeCommandLineOption();
+
+    /**
+     * Returns true if this version always adds a task execution exception around all failures, such as input fingerprinting or property validation failures, rather than only around task action failures.
+     */
+    boolean isAddsTaskExecutionExceptionAroundAllTaskFailures();
+
+    /**
+     * Returns true if this version retains the original build failure on cancellation (with all context) in the client and build logging, rather than discarding contextual exceptions.
+     */
+    boolean isToolingApiRetainsOriginalFailureOnCancel();
+
+    /**
+     * Returns true if this version has a useful cause attached to the exception thrown by the tooling API client on build cancel.
+     */
+    boolean isToolingApiHasCauseOnCancel();
+
+    /**
+     * Returns true if this version does not occasionally add additional 'build cancelled' exceptions when tasks are cancelled.
+     */
+    boolean isToolingApiDoesNotAddCausesOnTaskCancel();
+
+    /**
+     * Returns true if this version has a useful cause attached to the exception thrown by the tooling API client when daemon is killed to force cancellation.
+     */
+    boolean isToolingApiHasCauseOnForcedCancel();
+
+    /**
+     * Returns true if this version logs a 'build failed' message on build cancellation.
+     */
+    boolean isToolingApiLogsFailureOnCancel();
+
+    /**
+     * Returns true if this version retains the original exception as cause on phased action fail.
+     */
+    boolean isToolingApiHasCauseOnPhasedActionFail();
+
+    /**
+     * Returns true if this version logs errors to stdout instead of stderr.
+     */
+    boolean isToolingApiMergesStderrIntoStdout();
+
+    /**
+     * Returns the logging output stream that this version logs build failures to when invoked via the tooling API.
+     */
+    <T> T selectOutputWithFailureLogging(T stdout, T stderr);
+
+    /**
+     * Returns true if this version logs different build outcome messages for tooling API requests that run tasks and to requests that do not run tasks (eg fetch a model).
+     */
+    boolean isToolingApiLogsConfigureSummary();
 }

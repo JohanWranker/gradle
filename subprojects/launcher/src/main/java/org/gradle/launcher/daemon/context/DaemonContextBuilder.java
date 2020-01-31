@@ -42,6 +42,7 @@ public class DaemonContextBuilder implements Factory<DaemonContext> {
     private Integer idleTimeout;
     private Locale locale = Locale.getDefault();
     private List<String> daemonOpts = Lists.newArrayList();
+    private DaemonParameters.Priority priority;
 
     public DaemonContextBuilder(ProcessEnvironment processEnvironment) {
         javaHome = canonicalize(Jvm.current().getJavaHome());
@@ -104,18 +105,24 @@ public class DaemonContextBuilder implements Factory<DaemonContext> {
         this.daemonOpts = daemonOpts;
     }
 
+    public void setPriority(DaemonParameters.Priority priority) {
+        this.priority = priority;
+    }
+
     public void useDaemonParameters(DaemonParameters daemonParameters) {
         setJavaHome(daemonParameters.getEffectiveJvm().getJavaHome());
         setDaemonOpts(daemonParameters.getEffectiveJvmArgs());
+        setPriority(daemonParameters.getPriority());
     }
 
     /**
      * Creates a new daemon context, based on the current state of this builder.
      */
+    @Override
     public DaemonContext create() {
         if (daemonRegistryDir == null) {
             throw new IllegalStateException("Registry dir must be specified.");
         }
-        return new DefaultDaemonContext(uid, javaHome, daemonRegistryDir, pid, idleTimeout, daemonOpts);
+        return new DefaultDaemonContext(uid, javaHome, daemonRegistryDir, pid, idleTimeout, daemonOpts, priority);
     }
 }

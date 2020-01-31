@@ -24,6 +24,7 @@ import org.gradle.api.component.Artifact;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactVisitor;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvableArtifact;
 import org.gradle.api.internal.artifacts.result.DefaultResolvedArtifactResult;
+import org.gradle.internal.DisplayName;
 
 import java.io.File;
 import java.util.HashSet;
@@ -40,14 +41,14 @@ public class ResolvedArtifactCollectingVisitor implements ArtifactVisitor {
     }
 
     @Override
-    public void visitArtifact(String variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
+    public void visitArtifact(DisplayName variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
         try {
             if (seenArtifacts.add(artifact.getId())) {
                 // Trigger download of file, if required
                 File file = artifact.getFile();
                 this.artifacts.add(new DefaultResolvedArtifactResult(artifact.getId(), variantAttributes, variantName, Artifact.class, file));
             }
-        } catch (Throwable t) {
+        } catch (Exception t) {
             failures.add(t);
         }
     }
@@ -55,18 +56,6 @@ public class ResolvedArtifactCollectingVisitor implements ArtifactVisitor {
     @Override
     public boolean requireArtifactFiles() {
         return true;
-    }
-
-    @Override
-    public boolean includeFiles() {
-        return true;
-    }
-
-    @Override
-    public void visitFile(ComponentArtifactIdentifier artifactIdentifier, String variantName, AttributeContainer variantAttributes, File file) {
-        if (seenArtifacts.add(artifactIdentifier)) {
-            artifacts.add(new DefaultResolvedArtifactResult(artifactIdentifier, variantAttributes, variantName, Artifact.class, file));
-        }
     }
 
     public Set<ResolvedArtifactResult> getArtifacts() {

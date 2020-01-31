@@ -19,13 +19,13 @@ import groovy.lang.Closure;
 import groovy.util.Node;
 import groovy.util.XmlParser;
 import groovy.xml.QName;
-import org.apache.commons.io.IOUtils;
 import org.gradle.api.Action;
 import org.gradle.api.UncheckedIOException;
 import org.gradle.api.XmlProvider;
 import org.gradle.api.internal.DomNode;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.internal.Cast;
+import org.gradle.internal.IoActions;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.file.PathToFileResolver;
 import org.gradle.internal.xml.XmlTransformer;
@@ -257,7 +257,7 @@ public class DefaultDeploymentDescriptor implements DeploymentDescriptor {
             }
             return parser;
         } catch (Exception ex) {
-            throw new UncheckedException(ex);
+            throw UncheckedException.throwAsUncheckedException(ex);
         }
     }
 
@@ -268,68 +268,77 @@ public class DefaultDeploymentDescriptor implements DeploymentDescriptor {
             version = (String) appNode.attribute("version");
             for (final Node child : Cast.<List<Node>>uncheckedCast(appNode.children())) {
                 String childLocalName = localNameOf(child);
-                if (childLocalName.equals("application-name")) {
+                switch (childLocalName) {
+                    case "application-name":
 
-                    applicationName = child.text();
+                        applicationName = child.text();
 
-                } else if (childLocalName.equals("initialize-in-order")) {
+                        break;
+                    case "initialize-in-order":
 
-                    initializeInOrder = Boolean.valueOf(child.text());
+                        initializeInOrder = Boolean.valueOf(child.text());
 
-                } else if (childLocalName.equals("description")) {
+                        break;
+                    case "description":
 
-                    description = child.text();
+                        description = child.text();
 
-                } else if (childLocalName.equals("display-name")) {
+                        break;
+                    case "display-name":
 
-                    displayName = child.text();
+                        displayName = child.text();
 
-                } else if (childLocalName.equals("library-directory")) {
+                        break;
+                    case "library-directory":
 
-                    libraryDirectory = child.text();
+                        libraryDirectory = child.text();
 
-                } else if (childLocalName.equals("module")) {
+                        break;
+                    case "module":
 
-                    EarModule module = null;
-                    for (Node moduleNode : Cast.<List<Node>>uncheckedCast(child.children())) {
-                        String moduleNodeLocalName = localNameOf(moduleNode);
-                        if (moduleNodeLocalName.equals("web")) {
-                            String webUri = childNodeText(moduleNode, "web-uri");
-                            String contextRoot = childNodeText(moduleNode, "context-root");
-                            module = new DefaultEarWebModule(webUri, contextRoot);
-                            modules.add(module);
-                            moduleTypeMappings.put(module.getPath(), "web");
-                        } else if (moduleNodeLocalName.equals("alt-dd")) {
-                            assert module != null;
-                            module.setAltDeployDescriptor(moduleNode.text());
-                        } else {
-                            module = new DefaultEarModule(moduleNode.text());
-                            modules.add(module);
-                            moduleTypeMappings.put(module.getPath(), moduleNodeLocalName);
+                        EarModule module = null;
+                        for (Node moduleNode : Cast.<List<Node>>uncheckedCast(child.children())) {
+                            String moduleNodeLocalName = localNameOf(moduleNode);
+                            if (moduleNodeLocalName.equals("web")) {
+                                String webUri = childNodeText(moduleNode, "web-uri");
+                                String contextRoot = childNodeText(moduleNode, "context-root");
+                                module = new DefaultEarWebModule(webUri, contextRoot);
+                                modules.add(module);
+                                moduleTypeMappings.put(module.getPath(), "web");
+                            } else if (moduleNodeLocalName.equals("alt-dd")) {
+                                assert module != null;
+                                module.setAltDeployDescriptor(moduleNode.text());
+                            } else {
+                                module = new DefaultEarModule(moduleNode.text());
+                                modules.add(module);
+                                moduleTypeMappings.put(module.getPath(), moduleNodeLocalName);
+                            }
                         }
-                    }
 
-                } else if (childLocalName.equals("security-role")) {
+                        break;
+                    case "security-role":
 
-                    String roleName = childNodeText(child, "role-name");
-                    String description = childNodeText(child, "description");
-                    securityRoles.add(new DefaultEarSecurityRole(roleName, description));
+                        String roleName = childNodeText(child, "role-name");
+                        String description = childNodeText(child, "description");
+                        securityRoles.add(new DefaultEarSecurityRole(roleName, description));
 
-                } else {
-                    withXml(new Action<XmlProvider>() {
-                        @Override
-                        public void execute(XmlProvider xmlProvider) {
-                            xmlProvider.asNode().append(child);
-                        }
-                    });
+                        break;
+                    default:
+                        withXml(new Action<XmlProvider>() {
+                            @Override
+                            public void execute(XmlProvider xmlProvider) {
+                                xmlProvider.asNode().append(child);
+                            }
+                        });
+                        break;
                 }
             }
         } catch (IOException ex) {
             throw new UncheckedIOException(ex);
         } catch (SAXException ex) {
-            throw new UncheckedException(ex);
+            throw UncheckedException.throwAsUncheckedException(ex);
         } finally {
-            IOUtils.closeQuietly(reader);
+            IoActions.closeQuietly(reader);
         }
         return this;
     }

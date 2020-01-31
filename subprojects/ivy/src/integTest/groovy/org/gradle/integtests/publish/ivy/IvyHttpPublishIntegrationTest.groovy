@@ -18,6 +18,7 @@
 package org.gradle.integtests.publish.ivy
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.executer.ProgressLoggingFixture
 import org.gradle.internal.jvm.Jvm
 import org.gradle.test.fixtures.file.TestFile
@@ -27,7 +28,7 @@ import org.gradle.test.fixtures.server.http.IvyHttpModule
 import org.gradle.test.fixtures.server.http.IvyHttpRepository
 import org.gradle.util.GradleVersion
 import org.gradle.util.Requires
-import org.hamcrest.Matchers
+import org.hamcrest.CoreMatchers
 import org.junit.Rule
 import spock.lang.Issue
 import spock.lang.Unroll
@@ -56,6 +57,7 @@ credentials {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can publish to authenticated repository using #authScheme auth"() {
         given:
         server.start()
@@ -82,10 +84,15 @@ uploadArchives {
         server.authenticationScheme = authScheme
         module.jar.expectPut('testuser', 'password')
         module.jar.sha1.expectPut('testuser', 'password')
+        module.jar.sha256.expectPut('testuser', 'password')
+        module.jar.sha512.expectPut('testuser', 'password')
         module.ivy.expectPut('testuser', 'password')
         module.ivy.sha1.expectPut('testuser', 'password')
+        module.ivy.sha256.expectPut('testuser', 'password')
+        module.ivy.sha512.expectPut('testuser', 'password')
 
         when:
+        executer.expectDeprecationWarning()
         run 'uploadArchives'
 
         then:
@@ -101,6 +108,7 @@ uploadArchives {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "reports failure publishing with #credsName credentials to authenticated repository using #authScheme auth"() {
         given:
         server.start()
@@ -126,12 +134,13 @@ uploadArchives {
         server.allowPut('/repo/org.gradle/publish/2/publish-2.jar', 'testuser', 'password')
 
         when:
+        executer.expectDeprecationWarning()
         fails 'uploadArchives'
 
         then:
         failure.assertHasDescription('Execution failed for task \':uploadArchives\'.')
         failure.assertHasCause('Could not publish configuration \'archives\'')
-        failure.assertThatCause(Matchers.containsString('Received status code 401 from server: Unauthorized'))
+        failure.assertThatCause(CoreMatchers.containsString('Received status code 401 from server: Unauthorized'))
 
         where:
         authScheme                   | credsName | creds
@@ -143,6 +152,7 @@ uploadArchives {
         AuthScheme.NTLM   | 'bad'     | BAD_CREDENTIALS
     }
 
+    @ToBeFixedForInstantExecution
     public void reportsFailedPublishToHttpRepository() {
         given:
         server.start()
@@ -163,25 +173,28 @@ uploadArchives {
         server.addBroken("/")
 
         then:
+        executer.expectDeprecationWarning()
         fails 'uploadArchives'
 
         and:
         failure.assertHasDescription('Execution failed for task \':uploadArchives\'.')
         failure.assertHasCause('Could not publish configuration \'archives\'')
-        failure.assertThatCause(Matchers.containsString('Received status code 500 from server: broken'))
+        failure.assertThatCause(CoreMatchers.containsString('Received status code 500 from server: broken'))
 
         when:
         server.stop()
 
         then:
+        executer.expectDeprecationWarning()
         fails 'uploadArchives'
 
         and:
         failure.assertHasDescription('Execution failed for task \':uploadArchives\'.')
         failure.assertHasCause('Could not publish configuration \'archives\'')
-        failure.assertThatCause(matchesRegexp(".*?Connect to localhost:${repositoryPort} (\\[.*\\])? failed: Connection refused.*"))
+        failure.assertThatCause(matchesRegexp(".*?Connect to 127.0.0.1:${repositoryPort} (\\[.*\\])? failed: Connection refused.*"))
     }
 
+    @ToBeFixedForInstantExecution
     public void usesFirstConfiguredPatternForPublication() {
         given:
         server.start()
@@ -206,10 +219,15 @@ uploadArchives {
         and:
         module.jar.expectPut()
         module.jar.sha1.expectPut()
+        module.jar.sha256.expectPut()
+        module.jar.sha512.expectPut()
         module.ivy.expectPut()
         module.ivy.sha1.expectPut()
+        module.ivy.sha256.expectPut()
+        module.ivy.sha512.expectPut()
 
         when:
+        executer.expectDeprecationWarning()
         run 'uploadArchives'
 
         then:
@@ -219,6 +237,7 @@ uploadArchives {
 
     @Requires(FIX_TO_WORK_ON_JAVA9)
     @Issue('provide a different large jar')
+    @ToBeFixedForInstantExecution
     public void "can publish large artifact (tools.jar) to authenticated repository"() {
         given:
         server.start()
@@ -255,8 +274,12 @@ uploadTools {
         and:
         module.jar.expectPut('testuser', 'password')
         module.jar.sha1.expectPut('testuser', 'password')
+        module.jar.sha256.expectPut('testuser', 'password')
+        module.jar.sha512.expectPut('testuser', 'password')
         module.ivy.expectPut('testuser', 'password')
         module.ivy.sha1.expectPut('testuser', 'password')
+        module.ivy.sha256.expectPut('testuser', 'password')
+        module.ivy.sha512.expectPut('testuser', 'password')
 
         when:
         run 'uploadTools'

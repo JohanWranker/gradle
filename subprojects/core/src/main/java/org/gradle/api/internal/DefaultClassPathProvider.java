@@ -15,7 +15,6 @@
  */
 package org.gradle.api.internal;
 
-import org.gradle.api.internal.classpath.Module;
 import org.gradle.api.internal.classpath.ModuleRegistry;
 import org.gradle.internal.classpath.ClassPath;
 
@@ -26,19 +25,38 @@ public class DefaultClassPathProvider implements ClassPathProvider {
         this.moduleRegistry = moduleRegistry;
     }
 
+    @Override
     public ClassPath findClassPath(String name) {
         if (name.equals("GRADLE_RUNTIME")) {
-            ClassPath classpath = ClassPath.EMPTY;
-            for (Module module : moduleRegistry.getModule("gradle-launcher").getAllRequiredModules()) {
-                classpath = classpath.plus(module.getClasspath());
-            }
-            return classpath;
+            return moduleRegistry.getModule("gradle-launcher").getAllRequiredModulesClasspath();
         }
         if (name.equals("GRADLE_INSTALLATION_BEACON")) {
             return moduleRegistry.getModule("gradle-installation-beacon").getImplementationClasspath();
         }
-        if (name.equals("COMMONS_CLI")) {
-            return moduleRegistry.getExternalModule("commons-cli").getClasspath();
+        if (name.equals("GROOVY-COMPILER")) {
+            ClassPath classpath = ClassPath.EMPTY;
+            classpath = classpath.plus(moduleRegistry.getModule("gradle-language-groovy").getImplementationClasspath());
+            classpath = classpath.plus(moduleRegistry.getExternalModule("groovy-all").getClasspath());
+            classpath = classpath.plus(moduleRegistry.getExternalModule("asm").getClasspath());
+            classpath = addJavaCompilerModules(classpath);
+            return classpath;
+        }
+        if (name.equals("SCALA-COMPILER")) {
+            ClassPath classpath = ClassPath.EMPTY;
+            classpath = classpath.plus(moduleRegistry.getModule("gradle-language-scala").getImplementationClasspath());
+            classpath = classpath.plus(moduleRegistry.getModule("gradle-scala").getImplementationClasspath());
+            classpath = addJavaCompilerModules(classpath);
+            return classpath;
+        }
+        if (name.equals("PLAY-COMPILER")) {
+            ClassPath classpath = ClassPath.EMPTY;
+            classpath = classpath.plus(moduleRegistry.getModule("gradle-platform-play").getImplementationClasspath());
+            classpath = classpath.plus(moduleRegistry.getModule("gradle-javascript").getImplementationClasspath());
+            classpath = addJavaCompilerModules(classpath);
+            return classpath;
+        }
+        if (name.equals("JAVA-COMPILER")) {
+            return addJavaCompilerModules(ClassPath.EMPTY);
         }
         if (name.equals("ANT")) {
             ClassPath classpath = ClassPath.EMPTY;
@@ -48,5 +66,12 @@ public class DefaultClassPathProvider implements ClassPathProvider {
         }
 
         return null;
+    }
+
+    private ClassPath addJavaCompilerModules(ClassPath classpath) {
+        classpath = classpath.plus(moduleRegistry.getModule("gradle-language-java").getImplementationClasspath());
+        classpath = classpath.plus(moduleRegistry.getModule("gradle-language-jvm").getImplementationClasspath());
+        classpath = classpath.plus(moduleRegistry.getModule("gradle-platform-base").getImplementationClasspath());
+        return classpath;
     }
 }

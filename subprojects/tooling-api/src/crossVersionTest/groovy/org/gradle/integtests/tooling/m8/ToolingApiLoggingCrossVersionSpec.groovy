@@ -20,10 +20,8 @@ import org.apache.commons.io.output.TeeOutputStream
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.integtests.tooling.fixture.TestOutputStream
 import org.gradle.integtests.tooling.fixture.ToolingApiLoggingSpecification
-import org.gradle.integtests.tooling.fixture.ToolingApiVersion
-import org.junit.Assume
+import org.gradle.util.GradleVersion
 
-@ToolingApiVersion(">=2.2")
 class ToolingApiLoggingCrossVersionSpec extends ToolingApiLoggingSpecification {
 
     def setup() {
@@ -61,26 +59,34 @@ project.logger.debug("debug logging yyy");
 
         then:
         def out = stdOut.toString()
+        def err = stdErr.toString()
+
         out.count("debug logging yyy") == 1
         out.count("info logging yyy") == 1
         out.count("quiet logging yyy") == 1
         out.count("lifecycle logging yyy") == 1
         out.count("warn logging yyy") == 1
         out.count("println logging yyy") == 1
-        out.count("error logging xxx") == 0
+        if (targetVersion.baseVersion >= GradleVersion.version("4.7")) {
+            // Handling of error log message changed
+            out.count("error logging xxx") == 1
+            out.count("sys err logging xxx") == 1
 
+            err.count("logging") == 0
+        }  else {
+            out.count("logging xxx") == 0
+
+            err.count("logging yyy") == 0
+            err.count("error logging xxx") == 1
+            err.count("sys err logging xxx") == 1
+        }
+
+        and:
         shouldNotContainProviderLogging(out)
-
-        def err = stdErr.toString()
-        err.count("error logging") == 1
-        err.toString().count("sys err") == 1
-        err.toString().count("logging yyy") == 0
-
         shouldNotContainProviderLogging(err)
     }
 
     def "client receives same standard output and standard error as if running from the command-line"() {
-        Assume.assumeTrue targetDist.toolingApiNonAsciiOutputSupported
         toolingApi.verboseLogging = false
 
         file("build.gradle") << """
@@ -96,7 +102,7 @@ project.logger.info ("info logging");
 project.logger.debug("debug logging");
 """
         when:
-        def commandLineResult = runUsingCommandLine();
+        def commandLineResult = runUsingCommandLine()
 
         and:
         def op = withBuild()
@@ -109,8 +115,14 @@ project.logger.debug("debug logging");
         err == commandLineResult.error
 
         and:
-        err.count("System.err \u03b1\u03b2") == 1
-        err.count("error logging \u03b1\u03b2") == 1
+        def errLogging
+        if (targetDist.toolingApiMergesStderrIntoStdout) {
+            errLogging = out
+        } else {
+            errLogging = err
+        }
+        errLogging.count("System.err \u03b1\u03b2") == 1
+        errLogging.count("error logging \u03b1\u03b2") == 1
 
         and:
         out.count("lifecycle logging \u03b1\u03b2") == 1
@@ -118,30 +130,46 @@ project.logger.debug("debug logging");
         out.count("quiet logging") == 1
         out.count("info") == 0
         out.count("debug") == 0
+
+        err.count("warn") == 0
+        err.count("quiet") == 0
+        err.count("lifecycle") == 0
+        err.count("info") == 0
+        err.count("debug") == 0
     }
 
-    private removeStartupWarnings(String output) {
-        if (output.startsWith('Starting a Gradle Daemon')) {
-            output = output.substring(output.indexOf('\n') + 1)
-        }
-        if (output.startsWith('Parallel execution is an incubating feature.')) {
+    private static removeStartupWarnings(String output) {
+        while (output.startsWith('Starting a Gradle Daemon') || output.startsWith('Parallel execution is an incubating feature.')) {
             output = output.substring(output.indexOf('\n') + 1)
         }
         output
     }
 
     private ExecutionResult runUsingCommandLine() {
-        targetDist.executer(temporaryFolder, getBuildContext())
+        def executer = targetDist.executer(temporaryFolder, getBuildContext())
             .requireGradleDistribution()
+            .withPartialVfsInvalidation(false) // Don't show incubating message for logging tests
             .withCommandLineGradleOpts("-Dorg.gradle.deprecation.trace=false") //suppress deprecation stack trace
-            .run()
+
+        if (targetDist.toolingApiMergesStderrIntoStdout) {
+            // The TAPI provider merges the streams, so need to merge the streams for command-line execution too
+            executer.withArgument("--console=plain")
+            executer.withTestConsoleAttached()
+            // We changed the test console system property values in 4.9, need to use "both" instead of "BOTH"
+            if (targetVersion.baseVersion >= GradleVersion.version("4.8")
+                    && targetVersion.baseVersion < GradleVersion.version("4.9")) {
+                executer.withCommandLineGradleOpts("-Dorg.gradle.internal.console.test-console=both")
+            }
+        }
+
+        return executer.run()
     }
 
     String normaliseOutput(String output) {
         // Must replace both build result formats for cross compat
         return output
-            .replaceFirst(/Support for .* was deprecated.*\n/,'')
-            .replaceFirst(/ in [.\d]+s/, " in 0s")
+            .replaceFirst(/Support for .* was deprecated.*\n/, '')
+            .replaceFirst(/ in [ \dms]+/, " in 0ms")
             .replaceFirst("Total time: .+ secs", "Total time: 0 secs")
     }
 

@@ -17,10 +17,14 @@
 package org.gradle.api
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.util.ToBeImplemented
 import spock.lang.Ignore
+import spock.lang.Issue
 import spock.lang.Unroll
 
-import static org.gradle.integtests.fixtures.executer.TaskOrderSpecs.*
+import static org.gradle.integtests.fixtures.executer.TaskOrderSpecs.any
+import static org.gradle.integtests.fixtures.executer.TaskOrderSpecs.exact
 
 class FinalizerTaskIntegrationTest extends AbstractIntegrationSpec {
     void 'finalizer tasks are scheduled as expected'() {
@@ -103,7 +107,7 @@ class FinalizerTaskIntegrationTest extends AbstractIntegrationSpec {
         succeeds 'a'
 
         then:
-        executedTasks == [':c']
+        result.assertTasksExecuted(':c')
 
         where:
         taskDisablingStatement << ['a.enabled = false', 'a.onlyIf {false}']
@@ -206,6 +210,97 @@ class FinalizerTaskIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         result.assertTasksExecutedInOrder ':a', ':b', ':c'
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/5415")
+    void 'finalizers are executed after the last task to be finalized'() {
+        settingsFile << """
+            include "a"
+            include "b"
+        """
+        buildFile << """
+            configure(project(':a')) {
+                task finalizer {
+                    doLast {
+                        sleep 100
+                    }
+                }
+                
+                task foo {
+                    finalizedBy finalizer
+                    doLast {
+                        sleep 500
+                    }
+                }
+            }
+            
+            configure(project(':b')) {
+                task foo {
+                    finalizedBy ':a:finalizer'
+                    doLast {
+                        sleep 1000
+                    }
+                }
+            }
+        """
+
+        when:
+        run "foo", "--parallel"
+
+        then:
+        result.assertTaskOrder(any(":a:foo", ":b:foo"), ":a:finalizer")
+    }
+
+    @ToBeImplemented("https://github.com/gradle/gradle/issues/10549")
+    @ToBeFixedForInstantExecution
+    def "mustRunAfter is respected for finalizer without direct dependency"() {
+        settingsFile << """
+            include 'a'
+            include 'b'
+        """
+        buildFile << """
+            configure(project(':a')) {
+                task finalizer {
+                    doLast {
+                        println "finalized"
+                    }
+                }
+            
+                task work {
+                    doLast {
+                        sleep 1000
+                        println "executed \${path}"
+                    }
+                    finalizedBy(finalizer)
+                }
+            }
+            
+            configure(project(':b')) {
+                task work {
+                    doLast {
+                        println "executed \${path}"
+                    }
+                    mustRunAfter(":a:finalizer")
+                }
+            }
+        """
+
+        when:
+        run("work", "--parallel")
+        then:
+        // TODO: Should be:
+        // result.assertTaskOrder(":a:work", ":a:finalizer", ":b:work")
+        result.assertTaskOrder(any(exact(":a:work", ":a:finalizer"), ":b:work"))
+
+        when: "Apply workaround"
+        buildFile << """
+            configure(project(':b')) {
+                work.mustRunAfter(":a:work")
+            }
+        """
+        run("work", "--parallel")
+        then:
+        result.assertTaskOrder(":a:work", ":a:finalizer", ":b:work")
     }
 
     private void setupProject() {

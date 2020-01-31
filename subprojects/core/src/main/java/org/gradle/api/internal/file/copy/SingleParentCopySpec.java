@@ -16,6 +16,7 @@
 package org.gradle.api.internal.file.copy;
 
 import org.gradle.api.file.DuplicatesStrategy;
+import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.internal.reflect.Instantiator;
 
@@ -23,43 +24,51 @@ public class SingleParentCopySpec extends DefaultCopySpec {
 
     private final CopySpecResolver parentResolver;
 
-    public SingleParentCopySpec(FileResolver resolver, Instantiator instantiator, CopySpecResolver parentResolver) {
-        super(resolver, instantiator);
+    public SingleParentCopySpec(FileResolver resolver, FileCollectionFactory fileCollectionFactory, Instantiator instantiator, CopySpecResolver parentResolver) {
+        super(resolver, fileCollectionFactory, instantiator);
         this.parentResolver = parentResolver;
     }
 
+    @Override
     public CopySpecInternal addChild() {
-        DefaultCopySpec child = new SingleParentCopySpec(fileResolver, instantiator, buildResolverRelativeToParent(parentResolver));
+        DefaultCopySpec child = new SingleParentCopySpec(fileResolver, fileCollectionFactory, instantiator, buildResolverRelativeToParent(parentResolver));
         addChildSpec(child);
         return child;
     }
 
+    @Override
     protected CopySpecInternal addChildAtPosition(int position) {
-        DefaultCopySpec child = instantiator.newInstance(SingleParentCopySpec.class, fileResolver, instantiator, buildResolverRelativeToParent(parentResolver));
+        DefaultCopySpec child = instantiator.newInstance(SingleParentCopySpec.class, fileResolver, fileCollectionFactory, instantiator, buildResolverRelativeToParent(parentResolver));
         addChildSpec(position, child);
         return child;
     }
 
+    @Override
     public boolean isCaseSensitive() {
         return buildResolverRelativeToParent(parentResolver).isCaseSensitive();
     }
 
+    @Override
     public boolean getIncludeEmptyDirs() {
         return buildResolverRelativeToParent(parentResolver).getIncludeEmptyDirs();
     }
 
+    @Override
     public DuplicatesStrategy getDuplicatesStrategy() {
         return buildResolverRelativeToParent(parentResolver).getDuplicatesStrategy();
     }
 
+    @Override
     public Integer getDirMode() {
         return buildResolverRelativeToParent(parentResolver).getDirMode();
     }
 
+    @Override
     public Integer getFileMode() {
         return buildResolverRelativeToParent(parentResolver).getFileMode();
     }
 
+    @Override
     public String getFilteringCharset() {
         return buildResolverRelativeToParent(parentResolver).getFilteringCharset();
     }

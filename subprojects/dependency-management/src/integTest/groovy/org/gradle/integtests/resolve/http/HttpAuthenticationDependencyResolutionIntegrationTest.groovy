@@ -18,17 +18,26 @@ package org.gradle.integtests.resolve.http
 import org.gradle.authentication.http.BasicAuthentication
 import org.gradle.authentication.http.DigestAuthentication
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.test.fixtures.server.http.AuthScheme
-import org.hamcrest.Matchers
+import org.gradle.test.fixtures.server.http.HttpServer
+import org.hamcrest.CoreMatchers
+import spock.lang.Issue
 import spock.lang.Unroll
 
 import static org.gradle.test.fixtures.server.http.AuthScheme.BASIC
 import static org.gradle.test.fixtures.server.http.AuthScheme.DIGEST
+import static org.gradle.test.fixtures.server.http.AuthScheme.HEADER
 import static org.gradle.test.fixtures.server.http.AuthScheme.HIDE_UNAUTHORIZED
 import static org.gradle.test.fixtures.server.http.AuthScheme.NTLM
 
 class HttpAuthenticationDependencyResolutionIntegrationTest extends AbstractHttpDependencyResolutionTest {
     static String badCredentials = "credentials{username 'testuser'; password 'bad'}"
+
+    def setup() {
+        // by setting this to >1, we assert that an authentication error is NOT going to cause retries
+        maxHttpRetries = 3
+    }
 
     @Unroll
     def "can resolve dependencies using #authSchemeName scheme from #authScheme authenticated HTTP ivy repository"() {
@@ -163,6 +172,99 @@ task listJars {
     }
 
     @Unroll
+    @Issue("gradle/gradle#5571")
+    public void "can resolve dependencies from HTTP Maven repository authenticating with HTTP header"() {
+        given:
+        def moduleA = mavenHttpRepo.module('group', 'projectA', '1.2').publish()
+        and:
+        buildFile << """
+repositories {
+    maven {
+        url "${mavenHttpRepo.uri}"
+        credentials(org.gradle.api.credentials.HttpHeaderCredentials) {
+            name = "TestHttpHeaderName"
+            value = "TestHttpHeaderValue"
+        }
+        authentication { header(HttpHeaderAuthentication) }
+    }
+}
+configurations { compile }
+dependencies {
+    compile 'group:projectA:1.2'
+}
+task listJars {
+    doLast {
+        assert configurations.compile.collect { it.name } == ['projectA-1.2.jar']
+    }
+}
+"""
+
+        when:
+        serverAuthScheme = HEADER
+
+        and:
+        moduleA.pom.expectGet()
+        moduleA.artifact.expectGet()
+
+        then:
+        succeeds('listJars')
+        and:
+        server.allHeaders.every { it.get("TestHttpHeaderName") == "TestHttpHeaderValue" }
+    }
+
+
+    @Unroll
+    @Issue("gradle/gradle#5571")
+    void "can resolve dependencies from HTTP Maven repository authenticating with HTTP header with redirect"() {
+        given:
+        HttpServer redirectServer = new HttpServer()
+        redirectServer.start()
+
+        def moduleA = mavenHttpRepo.module('group', 'projectA', '1.2').publish()
+        and:
+        buildFile << """
+repositories {
+    maven {
+        url "${redirectServer.uri}/repo"
+        credentials(org.gradle.api.credentials.HttpHeaderCredentials) {
+            name = "TestHttpHeaderName"
+            value = "TestHttpHeaderValue"
+        }
+        authentication { header(HttpHeaderAuthentication) }
+    }
+}
+configurations { compile }
+dependencies {
+    compile 'group:projectA:1.2'
+}
+task listJars {
+    doLast {
+        assert configurations.compile.collect { it.name } == ['projectA-1.2.jar']
+    }
+}
+"""
+
+        when:
+        redirectServer.authenticationScheme = HEADER
+
+        and:
+        redirectServer.expectGetRedirected(moduleA.pom.uri.path, moduleA.pom.uri.toString())
+        redirectServer.expectGetRedirected(moduleA.artifact.uri.path, moduleA.artifact.uri.toString())
+        moduleA.pom.expectGet()
+        moduleA.artifact.expectGet()
+
+        then:
+        succeeds('listJars')
+        and:
+        redirectServer.allHeaders.every { it.get("TestHttpHeaderName") == "TestHttpHeaderValue" }
+        // These headers should not be propagated to other hosts
+        server.allHeaders.every { it.get("TestHttpHeaderName") == null }
+
+        cleanup:
+        redirectServer.stop()
+    }
+
+    @Unroll
     def "reports failure resolving with #credsName credentials from #authScheme authenticated HTTP ivy repository"() {
         given:
         def module = ivyHttpRepo.module('group', 'projectA', '1.2').publish()
@@ -197,7 +299,7 @@ task listJars {
         failure
             .assertHasDescription('Execution failed for task \':listJars\'.')
             .assertResolutionFailure(':compile')
-            .assertThatCause(Matchers.containsString('Received status code 401 from server: Unauthorized'))
+            .assertThatCause(CoreMatchers.containsString('Received status code 401 from server: Unauthorized'))
 
         where:
         authScheme | credsName | creds
@@ -245,7 +347,7 @@ task listJars {
         failure
             .assertHasDescription('Execution failed for task \':listJars\'.')
             .assertResolutionFailure(':compile')
-            .assertThatCause(Matchers.containsString('Received status code 401 from server: Unauthorized'))
+            .assertThatCause(CoreMatchers.containsString('Received status code 401 from server: Unauthorized'))
 
         where:
         authScheme | credsName | creds
@@ -299,7 +401,7 @@ task listJars {
         failure
             .assertHasDescription('Execution failed for task \':listJars\'.')
             .assertResolutionFailure(':compile')
-            .assertThatCause(Matchers.containsString('Received status code 401 from server: Unauthorized'))
+            .assertThatCause(CoreMatchers.containsString('Received status code 401 from server: Unauthorized'))
 
         where:
         authScheme | configuredAuthScheme
@@ -350,7 +452,7 @@ task listJars {
         failure
             .assertHasDescription('Execution failed for task \':listJars\'.')
             .assertResolutionFailure(':compile')
-            .assertThatCause(Matchers.containsString('Received status code 401 from server: Unauthorized'))
+            .assertThatCause(CoreMatchers.containsString('Received status code 401 from server: Unauthorized'))
 
         where:
         authScheme | configuredAuthScheme
@@ -396,7 +498,7 @@ task listJars {
         failure
             .assertHasDescription('Execution failed for task \':listJars\'.')
             .assertResolutionFailure(':compile')
-            .assertThatCause(Matchers.containsString('Could not find group:projectA:1.2'))
+            .assertThatCause(CoreMatchers.containsString('Could not find group:projectA:1.2'))
     }
 
     def "fails resolving from preemptive authenticated HTTP maven repository"() {
@@ -438,7 +540,61 @@ task listJars {
         failure
             .assertHasDescription('Execution failed for task \':listJars\'.')
             .assertResolutionFailure(':compile')
-            .assertThatCause(Matchers.containsString('Could not find group:projectA:1.2'))
+            .assertThatCause(CoreMatchers.containsString('Could not find group:projectA:1.2'))
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/6014")
+    @ToBeFixedForInstantExecution
+    def "repository credentials should be considered when retrieving modules from dependency cache"() {
+        given:
+        def module = mavenHttpRepo.module('group', 'projectA', '1.2').publish()
+
+        settingsFile << 'rootProject.name = "publish"'
+        def baseBuild = """
+configurations { compile }
+dependencies {
+    compile 'group:projectA:1.2'
+}
+task resolve {
+    doLast {
+        assert configurations.compile.collect { it.name } == ['projectA-1.2.jar']
+    }
+}
+"""
+
+        when:
+        buildFile.text = baseBuild + """
+repositories {
+    maven {
+        url "${mavenHttpRepo.uri}"
+        credentials {
+            username = 'username'
+            password = 'password'
+        }
+    }
+}
+"""
+
+        serverAuthScheme = BASIC
+        module.pom.allowGetOrHead('username', 'password')
+        module.artifact.allowGetOrHead('username', 'password')
+
+        then:
+        succeeds 'resolve'
+
+        when:
+        server.resetExpectations()
+
+        buildFile.text = baseBuild + """
+repositories {
+    maven {
+        url "${mavenHttpRepo.uri}"
+    }
+}
+"""
+        then:
+        // Resolution should not succeed without resolving from the remote repository
+        succeeds 'resolve'
     }
 
     void setServerAuthScheme(AuthScheme authScheme) {

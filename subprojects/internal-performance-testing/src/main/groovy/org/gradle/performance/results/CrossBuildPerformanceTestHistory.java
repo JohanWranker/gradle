@@ -21,6 +21,7 @@ import com.google.common.collect.Lists;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class CrossBuildPerformanceTestHistory implements PerformanceTestHistory {
     private final String name;
@@ -43,21 +44,13 @@ public class CrossBuildPerformanceTestHistory implements PerformanceTestHistory 
     }
 
     @Override
-    public String getId() {
-        return name.replaceAll("\\s+", "-");
-    }
-
     public String getDisplayName() {
         return name;
     }
 
     @Override
     public List<PerformanceTestExecution> getExecutions() {
-        return Lists.transform(newestFirst, new Function<CrossBuildPerformanceResults, PerformanceTestExecution>() {
-            public PerformanceTestExecution apply(@Nullable final CrossBuildPerformanceResults results) {
-                return new KnownBuildSpecificationsPerformanceTestExecution(results);
-            }
-        });
+        return newestFirst.stream().map(KnownBuildSpecificationsPerformanceTestExecution::new).collect(Collectors.toList());
     }
 
     @Override
@@ -67,56 +60,47 @@ public class CrossBuildPerformanceTestHistory implements PerformanceTestHistory 
 
     @Override
     public List<String> getScenarioLabels() {
-        return Lists.transform(builds, new Function<BuildDisplayInfo, String>() {
-            public String apply(@Nullable BuildDisplayInfo specification) {
-                return specification.getDisplayName();
-            }
-        });
+        return Lists.transform(builds, BuildDisplayInfo::getDisplayName);
     }
 
     @Override
     public List<? extends ScenarioDefinition> getScenarios() {
-        return Lists.transform(builds, new Function<BuildDisplayInfo, ScenarioDefinition>() {
+        return Lists.transform(builds, (Function<BuildDisplayInfo, ScenarioDefinition>) input -> new ScenarioDefinition() {
             @Override
-            public ScenarioDefinition apply(final BuildDisplayInfo input) {
-                return new ScenarioDefinition() {
-                    @Override
-                    public String getDisplayName() {
-                        return input.getDisplayName();
-                    }
+            public String getDisplayName() {
+                return input.getDisplayName();
+            }
 
-                    @Override
-                    public String getTestProject() {
-                        return input.getProjectName();
-                    }
+            @Override
+            public String getTestProject() {
+                return input.getProjectName();
+            }
 
-                    @Override
-                    public List<String> getTasks() {
-                        return input.getTasksToRun();
-                    }
+            @Override
+            public List<String> getTasks() {
+                return input.getTasksToRun();
+            }
 
-                    @Override
-                    public List<String> getCleanTasks() {
-                        return input.getCleanTasks();
-                    }
+            @Override
+            public List<String> getCleanTasks() {
+                return input.getCleanTasks();
+            }
 
-                    @Override
-                    public List<String> getArgs() {
-                        return input.getArgs();
-                    }
+            @Override
+            public List<String> getArgs() {
+                return input.getArgs();
+            }
 
-                    @Nullable
-                    @Override
-                    public List<String> getGradleOpts() {
-                        return input.getGradleOpts();
-                    }
+            @Nullable
+            @Override
+            public List<String> getGradleOpts() {
+                return input.getGradleOpts();
+            }
 
-                    @Nullable
-                    @Override
-                    public Boolean getDaemon() {
-                        return input.getDaemon();
-                    }
-                };
+            @Nullable
+            @Override
+            public Boolean getDaemon() {
+                return input.getDaemon();
             }
         });
     }
@@ -131,6 +115,11 @@ public class CrossBuildPerformanceTestHistory implements PerformanceTestHistory 
         @Override
         public String getExecutionId() {
             return String.valueOf(Math.abs(getVcsCommits() != null ? getVcsCommits().hashCode() : hashCode()));
+        }
+
+        @Override
+        public String getTeamCityBuildId() {
+            return results.getTeamCityBuildId();
         }
 
         @Override
@@ -160,12 +149,7 @@ public class CrossBuildPerformanceTestHistory implements PerformanceTestHistory 
 
         @Override
         public List<MeasuredOperationList> getScenarios() {
-            return Lists.transform(builds, new Function<BuildDisplayInfo, MeasuredOperationList>() {
-                @Override
-                public MeasuredOperationList apply(@Nullable BuildDisplayInfo specification) {
-                    return results.buildResult(specification.getDisplayName());
-                }
-            });
+            return builds.stream().map(specification -> results.buildResult(specification.getDisplayName())).collect(Collectors.toList());
         }
 
         @Override

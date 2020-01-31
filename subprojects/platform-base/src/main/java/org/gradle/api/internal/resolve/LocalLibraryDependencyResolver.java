@@ -23,11 +23,14 @@ import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.LibraryBinaryIdentifier;
 import org.gradle.api.artifacts.component.LibraryComponentSelector;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ComponentResolvers;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelector;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactSet;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvableArtifact;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusion;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.specs.ExcludeSpec;
 import org.gradle.api.internal.artifacts.type.ArtifactTypeRegistry;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.api.internal.component.ArtifactType;
+import org.gradle.internal.Factory;
 import org.gradle.internal.component.external.model.MetadataSourcedComponentArtifacts;
 import org.gradle.internal.component.local.model.LocalComponentMetadata;
 import org.gradle.internal.component.local.model.PublishArtifactLocalArtifactMetadata;
@@ -36,7 +39,7 @@ import org.gradle.internal.component.model.ComponentOverrideMetadata;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.DependencyMetadata;
-import org.gradle.internal.component.model.ModuleSource;
+import org.gradle.internal.component.model.ModuleSources;
 import org.gradle.internal.resolve.ArtifactResolveException;
 import org.gradle.internal.resolve.ModuleVersionResolveException;
 import org.gradle.internal.resolve.resolver.ArtifactResolver;
@@ -112,7 +115,7 @@ public class LocalLibraryDependencyResolver implements DependencyToComponentIdRe
     }
 
     @Override
-    public void resolve(DependencyMetadata dependency, final BuildableComponentIdResolveResult result) {
+    public void resolve(DependencyMetadata dependency, VersionSelector acceptor, VersionSelector rejector, BuildableComponentIdResolveResult result) {
         if (dependency.getSelector() instanceof LibraryComponentSelector) {
             LibraryComponentSelector selector = (LibraryComponentSelector) dependency.getSelector();
             resolveLibraryAndChooseBinary(result, selector);
@@ -133,17 +136,29 @@ public class LocalLibraryDependencyResolver implements DependencyToComponentIdRe
             return;
         }
 
-        Collection<? extends Binary> matchingVariants = chooseMatchingVariants(selectedLibrary, variant);
+        final Collection<? extends Binary> matchingVariants = chooseMatchingVariants(selectedLibrary, variant);
         if (matchingVariants.isEmpty()) {
             // no compatible variant found
-            Iterable<? extends Binary> values = selectedLibrary.getVariants();
-            result.failed(new ModuleVersionResolveException(selector, errorMessageBuilder.noCompatibleVariantErrorMessage(libraryName, values)));
+            final Iterable<? extends Binary> values = selectedLibrary.getVariants();
+            result.failed(new ModuleVersionResolveException(selector, new Factory<String>() {
+                @Nullable
+                @Override
+                public String create() {
+                    return errorMessageBuilder.noCompatibleVariantErrorMessage(libraryName, values);
+                }
+            }));
         } else if (matchingVariants.size() > 1) {
-            result.failed(new ModuleVersionResolveException(selector, errorMessageBuilder.multipleCompatibleVariantsErrorMessage(libraryName, matchingVariants)));
+            result.failed(new ModuleVersionResolveException(selector, new Factory<String>() {
+                @Nullable
+                @Override
+                public String create() {
+                    return errorMessageBuilder.multipleCompatibleVariantsErrorMessage(libraryName, matchingVariants);
+                }
+            }));
         } else {
             Binary selectedBinary = matchingVariants.iterator().next();
             // TODO:Cedric This is not quite right. We assume that if we are asking for a specific binary, then we resolve to the assembly instead
-            // of the jar, but it should be somehow parametrized
+            // of the jar, but it should be somehow parameterized
             LocalComponentMetadata metaData;
             if (variant == null) {
                 metaData = libraryMetaDataAdapter.createLocalComponentMetaData(selectedBinary, selectorProjectPath, false);
@@ -191,23 +206,23 @@ public class LocalLibraryDependencyResolver implements DependencyToComponentIdRe
 
     @Nullable
     @Override
-    public ArtifactSet resolveArtifacts(ComponentResolveMetadata component, ConfigurationMetadata configuration, ArtifactTypeRegistry artifactTypeRegistry, ModuleExclusion exclusions) {
-        ComponentIdentifier componentId = component.getComponentId();
+    public ArtifactSet resolveArtifacts(ComponentResolveMetadata component, ConfigurationMetadata configuration, ArtifactTypeRegistry artifactTypeRegistry, ExcludeSpec exclusions, ImmutableAttributes overriddenAttributes) {
+        ComponentIdentifier componentId = component.getId();
         if (isLibrary(componentId)) {
-            return new MetadataSourcedComponentArtifacts().getArtifactsFor(component, configuration, this, new ConcurrentHashMap<ComponentArtifactIdentifier, ResolvableArtifact>(), artifactTypeRegistry, exclusions);
+            return new MetadataSourcedComponentArtifacts().getArtifactsFor(component, configuration, this, new ConcurrentHashMap<ComponentArtifactIdentifier, ResolvableArtifact>(), artifactTypeRegistry, exclusions, overriddenAttributes);
         }
         return null;
     }
 
     @Override
     public void resolveArtifactsWithType(ComponentResolveMetadata component, ArtifactType artifactType, BuildableArtifactSetResolveResult result) {
-        if (isLibrary(component.getComponentId())) {
+        if (isLibrary(component.getId())) {
             result.resolved(Collections.<ComponentArtifactMetadata>emptySet());
         }
     }
 
     @Override
-    public void resolveArtifact(ComponentArtifactMetadata artifact, ModuleSource moduleSource, BuildableArtifactResolveResult result) {
+    public void resolveArtifact(ComponentArtifactMetadata artifact, ModuleSources moduleSources, BuildableArtifactResolveResult result) {
         if (isLibrary(artifact.getComponentId())) {
             if (artifact instanceof PublishArtifactLocalArtifactMetadata) {
                 result.resolved(((PublishArtifactLocalArtifactMetadata) artifact).getFile());

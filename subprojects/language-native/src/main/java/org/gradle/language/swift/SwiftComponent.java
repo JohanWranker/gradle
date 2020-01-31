@@ -17,14 +17,14 @@
 package org.gradle.language.swift;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.provider.Property;
-import org.gradle.language.ComponentWithBinaries;
 import org.gradle.language.BinaryCollection;
+import org.gradle.language.ComponentWithBinaries;
 import org.gradle.language.ComponentWithDependencies;
+import org.gradle.language.ComponentWithTargetMachines;
 
 /**
  * Configuration for a Swift component, such as a library or executable, defining the source files that make up the component plus other settings.
@@ -35,8 +35,7 @@ import org.gradle.language.ComponentWithDependencies;
  *
  * @since 4.2
  */
-@Incubating
-public interface SwiftComponent extends ComponentWithBinaries, ComponentWithDependencies {
+public interface SwiftComponent extends ComponentWithBinaries, ComponentWithDependencies, ComponentWithTargetMachines {
     /**
      * Defines the Swift module for this component. The default value is calculated from the project name.
      */
@@ -64,6 +63,7 @@ public interface SwiftComponent extends ComponentWithBinaries, ComponentWithDepe
      *
      * @since 4.5
      */
+    @Override
     BinaryCollection<? extends SwiftBinary> getBinaries();
 
     /**

@@ -18,6 +18,7 @@ package org.gradle.internal.component.external.model;
 import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
+import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
@@ -26,13 +27,16 @@ import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.ExcludeMetadata;
 import org.gradle.internal.component.model.IvyArtifactName;
 
+import java.util.Collection;
 import java.util.List;
 
 public class ModuleDependencyMetadataWrapper implements ModuleDependencyMetadata {
     private final DependencyMetadata delegate;
+    private final boolean isTransitive;
 
     public ModuleDependencyMetadataWrapper(DependencyMetadata delegate) {
         this.delegate = delegate;
+        this.isTransitive = delegate.isTransitive();
     }
 
     @Override
@@ -43,13 +47,21 @@ public class ModuleDependencyMetadataWrapper implements ModuleDependencyMetadata
     @Override
     public ModuleDependencyMetadata withRequestedVersion(VersionConstraint requestedVersion) {
         ModuleComponentSelector selector = getSelector();
-        ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getGroup(), selector.getModule(), requestedVersion);
+        ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getModuleIdentifier(), requestedVersion, selector.getAttributes(), selector.getRequestedCapabilities());
         return new ModuleDependencyMetadataWrapper(delegate.withTarget(newSelector));
     }
 
     @Override
     public ModuleDependencyMetadata withReason(String reason) {
         return new ModuleDependencyMetadataWrapper(delegate.withReason(reason));
+    }
+
+    @Override
+    public ModuleDependencyMetadata withEndorseStrictVersions(boolean endorse) {
+        if (delegate instanceof ModuleDependencyMetadata) {
+            return new ModuleDependencyMetadataWrapper(((ModuleDependencyMetadata) delegate).withEndorseStrictVersions(endorse));
+        }
+        return this;
     }
 
     @Override
@@ -68,8 +80,8 @@ public class ModuleDependencyMetadataWrapper implements ModuleDependencyMetadata
     }
 
     @Override
-    public List<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
-        return delegate.selectConfigurations(consumerAttributes, targetComponent, consumerSchema);
+    public List<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema, Collection<? extends Capability> explicitRequestedCapabilities) {
+        return delegate.selectConfigurations(consumerAttributes, targetComponent, consumerSchema, explicitRequestedCapabilities);
     }
 
     @Override
@@ -79,12 +91,17 @@ public class ModuleDependencyMetadataWrapper implements ModuleDependencyMetadata
 
     @Override
     public boolean isTransitive() {
-        return delegate.isTransitive();
+        return isTransitive;
     }
 
     @Override
-    public boolean isPending() {
-        return delegate.isPending();
+    public boolean isConstraint() {
+        return delegate.isConstraint();
+    }
+
+    @Override
+    public boolean isEndorsingStrictVersions() {
+        return delegate.isEndorsingStrictVersions();
     }
 
     @Override

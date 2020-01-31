@@ -16,12 +16,12 @@
 
 package org.gradle.model.internal.core
 
-import com.google.common.collect.Iterators
 import org.gradle.api.DomainObjectCollection
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectFactory
-import org.gradle.api.internal.DefaultDomainObjectCollection
+import org.gradle.api.internal.CollectionCallbackActionDecorator
+import org.gradle.api.internal.DefaultDomainObjectSet
 import org.gradle.api.internal.DefaultPolymorphicNamedEntityInstantiator
 import org.gradle.internal.Actions
 import spock.lang.Specification
@@ -39,7 +39,7 @@ class DomainObjectCollectionBackedModelMapTest extends Specification {
         then:
         1 * instantiator.create("alma", SomeType) >>  { new SomeType(name: "alma") }
         1 * backingCollection.add({ item -> item.name == "alma" })
-        1 * backingCollection.iterator() >> { Iterators.emptyIterator() }
+        1 * backingCollection.iterator() >> { Collections.emptyIterator() }
         0 * _
     }
 
@@ -49,10 +49,10 @@ class DomainObjectCollectionBackedModelMapTest extends Specification {
 
     def "reasonable error message when creating a non-constructible type"() {
         given:
-        def backingCollection = new DefaultDomainObjectCollection(SomeType, []);
+        def backingCollection = new DefaultDomainObjectSet(SomeType, CollectionCallbackActionDecorator.NOOP)
         def instantiator = new DefaultPolymorphicNamedEntityInstantiator(SomeType, "the collection")
         instantiator.registerFactory(SomeType, new NamedDomainObjectFactory<SomeType>(){
-            public SomeType create(String name) {
+            SomeType create(String name) {
                 return new SomeType(name: name)
             }
         })

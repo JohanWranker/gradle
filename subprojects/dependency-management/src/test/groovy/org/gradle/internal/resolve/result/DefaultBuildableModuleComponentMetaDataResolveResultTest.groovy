@@ -16,7 +16,7 @@
 
 package org.gradle.internal.resolve.result
 
-import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata
 import org.gradle.internal.resolve.ModuleVersionResolveException
 import spock.lang.Specification
@@ -44,7 +44,8 @@ class DefaultBuildableModuleComponentMetaDataResolveResultTest extends Specifica
     }
 
     def "can mark as failed"() {
-        def failure = new ModuleVersionResolveException(newSelector("a", "b", new DefaultMutableVersionConstraint("c")), "broken")
+        org.gradle.internal.Factory<String> broken = { "too bad" }
+        def failure = new ModuleVersionResolveException(newSelector(DefaultModuleIdentifier.newId("a", "b"), "c"), broken)
 
         when:
         descriptor.failed(failure)
@@ -112,8 +113,9 @@ class DefaultBuildableModuleComponentMetaDataResolveResultTest extends Specifica
     }
 
     def "cannot get meta-data when failed"() {
+        org.gradle.internal.Factory<String> broken = { "too bad" }
         given:
-        def failure = new ModuleVersionResolveException(newSelector("a", "b", new DefaultMutableVersionConstraint("c")), "broken")
+        def failure = new ModuleVersionResolveException(newSelector(DefaultModuleIdentifier.newId("a", "b"), "c"), broken)
         descriptor.failed(failure)
 
         when:

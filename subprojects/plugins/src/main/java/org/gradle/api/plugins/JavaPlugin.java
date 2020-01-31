@@ -27,36 +27,47 @@ import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.ConfigurationPublications;
 import org.gradle.api.artifacts.ConfigurationVariant;
 import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition;
+import org.gradle.api.attributes.Bundling;
+import org.gradle.api.attributes.Category;
+import org.gradle.api.attributes.LibraryElements;
 import org.gradle.api.attributes.Usage;
+import org.gradle.api.component.AdhocComponentWithVariants;
+import org.gradle.api.component.SoftwareComponentFactory;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.artifacts.ArtifactAttributes;
-import org.gradle.api.internal.artifacts.publish.AbstractPublishArtifact;
-import org.gradle.api.internal.artifacts.publish.ArchivePublishArtifact;
+import org.gradle.api.internal.artifacts.JavaEcosystemSupport;
+import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal;
+import org.gradle.api.internal.artifacts.dsl.LazyPublishArtifact;
 import org.gradle.api.internal.component.BuildableJavaComponent;
 import org.gradle.api.internal.component.ComponentRegistry;
-import org.gradle.api.internal.java.JavaLibrary;
-import org.gradle.api.internal.java.JavaLibraryPlatform;
 import org.gradle.api.internal.plugins.DefaultArtifactPublicationSet;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.plugins.internal.JavaConfigurationVariantMapping;
+import org.gradle.api.plugins.internal.JvmPluginsHelper;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.SourceSet;
+import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.bundling.Jar;
-import org.gradle.api.tasks.compile.JavaCompile;
-import org.gradle.api.tasks.javadoc.Javadoc;
 import org.gradle.api.tasks.testing.Test;
 import org.gradle.internal.cleanup.BuildOutputCleanupRegistry;
+import org.gradle.internal.deprecation.DeprecatableConfiguration;
 import org.gradle.language.jvm.tasks.ProcessResources;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.concurrent.Callable;
 
+import static org.gradle.api.attributes.Bundling.BUNDLING_ATTRIBUTE;
+import static org.gradle.api.attributes.Bundling.EXTERNAL;
+import static org.gradle.api.attributes.Category.CATEGORY_ATTRIBUTE;
+import static org.gradle.api.attributes.LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE;
 import static org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE;
+import static org.gradle.api.plugins.internal.JvmPluginsHelper.configureJavaDocTask;
 
 /**
  * <p>A {@link Plugin} which compiles and tests Java source, and assembles it into a JAR file.</p>
@@ -110,17 +121,17 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
     /**
      * The name of the API configuration, where dependencies exported by a component at compile time should
      * be declared.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String API_CONFIGURATION_NAME = "api";
 
     /**
      * The name of the implementation configuration, where dependencies that are only used internally by
      * a component should be declared.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String IMPLEMENTATION_CONFIGURATION_NAME = "implementation";
 
     /**
@@ -129,7 +140,6 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      *
      * @since 3.4
      */
-    @Incubating
     public static final String API_ELEMENTS_CONFIGURATION_NAME = "apiElements";
 
     /**
@@ -138,6 +148,7 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      *
      * @deprecated Users should prefer {@link #API_CONFIGURATION_NAME} or {@link #IMPLEMENTATION_CONFIGURATION_NAME}.
      */
+    @Deprecated
     public static final String COMPILE_CONFIGURATION_NAME = "compile";
 
     /**
@@ -152,52 +163,75 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      *
      * @deprecated Consumers should use {@link #RUNTIME_ELEMENTS_CONFIGURATION_NAME} instead.
      */
+    @Deprecated
     public static final String RUNTIME_CONFIGURATION_NAME = "runtime";
 
     /**
      * The name of the runtime only dependencies configuration, used to declare dependencies
      * that should only be found at runtime.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String RUNTIME_ONLY_CONFIGURATION_NAME = "runtimeOnly";
 
     /**
      * The name of the runtime classpath configuration, used by a component to query its own runtime classpath.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String RUNTIME_CLASSPATH_CONFIGURATION_NAME = "runtimeClasspath";
 
     /**
      * The name of the runtime elements configuration, that should be used by consumers
      * to query the runtime dependencies of a component.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String RUNTIME_ELEMENTS_CONFIGURATION_NAME = "runtimeElements";
 
     /**
-     * The name of the compile classpath configuration.
-     * @since 3.4
+     * The name of the javadoc elements configuration.
+     *
+     * @since 6.0
      */
     @Incubating
+    public static final String JAVADOC_ELEMENTS_CONFIGURATION_NAME = "javadocElements";
+
+    /**
+     * The name of the sources elements configuration.
+     *
+     * @since 6.0
+     */
+    @Incubating
+    public static final String SOURCES_ELEMENTS_CONFIGURATION_NAME = "sourcesElements";
+
+    /**
+     * The name of the compile classpath configuration.
+     *
+     * @since 3.4
+     */
     public static final String COMPILE_CLASSPATH_CONFIGURATION_NAME = "compileClasspath";
 
     /**
      * The name of the annotation processor configuration.
+     *
      * @since 4.6
      */
-    @Incubating
     public static final String ANNOTATION_PROCESSOR_CONFIGURATION_NAME = "annotationProcessor";
 
+    /**
+     * The name of the test compile dependencies configuration.
+     *
+     * @deprecated Use {@link #TEST_IMPLEMENTATION_CONFIGURATION_NAME} instead.
+     */
+    @Deprecated
     public static final String TEST_COMPILE_CONFIGURATION_NAME = "testCompile";
 
     /**
      * The name of the test implementation dependencies configuration.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String TEST_IMPLEMENTATION_CONFIGURATION_NAME = "testImplementation";
 
     /**
@@ -216,40 +250,48 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
 
     /**
      * The name of the test runtime only dependencies configuration.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String TEST_RUNTIME_ONLY_CONFIGURATION_NAME = "testRuntimeOnly";
 
     /**
      * The name of the test compile classpath configuration.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String TEST_COMPILE_CLASSPATH_CONFIGURATION_NAME = "testCompileClasspath";
 
     /**
      * The name of the test annotation processor configuration.
+     *
      * @since 4.6
      */
-    @Incubating
     public static final String TEST_ANNOTATION_PROCESSOR_CONFIGURATION_NAME = "testAnnotationProcessor";
 
     /**
      * The name of the test runtime classpath configuration.
+     *
      * @since 3.4
      */
-    @Incubating
     public static final String TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME = "testRuntimeClasspath";
 
     private final ObjectFactory objectFactory;
+    private final SoftwareComponentFactory softwareComponentFactory;
 
     @Inject
-    public JavaPlugin(ObjectFactory objectFactory) {
+    public JavaPlugin(ObjectFactory objectFactory, SoftwareComponentFactory softwareComponentFactory) {
         this.objectFactory = objectFactory;
+        this.softwareComponentFactory = softwareComponentFactory;
     }
 
+    @Override
     public void apply(ProjectInternal project) {
+        if (project.getPluginManager().hasPlugin("java-platform")) {
+            throw new IllegalStateException("The \"java\" or \"java-library\" plugin cannot be applied together with the \"java-platform\" plugin. " +
+                "A project is either a platform or a library but cannot be both at the same time.");
+        }
+
         project.getPluginManager().apply(JavaBasePlugin.class);
 
         JavaPluginConvention javaConvention = project.getConvention().getPlugin(JavaPluginConvention.class);
@@ -257,10 +299,10 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
         BuildOutputCleanupRegistry buildOutputCleanupRegistry = project.getServices().get(BuildOutputCleanupRegistry.class);
 
         configureSourceSets(javaConvention, buildOutputCleanupRegistry);
-        configureConfigurations(project);
+        configureConfigurations(project, javaConvention);
 
-        configureJavaDoc(javaConvention);
         configureTest(project, javaConvention);
+        configureJavadocTask(project, javaConvention);
         configureArchivesAndComponent(project, javaConvention);
         configureBuild(project);
     }
@@ -271,8 +313,8 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
         SourceSet main = pluginConvention.getSourceSets().create(SourceSet.MAIN_SOURCE_SET_NAME);
 
         SourceSet test = pluginConvention.getSourceSets().create(SourceSet.TEST_SOURCE_SET_NAME);
-        test.setCompileClasspath(project.files(main.getOutput(), project.getConfigurations().getByName(TEST_COMPILE_CLASSPATH_CONFIGURATION_NAME)));
-        test.setRuntimeClasspath(project.files(test.getOutput(), main.getOutput(), project.getConfigurations().getByName(TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME)));
+        test.setCompileClasspath(project.getObjects().fileCollection().from(main.getOutput(), project.getConfigurations().getByName(TEST_COMPILE_CLASSPATH_CONFIGURATION_NAME)));
+        test.setRuntimeClasspath(project.getObjects().fileCollection().from(test.getOutput(), main.getOutput(), project.getConfigurations().getByName(TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME)));
 
         // Register the project's source set output directories
         pluginConvention.getSourceSets().all(new Action<SourceSet>() {
@@ -283,43 +325,46 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
         });
     }
 
-    private void configureJavaDoc(JavaPluginConvention pluginConvention) {
-        Project project = pluginConvention.getProject();
-
-        SourceSet mainSourceSet = pluginConvention.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME);
-        Javadoc javadoc = project.getTasks().create(JAVADOC_TASK_NAME, Javadoc.class);
-        javadoc.setDescription("Generates Javadoc API documentation for the main source code.");
-        javadoc.setGroup(JavaBasePlugin.DOCUMENTATION_GROUP);
-        javadoc.setClasspath(mainSourceSet.getOutput().plus(mainSourceSet.getCompileClasspath()));
-        javadoc.setSource(mainSourceSet.getAllJava());
-        addDependsOnTaskInOtherProjects(javadoc, true, JAVADOC_TASK_NAME, COMPILE_CONFIGURATION_NAME);
-    }
-
-    private void configureArchivesAndComponent(Project project, JavaPluginConvention pluginConvention) {
-        Jar jar = project.getTasks().create(JAR_TASK_NAME, Jar.class);
-        jar.setDescription("Assembles a jar archive containing the main classes.");
-        jar.setGroup(BasePlugin.BUILD_GROUP);
-        jar.from(pluginConvention.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME).getOutput());
-
-        ArchivePublishArtifact jarArtifact = new ArchivePublishArtifact(jar);
+    private void configureArchivesAndComponent(Project project, final JavaPluginConvention pluginConvention) {
+        TaskProvider<Jar> jar = project.getTasks().register(JAR_TASK_NAME, Jar.class, new Action<Jar>() {
+            @Override
+            public void execute(Jar jar) {
+                jar.setDescription("Assembles a jar archive containing the main classes.");
+                jar.setGroup(BasePlugin.BUILD_GROUP);
+                jar.from(pluginConvention.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME).getOutput());
+            }
+        });
+        PublishArtifact jarArtifact = new LazyPublishArtifact(jar);
         Configuration apiElementConfiguration = project.getConfigurations().getByName(API_ELEMENTS_CONFIGURATION_NAME);
         Configuration runtimeConfiguration = project.getConfigurations().getByName(RUNTIME_CONFIGURATION_NAME);
         Configuration runtimeElementsConfiguration = project.getConfigurations().getByName(RUNTIME_ELEMENTS_CONFIGURATION_NAME);
 
         project.getExtensions().getByType(DefaultArtifactPublicationSet.class).addCandidate(jarArtifact);
 
-        JavaCompile javaCompile = (JavaCompile) project.getTasks().getByPath(COMPILE_JAVA_TASK_NAME);
-        ProcessResources processResources = (ProcessResources) project.getTasks().getByPath(PROCESS_RESOURCES_TASK_NAME);
+        Provider<ProcessResources> processResources = project.getTasks().named(PROCESS_RESOURCES_TASK_NAME, ProcessResources.class);
 
         addJar(apiElementConfiguration, jarArtifact);
         addJar(runtimeConfiguration, jarArtifact);
-        addRuntimeVariants(runtimeElementsConfiguration, jarArtifact, javaCompile, processResources);
+        addRuntimeVariants(project, runtimeElementsConfiguration, jarArtifact, pluginConvention.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME), processResources);
 
-        project.getComponents().add(objectFactory.newInstance(JavaLibrary.class, project.getConfigurations(), jarArtifact));
-        project.getComponents().add(objectFactory.newInstance(JavaLibraryPlatform.class, project.getConfigurations()));
+        registerSoftwareComponents(project);
     }
 
-    private void addJar(Configuration configuration, ArchivePublishArtifact jarArtifact) {
+    private void configureJavadocTask(ProjectInternal project, JavaPluginConvention pluginConvention) {
+        SourceSet main = pluginConvention.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME);
+        configureJavaDocTask(null, main, project.getTasks());
+    }
+
+    private void registerSoftwareComponents(Project project) {
+        ConfigurationContainer configurations = project.getConfigurations();
+        // the main "Java" component
+        AdhocComponentWithVariants java = softwareComponentFactory.adhoc("java");
+        java.addVariantsFromConfiguration(configurations.getByName(API_ELEMENTS_CONFIGURATION_NAME), new JavaConfigurationVariantMapping("compile", false));
+        java.addVariantsFromConfiguration(configurations.getByName(RUNTIME_ELEMENTS_CONFIGURATION_NAME), new JavaConfigurationVariantMapping("runtime", false));
+        project.getComponents().add(java);
+    }
+
+    private void addJar(Configuration configuration, PublishArtifact jarArtifact) {
         ConfigurationPublications publications = configuration.getOutgoing();
 
         // Configure an implicit variant
@@ -327,7 +372,7 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
         publications.getAttributes().attribute(ArtifactAttributes.ARTIFACT_FORMAT, ArtifactTypeDefinition.JAR_TYPE);
     }
 
-    private void addRuntimeVariants(Configuration configuration, ArchivePublishArtifact jarArtifact, final JavaCompile javaCompile, final ProcessResources processResources) {
+    private void addRuntimeVariants(Project project, Configuration configuration, PublishArtifact jarArtifact, final SourceSet sourceSet, final Provider<ProcessResources> processResources) {
         ConfigurationPublications publications = configuration.getOutgoing();
 
         // Configure an implicit variant
@@ -335,54 +380,71 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
         publications.getAttributes().attribute(ArtifactAttributes.ARTIFACT_FORMAT, ArtifactTypeDefinition.JAR_TYPE);
 
         // Define some additional variants
+        JvmPluginsHelper.configureClassesDirectoryVariant(sourceSet, project, sourceSet.getRuntimeElementsConfigurationName(), Usage.JAVA_RUNTIME);
         NamedDomainObjectContainer<ConfigurationVariant> runtimeVariants = publications.getVariants();
-        ConfigurationVariant classesVariant = runtimeVariants.create("classes");
-        classesVariant.getAttributes().attribute(USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.JAVA_RUNTIME_CLASSES));
-        classesVariant.artifact(new IntermediateJavaArtifact(ArtifactTypeDefinition.JVM_CLASS_DIRECTORY, javaCompile) {
-            @Override
-            public File getFile() {
-                return javaCompile.getDestinationDir();
-            }
-        });
         ConfigurationVariant resourcesVariant = runtimeVariants.create("resources");
-        resourcesVariant.getAttributes().attribute(USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.JAVA_RUNTIME_RESOURCES));
-        resourcesVariant.artifact(new IntermediateJavaArtifact(ArtifactTypeDefinition.JVM_RESOURCES_DIRECTORY, processResources) {
+        resourcesVariant.getAttributes().attribute(USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.JAVA_RUNTIME));
+        resourcesVariant.getAttributes().attribute(LIBRARY_ELEMENTS_ATTRIBUTE, objectFactory.named(LibraryElements.class, LibraryElements.RESOURCES));
+        resourcesVariant.artifact(new JvmPluginsHelper.IntermediateJavaArtifact(ArtifactTypeDefinition.JVM_RESOURCES_DIRECTORY, processResources) {
             @Override
             public File getFile() {
-                return processResources.getDestinationDir();
+                return processResources.get().getDestinationDir();
             }
         });
     }
 
     private void configureBuild(Project project) {
-        addDependsOnTaskInOtherProjects(project.getTasks().getByName(JavaBasePlugin.BUILD_NEEDED_TASK_NAME), true,
-            JavaBasePlugin.BUILD_NEEDED_TASK_NAME, TEST_RUNTIME_CONFIGURATION_NAME);
-        addDependsOnTaskInOtherProjects(project.getTasks().getByName(JavaBasePlugin.BUILD_DEPENDENTS_TASK_NAME), false,
-            JavaBasePlugin.BUILD_DEPENDENTS_TASK_NAME, TEST_RUNTIME_CONFIGURATION_NAME);
+        project.getTasks().named(JavaBasePlugin.BUILD_NEEDED_TASK_NAME, new Action<Task>() {
+            @Override
+            public void execute(Task task) {
+                addDependsOnTaskInOtherProjects(task, true,
+                        JavaBasePlugin.BUILD_NEEDED_TASK_NAME, TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME);
+            }
+        });
+        project.getTasks().named(JavaBasePlugin.BUILD_DEPENDENTS_TASK_NAME, new Action<Task>() {
+            @Override
+            public void execute(Task task) {
+                addDependsOnTaskInOtherProjects(task, false,
+                        JavaBasePlugin.BUILD_DEPENDENTS_TASK_NAME, TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME);
+            }
+        });
     }
 
     private void configureTest(final Project project, final JavaPluginConvention pluginConvention) {
-        project.getTasks().withType(Test.class, new Action<Test>() {
+        project.getTasks().withType(Test.class).configureEach(new Action<Test>() {
+            @Override
             public void execute(final Test test) {
                 test.getConventionMapping().map("testClassesDirs", new Callable<Object>() {
+                    @Override
                     public Object call() throws Exception {
                         return pluginConvention.getSourceSets().getByName(SourceSet.TEST_SOURCE_SET_NAME).getOutput().getClassesDirs();
                     }
                 });
                 test.getConventionMapping().map("classpath", new Callable<Object>() {
+                    @Override
                     public Object call() throws Exception {
                         return pluginConvention.getSourceSets().getByName(SourceSet.TEST_SOURCE_SET_NAME).getRuntimeClasspath();
                     }
                 });
             }
         });
-        Test test = project.getTasks().create(TEST_TASK_NAME, Test.class);
-        project.getTasks().getByName(JavaBasePlugin.CHECK_TASK_NAME).dependsOn(test);
-        test.setDescription("Runs the unit tests.");
-        test.setGroup(JavaBasePlugin.VERIFICATION_GROUP);
+
+        final Provider<Test> test = project.getTasks().register(TEST_TASK_NAME, Test.class, new Action<Test>() {
+            @Override
+            public void execute(Test test) {
+                test.setDescription("Runs the unit tests.");
+                test.setGroup(JavaBasePlugin.VERIFICATION_GROUP);
+            }
+        });
+        project.getTasks().named(JavaBasePlugin.CHECK_TASK_NAME, new Action<Task>() {
+            @Override
+            public void execute(Task task) {
+                task.dependsOn(test);
+            }
+        });
     }
 
-    private void configureConfigurations(Project project) {
+    private void configureConfigurations(Project project, final JavaPluginConvention convention) {
         ConfigurationContainer configurations = project.getConfigurations();
 
         Configuration defaultConfiguration = configurations.getByName(Dependency.DEFAULT_CONFIGURATION);
@@ -400,23 +462,47 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
         testRuntimeConfiguration.extendsFrom(runtimeConfiguration);
         testRuntimeOnlyConfiguration.extendsFrom(runtimeOnlyConfiguration);
 
-        Configuration apiElementsConfiguration = configurations.maybeCreate(API_ELEMENTS_CONFIGURATION_NAME);
+        final DeprecatableConfiguration apiElementsConfiguration = (DeprecatableConfiguration) configurations.maybeCreate(API_ELEMENTS_CONFIGURATION_NAME);
         apiElementsConfiguration.setVisible(false);
         apiElementsConfiguration.setDescription("API elements for main.");
         apiElementsConfiguration.setCanBeResolved(false);
         apiElementsConfiguration.setCanBeConsumed(true);
         apiElementsConfiguration.getAttributes().attribute(USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.JAVA_API));
+        apiElementsConfiguration.getAttributes().attribute(LIBRARY_ELEMENTS_ATTRIBUTE, objectFactory.named(LibraryElements.class, LibraryElements.JAR));
+        apiElementsConfiguration.getAttributes().attribute(BUNDLING_ATTRIBUTE, objectFactory.named(Bundling.class, EXTERNAL));
+        apiElementsConfiguration.getAttributes().attribute(CATEGORY_ATTRIBUTE, objectFactory.named(Category.class, Category.LIBRARY));
         apiElementsConfiguration.extendsFrom(runtimeConfiguration);
 
-        Configuration runtimeElementsConfiguration = configurations.maybeCreate(RUNTIME_ELEMENTS_CONFIGURATION_NAME);
+        final DeprecatableConfiguration runtimeElementsConfiguration = (DeprecatableConfiguration) configurations.maybeCreate(RUNTIME_ELEMENTS_CONFIGURATION_NAME);
         runtimeElementsConfiguration.setVisible(false);
         runtimeElementsConfiguration.setCanBeConsumed(true);
         runtimeElementsConfiguration.setCanBeResolved(false);
         runtimeElementsConfiguration.setDescription("Elements of runtime for main.");
-        runtimeElementsConfiguration.getAttributes().attribute(USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.JAVA_RUNTIME_JARS));
+        runtimeElementsConfiguration.getAttributes().attribute(USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.JAVA_RUNTIME));
+        runtimeElementsConfiguration.getAttributes().attribute(LIBRARY_ELEMENTS_ATTRIBUTE, objectFactory.named(LibraryElements.class, LibraryElements.JAR));
+        runtimeElementsConfiguration.getAttributes().attribute(BUNDLING_ATTRIBUTE, objectFactory.named(Bundling.class, EXTERNAL));
+        runtimeElementsConfiguration.getAttributes().attribute(CATEGORY_ATTRIBUTE, objectFactory.named(Category.class, Category.LIBRARY));
         runtimeElementsConfiguration.extendsFrom(implementationConfiguration, runtimeOnlyConfiguration, runtimeConfiguration);
 
         defaultConfiguration.extendsFrom(runtimeElementsConfiguration);
+
+        apiElementsConfiguration.deprecateForDeclaration(IMPLEMENTATION_CONFIGURATION_NAME, COMPILE_ONLY_CONFIGURATION_NAME);
+        runtimeElementsConfiguration.deprecateForDeclaration(IMPLEMENTATION_CONFIGURATION_NAME, COMPILE_ONLY_CONFIGURATION_NAME, RUNTIME_ONLY_CONFIGURATION_NAME);
+
+        configureTargetPlatform(apiElementsConfiguration, convention);
+        configureTargetPlatform(runtimeElementsConfiguration, convention);
+    }
+
+    /**
+     * Configures the target platform for an outgoing configuration.
+     */
+    private void configureTargetPlatform(Configuration outgoing, final JavaPluginConvention convention) {
+        ((ConfigurationInternal)outgoing).beforeLocking(new Action<ConfigurationInternal>() {
+            @Override
+            public void execute(ConfigurationInternal configuration) {
+                JavaEcosystemSupport.configureDefaultTargetPlatform(configuration, convention.getTargetCompatibility());
+            }
+        });
     }
 
     /**
@@ -446,10 +532,12 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
             this.convention = convention;
         }
 
+        @Override
         public Collection<String> getBuildTasks() {
             return Collections.singleton(JavaBasePlugin.BUILD_TASK_NAME);
         }
 
+        @Override
         public FileCollection getRuntimeClasspath() {
             ProjectInternal project = convention.getProject();
             SourceSet mainSourceSet = convention.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME);
@@ -460,47 +548,9 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
             return mainSourceSetArtifact.plus(runtimeClasspath.minus(mainSourceSet.getOutput()).minus(gradleApi));
         }
 
+        @Override
         public Configuration getCompileDependencies() {
             return convention.getProject().getConfigurations().getByName(JavaPlugin.COMPILE_CLASSPATH_CONFIGURATION_NAME);
-        }
-    }
-
-    /**
-     * A custom artifact type which allows the getFile call to be done lazily only when the
-     * artifact is actually needed.
-     */
-    abstract static class IntermediateJavaArtifact extends AbstractPublishArtifact {
-        private final String type;
-
-        IntermediateJavaArtifact(String type, Task task) {
-            super(task);
-            this.type = type;
-        }
-
-        @Override
-        public String getName() {
-            return getFile().getName();
-        }
-
-        @Override
-        public String getExtension() {
-            return "";
-        }
-
-        @Override
-        public String getType() {
-            return type;
-        }
-
-        @Nullable
-        @Override
-        public String getClassifier() {
-            return null;
-        }
-
-        @Override
-        public Date getDate() {
-            return null;
         }
     }
 

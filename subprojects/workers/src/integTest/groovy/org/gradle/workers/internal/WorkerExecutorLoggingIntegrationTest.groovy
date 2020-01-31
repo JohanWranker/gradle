@@ -16,15 +16,45 @@
 
 package org.gradle.workers.internal
 
+import org.gradle.workers.fixtures.WorkerExecutorFixture.WorkActionClass
 import spock.lang.Timeout
 import spock.lang.Unroll
 
-@Timeout(60)
+import static org.gradle.workers.fixtures.WorkerExecutorFixture.ISOLATION_MODES
+
+@Timeout(120)
 class WorkerExecutorLoggingIntegrationTest extends AbstractWorkerExecutorIntegrationTest {
+    WorkActionClass executionWithLogging
+
+    def setup() {
+        executionWithLogging = fixture.workActionThatCreatesFiles
+        executionWithLogging.with {
+            imports.add("org.gradle.api.logging.Logging")
+            action = """
+                Logging.getLogger(getClass()).warn("warn message");
+                Logging.getLogger(getClass()).info("info message");
+                Logging.getLogger(getClass()).debug("debug message");
+                Logging.getLogger(getClass()).error("error message");
+                
+                org.slf4j.LoggerFactory.getLogger(getClass()).warn("slf4j warn");
+                org.slf4j.LoggerFactory.getLogger(getClass()).info("slf4j info");
+                org.slf4j.LoggerFactory.getLogger(getClass()).debug("slf4j debug message");
+                org.slf4j.LoggerFactory.getLogger(getClass()).error("slf4j error");
+                
+                java.util.logging.Logger.getLogger("worker").warning("jul warn");
+                java.util.logging.Logger.getLogger("worker").warning("jul info");
+                java.util.logging.Logger.getLogger("worker").fine("jul debug message");
+                java.util.logging.Logger.getLogger("worker").severe("jul error");
+                
+                System.out.println("stdout message");
+                System.err.println("stderr message");
+            """
+        }
+    }
 
     @Unroll
     def "worker lifecycle is logged in #isolationMode"() {
-        withRunnableClassInBuildSrc()
+        def workAction = fixture.workActionThatCreatesFiles.writeToBuildSrc()
 
         buildFile << """
             task runInWorker(type: WorkerTask) {
@@ -40,8 +70,8 @@ class WorkerExecutorLoggingIntegrationTest extends AbstractWorkerExecutorIntegra
         gradle.waitForFinish()
 
         and:
-        gradle.standardOutput.contains("Build operation 'org.gradle.test.TestRunnable' started")
-        gradle.standardOutput.contains("Build operation 'org.gradle.test.TestRunnable' completed")
+        gradle.standardOutput.contains("Build operation '${workAction.packageName}.${workAction.name}' started")
+        gradle.standardOutput.contains("Build operation '${workAction.packageName}.${workAction.name}' completed")
 
         where:
         isolationMode << ISOLATION_MODES
@@ -49,68 +79,106 @@ class WorkerExecutorLoggingIntegrationTest extends AbstractWorkerExecutorIntegra
 
     @Unroll
     def "stdout, stderr and logging output of worker is redirected in #isolationMode"() {
+        executionWithLogging.writeToBuildFile()
+
         buildFile << """
-            ${runnableWithLogging}
             task runInWorker(type: WorkerTask) {
                 isolationMode = $isolationMode
             }
         """.stripIndent()
 
         when:
-        def gradle = executer.withTasks("runInWorker").start()
+        succeeds("runInWorker")
 
         then:
-        gradle.waitForFinish()
-
-        then:
-        gradle.standardOutput.contains("stdout message")
-        gradle.standardOutput.contains("warn message")
-        gradle.standardOutput.contains("slf4j warn")
-        gradle.standardOutput.contains("jul warn")
+        output.contains("stdout message")
+        output.contains("warn message")
+        output.contains("slf4j warn")
+        output.contains("jul warn")
 
         and:
-        gradle.errorOutput.contains("stderr message")
-        gradle.errorOutput.contains("error message")
-        gradle.errorOutput.contains("slf4j error")
-        gradle.errorOutput.contains("jul error")
+        result.assertHasErrorOutput("stderr message")
+        result.assertHasErrorOutput("error message")
+        result.assertHasErrorOutput("slf4j error")
+        result.assertHasErrorOutput("jul error")
 
         and:
-        !gradle.standardOutput.contains("debug")
-        !gradle.errorOutput.contains("debug")
+        result.assertNotOutput("debug message")
 
         where:
         isolationMode << ISOLATION_MODES
     }
 
-    String getRunnableWithLogging() {
-        return """
-            import java.io.File;
-            import java.util.List;
-            import org.gradle.other.Foo;
-            import java.util.UUID;
-            import org.gradle.api.logging.Logging;
-            import org.slf4j.LoggerFactory;
-            import javax.inject.Inject;
+    @Unroll
+    def "stdout, stderr and logging output of worker is redirected in #isolationMode when Gradle logging is --info"() {
+        executionWithLogging.writeToBuildFile()
 
-            public class TestRunnable implements Runnable {
-                @Inject
-                public TestRunnable(List<String> files, File outputDir, Foo foo) {
-                }
-
-                public void run() {
-                    Logging.getLogger(getClass()).warn("warn message");
-                    Logging.getLogger(getClass()).debug("debug message");
-                    Logging.getLogger(getClass()).error("error message");
-                    LoggerFactory.getLogger(getClass()).warn("slf4j warn");
-                    LoggerFactory.getLogger(getClass()).debug("slf4j debug");
-                    LoggerFactory.getLogger(getClass()).error("slf4j error");
-                    java.util.logging.Logger.getLogger("worker").warning("jul warn");
-                    java.util.logging.Logger.getLogger("worker").fine("jul debug");
-                    java.util.logging.Logger.getLogger("worker").severe("jul error");
-                    System.out.println("stdout message");
-                    System.err.println("stderr message");
-                }
+        buildFile << """
+            task runInWorker(type: WorkerTask) {
+                isolationMode = $isolationMode
             }
         """.stripIndent()
+
+        when:
+        succeeds("runInWorker", "--info")
+
+        then:
+        output.contains("stdout message")
+        output.contains("warn message")
+        output.contains("slf4j warn")
+        output.contains("jul warn")
+
+        output.contains("info message")
+        output.contains("slf4j info")
+        output.contains("jul info")
+
+        and:
+        result.assertHasErrorOutput("stderr message")
+        result.assertHasErrorOutput("error message")
+        result.assertHasErrorOutput("slf4j error")
+        result.assertHasErrorOutput("jul error")
+
+        and:
+        result.assertNotOutput("debug message")
+
+        where:
+        isolationMode << ISOLATION_MODES
+    }
+
+    @Unroll
+    def "stdout, stderr and logging output of worker is redirected in #isolationMode when Gradle logging is --debug"() {
+        executionWithLogging.writeToBuildFile()
+
+        buildFile << """
+            task runInWorker(type: WorkerTask) {
+                isolationMode = $isolationMode
+            }
+        """.stripIndent()
+
+        when:
+        succeeds("runInWorker", "--debug")
+
+        then:
+        output.contains("stdout message")
+        output.contains("warn message")
+        output.contains("slf4j warn")
+        output.contains("jul warn")
+
+        output.contains("info message")
+        output.contains("slf4j info")
+        output.contains("jul info")
+
+        output.contains("debug message")
+        output.contains("slf4j debug")
+        output.contains("jul debug")
+
+        and:
+        result.assertHasErrorOutput("stderr message")
+        result.assertHasErrorOutput("error message")
+        result.assertHasErrorOutput("slf4j error")
+        result.assertHasErrorOutput("jul error")
+
+        where:
+        isolationMode << ISOLATION_MODES
     }
 }

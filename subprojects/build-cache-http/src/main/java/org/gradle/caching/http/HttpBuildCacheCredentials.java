@@ -18,6 +18,8 @@ package org.gradle.caching.http;
 
 import org.gradle.api.credentials.PasswordCredentials;
 
+import javax.annotation.Nullable;
+
 /**
  * Password credentials for a HTTP build cache backend.
  *
@@ -32,6 +34,8 @@ public class HttpBuildCacheCredentials implements PasswordCredentials {
      *
      * @return The user name. May be null.
      */
+    @Override
+    @Nullable
     public String getUsername() {
         return username;
     }
@@ -41,7 +45,8 @@ public class HttpBuildCacheCredentials implements PasswordCredentials {
      *
      * @param username The user name. May be null.
      */
-    public void setUsername(String username) {
+    @Override
+    public void setUsername(@Nullable String username) {
         this.username = username;
     }
 
@@ -50,6 +55,8 @@ public class HttpBuildCacheCredentials implements PasswordCredentials {
      *
      * @return The password. May be null.
      */
+    @Override
+    @Nullable
     public String getPassword() {
         return password;
     }
@@ -59,7 +66,8 @@ public class HttpBuildCacheCredentials implements PasswordCredentials {
      *
      * @param password The password. May be null.
      */
-    public void setPassword(String password) {
+    @Override
+    public void setPassword(@Nullable String password) {
         this.password = password;
     }
 }

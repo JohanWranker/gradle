@@ -26,12 +26,15 @@ import org.gradle.api.Task;
 import org.gradle.api.artifacts.repositories.ArtifactRepository;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.SourceDirectorySet;
+import org.gradle.api.internal.CollectionCallbackActionDecorator;
 import org.gradle.api.internal.DefaultPolymorphicDomainObjectContainer;
+import org.gradle.api.internal.collections.DomainObjectCollectionFactory;
 import org.gradle.api.internal.file.FileCollectionFactory;
-import org.gradle.api.internal.file.SourceDirectorySetFactory;
+import org.gradle.api.internal.project.DefaultProjectRegistry;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.project.ProjectRegistry;
 import org.gradle.api.internal.resolve.ProjectModelResolver;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.plugins.ExtensionContainer;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.internal.Cast;
@@ -93,6 +96,7 @@ import org.gradle.nativeplatform.platform.internal.NativePlatforms;
 import org.gradle.nativeplatform.tasks.CreateStaticLibrary;
 import org.gradle.nativeplatform.tasks.LinkSharedLibrary;
 import org.gradle.nativeplatform.tasks.PrefixHeaderFileGenerateTask;
+import org.gradle.nativeplatform.toolchain.NativeToolChainRegistry;
 import org.gradle.nativeplatform.toolchain.internal.DefaultNativeToolChainRegistry;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainRegistryInternal;
 import org.gradle.platform.base.BinaryContainer;
@@ -116,19 +120,21 @@ import java.io.File;
 @Incubating
 public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
     private final Instantiator instantiator;
+    private CollectionCallbackActionDecorator collectionCallbackActionDecorator;
 
     @Inject
-    public NativeComponentModelPlugin(Instantiator instantiator) {
+    public NativeComponentModelPlugin(Instantiator instantiator, CollectionCallbackActionDecorator collectionCallbackActionDecorator) {
         this.instantiator = instantiator;
+        this.collectionCallbackActionDecorator = collectionCallbackActionDecorator;
     }
 
     @Override
     public void apply(final ProjectInternal project) {
         project.getPluginManager().apply(ComponentModelBasePlugin.class);
 
-        project.getExtensions().create(BuildTypeContainer.class, "buildTypes", DefaultBuildTypeContainer.class, instantiator);
-        project.getExtensions().create(FlavorContainer.class, "flavors", DefaultFlavorContainer.class, instantiator);
-        project.getExtensions().create(NativeToolChainRegistryInternal.class, "toolChains", DefaultNativeToolChainRegistry.class, instantiator);
+        project.getExtensions().create(BuildTypeContainer.class, "buildTypes", DefaultBuildTypeContainer.class, instantiator, collectionCallbackActionDecorator);
+        project.getExtensions().create(FlavorContainer.class, "flavors", DefaultFlavorContainer.class, instantiator, collectionCallbackActionDecorator);
+        project.getExtensions().create(NativeToolChainRegistry.class, "toolChains", DefaultNativeToolChainRegistry.class, instantiator, collectionCallbackActionDecorator);
     }
 
     static class Rules extends RuleSource {
@@ -153,18 +159,23 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
         }
 
         @Model
-        Repositories repositories(ServiceRegistry serviceRegistry, FlavorContainer flavors, PlatformContainer platforms, BuildTypeContainer buildTypes) {
+        Repositories repositories(ServiceRegistry serviceRegistry,
+                                  FlavorContainer flavors,
+                                  PlatformContainer platforms,
+                                  BuildTypeContainer buildTypes,
+                                  CollectionCallbackActionDecorator callbackActionDecorator) {
             Instantiator instantiator = serviceRegistry.get(Instantiator.class);
-            SourceDirectorySetFactory sourceDirectorySetFactory = serviceRegistry.get(SourceDirectorySetFactory.class);
+            ObjectFactory sourceDirectorySetFactory = serviceRegistry.get(ObjectFactory.class);
             NativePlatforms nativePlatforms = serviceRegistry.get(NativePlatforms.class);
             FileCollectionFactory fileCollectionFactory = serviceRegistry.get(FileCollectionFactory.class);
             Action<PrebuiltLibrary> initializer = new PrebuiltLibraryInitializer(instantiator, fileCollectionFactory, nativePlatforms, platforms.withType(NativePlatform.class), buildTypes, flavors);
-            return new DefaultRepositories(instantiator, sourceDirectorySetFactory, initializer);
+            DomainObjectCollectionFactory domainObjectCollectionFactory = serviceRegistry.get(DomainObjectCollectionFactory.class);
+            return new DefaultRepositories(instantiator, sourceDirectorySetFactory, initializer, callbackActionDecorator, domainObjectCollectionFactory);
         }
 
         @Model
         NativeToolChainRegistryInternal toolChains(ExtensionContainer extensionContainer) {
-            return extensionContainer.getByType(NativeToolChainRegistryInternal.class);
+            return Cast.cast(NativeToolChainRegistryInternal.class, extensionContainer.getByType(NativeToolChainRegistry.class));
         }
 
         @Model
@@ -185,6 +196,7 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
         @Defaults
         public void registerFactoryForCustomNativePlatforms(PlatformContainer platforms, final Instantiator instantiator) {
             NamedDomainObjectFactory<NativePlatform> nativePlatformFactory = new NamedDomainObjectFactory<NativePlatform>() {
+                @Override
                 public NativePlatform create(String name) {
                     return instantiator.newInstance(DefaultNativePlatform.class, name);
                 }
@@ -319,10 +331,10 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
                 @Override
                 public void execute(LinkSharedLibrary linkTask) {
                     linkTask.setDescription("Links " + binary.getDisplayName());
-                    linkTask.setToolChain(binary.getToolChain());
-                    linkTask.setTargetPlatform(binary.getTargetPlatform());
-                    linkTask.setOutputFile(binary.getSharedLibraryFile());
-                    linkTask.setInstallName(binary.getSharedLibraryFile().getName());
+                    linkTask.getToolChain().set(binary.getToolChain());
+                    linkTask.getTargetPlatform().set(binary.getTargetPlatform());
+                    linkTask.getLinkedFile().set(binary.getSharedLibraryFile());
+                    linkTask.getInstallName().set(binary.getSharedLibraryFile().getName());
                     linkTask.getLinkerArgs().set(binary.getLinker().getArgs());
                     linkTask.getImportLibrary().set(binary.getSharedLibraryLinkFile());
 
@@ -343,10 +355,10 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
                 @Override
                 public void execute(CreateStaticLibrary task) {
                     task.setDescription("Creates " + binary.getDisplayName());
-                    task.setToolChain(binary.getToolChain());
-                    task.setTargetPlatform(binary.getTargetPlatform());
-                    task.setOutputFile(binary.getStaticLibraryFile());
-                    task.setStaticLibArgs(binary.getStaticLibArchiver().getArgs());
+                    task.getToolChain().set(binary.getToolChain());
+                    task.getTargetPlatform().set(binary.getTargetPlatform());
+                    task.getOutputFile().set(binary.getStaticLibraryFile());
+                    task.getStaticLibArgs().set(binary.getStaticLibArchiver().getArgs());
                 }
             });
         }
@@ -408,18 +420,23 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
 
         @Defaults
         void registerNativeDependentBinariesResolutionStrategy(DependentBinariesResolver resolver, ServiceRegistry serviceRegistry) {
-            ProjectRegistry<ProjectInternal> projectRegistry = Cast.uncheckedCast(serviceRegistry.get(ProjectRegistry.class));
+            ProjectRegistry<ProjectInternal> projectRegistry = Cast.uncheckedCast(serviceRegistry.get(DefaultProjectRegistry.class));
             ProjectModelResolver projectModelResolver = serviceRegistry.get(ProjectModelResolver.class);
             resolver.register(new NativeDependentBinariesResolutionStrategy(projectRegistry, projectModelResolver));
         }
     }
 
     private static class DefaultRepositories extends DefaultPolymorphicDomainObjectContainer<ArtifactRepository> implements Repositories {
-        private DefaultRepositories(final Instantiator instantiator, final SourceDirectorySetFactory sourceDirectorySetFactory, final Action<PrebuiltLibrary> binaryFactory) {
-            super(ArtifactRepository.class, instantiator, new ArtifactRepositoryNamer());
+        private DefaultRepositories(Instantiator instantiator,
+                                    ObjectFactory objectFactory,
+                                    Action<PrebuiltLibrary> binaryFactory,
+                                    CollectionCallbackActionDecorator collectionCallbackActionDecorator,
+                                    DomainObjectCollectionFactory domainObjectCollectionFactory) {
+            super(ArtifactRepository.class, instantiator, new ArtifactRepositoryNamer(), collectionCallbackActionDecorator);
             registerFactory(PrebuiltLibraries.class, new NamedDomainObjectFactory<PrebuiltLibraries>() {
+                @Override
                 public PrebuiltLibraries create(String name) {
-                    return instantiator.newInstance(DefaultPrebuiltLibraries.class, name, instantiator, sourceDirectorySetFactory, binaryFactory);
+                    return instantiator.newInstance(DefaultPrebuiltLibraries.class, name, instantiator, objectFactory, binaryFactory, collectionCallbackActionDecorator, domainObjectCollectionFactory);
                 }
             });
         }

@@ -16,15 +16,17 @@
 package org.gradle.launcher.cli
 
 import org.gradle.api.Action
-import spock.lang.Specification
-import org.gradle.launcher.bootstrap.ExecutionListener
 import org.gradle.initialization.ReportedException
+import org.gradle.internal.logging.LoggingOutputInternal
+import org.gradle.launcher.bootstrap.ExecutionListener
+import spock.lang.Specification
 
 class ExceptionReportingActionTest extends Specification {
     final Action<ExecutionListener> target = Mock()
     final ExecutionListener listener = Mock()
     final Action<Throwable> reporter = Mock()
-    final ExceptionReportingAction action = new ExceptionReportingAction(target, reporter)
+    final LoggingOutputInternal loggingOutput = Mock()
+    final ExceptionReportingAction action = new ExceptionReportingAction(target, reporter, loggingOutput)
 
     def executesAction() {
         when:
@@ -32,6 +34,7 @@ class ExceptionReportingActionTest extends Specification {
 
         then:
         1 * target.execute(listener)
+        1 * loggingOutput.flush()
         0 * _._
     }
 
@@ -43,6 +46,7 @@ class ExceptionReportingActionTest extends Specification {
 
         then:
         1 * target.execute(listener) >> { throw failure }
+        1 * loggingOutput.flush()
         1 * reporter.execute(failure)
         1 * listener.onFailure(failure)
         0 * _._
@@ -57,7 +61,8 @@ class ExceptionReportingActionTest extends Specification {
 
         then:
         1 * target.execute(listener) >> { throw failure }
-        1 * listener.onFailure(cause)
+        1 * loggingOutput.flush()
+        1 * listener.onFailure(failure)
         0 * _._
     }
 }

@@ -19,8 +19,12 @@ import groovy.lang.Closure;
 import groovy.lang.DelegatesTo;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
+import org.gradle.api.attributes.AttributeContainer;
+import org.gradle.api.attributes.HasConfigurableAttributes;
+import org.gradle.api.capabilities.Capability;
 
 import javax.annotation.Nullable;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -32,7 +36,7 @@ import static groovy.lang.Closure.DELEGATE_FIRST;
  * <p>
  * For examples on configuring the exclude rules please refer to {@link #exclude(java.util.Map)}.
  */
-public interface ModuleDependency extends DirectDependency {
+public interface ModuleDependency extends Dependency, HasConfigurableAttributes<ModuleDependency> {
     /**
      * Adds an exclude rule to exclude transitive dependencies of this dependency.
      * <p>
@@ -50,10 +54,10 @@ public interface ModuleDependency extends DirectDependency {
      * then consider using forced versions' feature: {@link ResolutionStrategy#force(Object...)}.
      *
      * <pre class='autoTested'>
-     * apply plugin: 'java' //so that I can declare 'compile' dependencies
+     * apply plugin: 'java' //so that I can declare 'implementation' dependencies
      *
      * dependencies {
-     *   compile('org.hibernate:hibernate:3.1') {
+     *   implementation('org.hibernate:hibernate:3.1') {
      *     //excluding a particular transitive dependency:
      *     exclude module: 'cglib' //by artifact name
      *     exclude group: 'org.jmock' //by group
@@ -148,12 +152,76 @@ public interface ModuleDependency extends DirectDependency {
      *
      * @since 4.0
      */
-    @Incubating
     void setTargetConfiguration(@Nullable String name);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     ModuleDependency copy();
 
+    /**
+     * Returns the attributes for this dependency. Mutation of the attributes of a dependency must be done through
+     * the {@link #attributes(Action)} method.
+     *
+     * @return the attributes container for this dependency
+     *
+     * @since 4.8
+     */
+    @Override
+    AttributeContainer getAttributes();
+
+    /**
+     * Mutates the attributes of this dependency. Attributes are used during dependency resolution to select the appropriate
+     * target variant, in particular when a single component provides different variants.
+     *
+     * @param configureAction the attributes mutation action
+     *
+     * @since 4.8
+     */
+    @Override
+    ModuleDependency attributes(Action<? super AttributeContainer> configureAction);
+
+    /**
+     * Configures the requested capabilities of this dependency.
+     * @param configureAction the configuration action
+     *
+     * @since 5.3
+     */
+    ModuleDependency capabilities(Action<? super ModuleDependencyCapabilitiesHandler> configureAction);
+
+    /**
+     * Returns the set of requested capabilities for this dependency.
+     * @return An immutable view of requested capabilities. Updates must be done calling {@link #capabilities(Action)}.
+     *
+     * @since 5.3
+     */
+    List<Capability> getRequestedCapabilities();
+
+    /**
+     * Endorse version constraints with {@link VersionConstraint#getStrictVersion()} strict versions} from the target module.
+     *
+     * Endorsing strict versions of another module/platform means that all strict versions will be interpreted during dependency
+     * resolution as if they where defined by the endorsing module itself.
+     *
+     * @since 6.0
+     */
+    @Incubating
+    void endorseStrictVersions();
+
+    /**
+     * Resets the {@link #isEndorsingStrictVersions()} state of this dependency.
+     *
+     * @since 6.0
+     */
+    @Incubating
+    void doNotEndorseStrictVersions();
+
+    /**
+     * Are the {@link VersionConstraint#getStrictVersion()} strict version} dependency constraints of the target module endorsed?
+     *
+     * @since 6.0
+     */
+    @Incubating
+    boolean isEndorsingStrictVersions();
 }

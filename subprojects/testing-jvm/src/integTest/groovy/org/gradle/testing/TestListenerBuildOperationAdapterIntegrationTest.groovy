@@ -17,12 +17,16 @@
 package org.gradle.testing
 
 import org.gradle.api.internal.tasks.testing.operations.ExecuteTestBuildOperationType
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.BuildOperationsFixture
+import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.integtests.fixtures.TestResources
+import org.gradle.testing.fixture.JUnitMultiVersionIntegrationSpec
 import org.junit.Rule
 
-class TestListenerBuildOperationAdapterIntegrationTest extends AbstractIntegrationSpec {
+import static org.gradle.testing.fixture.JUnitCoverage.*
+
+@TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE })
+class TestListenerBuildOperationAdapterIntegrationTest extends JUnitMultiVersionIntegrationSpec {
 
     @Rule
     final TestResources resources = new TestResources(testDirectoryProvider)
@@ -38,31 +42,53 @@ class TestListenerBuildOperationAdapterIntegrationTest extends AbstractIntegrati
 
         then:
         def ops = operations.all(ExecuteTestBuildOperationType) { true }
-        ops.size() == 6
+        def iterator = ops.iterator()
 
-        ops[0].details.testDescriptor.name == "Gradle Test Run :test"
-        ops[0].details.testDescriptor.className == null
-        ops[0].details.testDescriptor.composite == true
-
-        ops[1].details.testDescriptor.name ==~ "Gradle Test Executor \\d+"
-        ops[1].details.testDescriptor.className == null
-        ops[1].details.testDescriptor.composite == true
-
-        ops[2].details.testDescriptor.name == "org.gradle.ASuite"
-        ops[2].details.testDescriptor.className == "org.gradle.ASuite"
-        ops[2].details.testDescriptor.composite == true
-
-        ops[3].details.testDescriptor.name == "anotherOk"
-        ops[3].details.testDescriptor.className == "org.gradle.OkTest"
-        ops[3].details.testDescriptor.composite == false
-
-        ops[4].details.testDescriptor.name == "ok"
-        ops[4].details.testDescriptor.className == "org.gradle.OkTest"
-        ops[4].details.testDescriptor.composite == false
-
-        ops[5].details.testDescriptor.name == "ok"
-        ops[5].details.testDescriptor.className == "org.gradle.OtherTest"
-        ops[5].details.testDescriptor.composite == false
+        with(iterator.next()) {
+            details.testDescriptor.name == "Gradle Test Run :test"
+            details.testDescriptor.className == null
+            details.testDescriptor.composite == true
+        }
+        with(iterator.next()) {
+            details.testDescriptor.name ==~ "Gradle Test Executor \\d+"
+            details.testDescriptor.className == null
+            details.testDescriptor.composite == true
+        }
+        with(iterator.next()) {
+            details.testDescriptor.name == "org.gradle.ASuite"
+            details.testDescriptor.className == "org.gradle.ASuite"
+            details.testDescriptor.composite == true
+        }
+        if (isVintage()) {
+            with(iterator.next()) {
+                details.testDescriptor.name == "org.gradle.OkTest"
+                details.testDescriptor.className == "org.gradle.OkTest"
+                details.testDescriptor.composite == true
+            }
+        }
+        with(iterator.next()) {
+            details.testDescriptor.name == "anotherOk"
+            details.testDescriptor.className == "org.gradle.OkTest"
+            details.testDescriptor.composite == false
+        }
+        with(iterator.next()) {
+            details.testDescriptor.name == "ok"
+            details.testDescriptor.className == "org.gradle.OkTest"
+            details.testDescriptor.composite == false
+        }
+        if (isVintage()) {
+            with(iterator.next()) {
+                details.testDescriptor.name == "org.gradle.OtherTest"
+                details.testDescriptor.className == "org.gradle.OtherTest"
+                details.testDescriptor.composite == true
+            }
+        }
+        with(iterator.next()) {
+            details.testDescriptor.name == "ok"
+            details.testDescriptor.className == "org.gradle.OtherTest"
+            details.testDescriptor.composite == false
+        }
+        !iterator.hasNext()
     }
 
 }

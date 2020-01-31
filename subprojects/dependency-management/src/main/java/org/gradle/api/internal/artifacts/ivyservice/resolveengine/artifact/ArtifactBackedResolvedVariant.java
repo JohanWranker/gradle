@@ -16,18 +16,17 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact;
 
-import org.gradle.api.Buildable;
-import org.gradle.api.artifacts.component.ComponentIdentifier;
-import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.DownloadArtifactBuildOperationType;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvedArtifactSet.AsyncArtifactListener;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.file.FileCollectionInternal;
+import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
 import org.gradle.internal.DisplayName;
 import org.gradle.internal.operations.BuildOperationContext;
+import org.gradle.internal.operations.BuildOperationDescriptor;
 import org.gradle.internal.operations.BuildOperationQueue;
 import org.gradle.internal.operations.RunnableBuildOperation;
-import org.gradle.internal.progress.BuildOperationDescriptor;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -53,7 +52,7 @@ class ArtifactBackedResolvedVariant implements ResolvedVariant {
         if (artifacts.size() == 1) {
             return new ArtifactBackedResolvedVariant(displayName, attributes, new SingleArtifactSet(displayName, attributes, artifacts.iterator().next()));
         }
-        List<SingleArtifactSet> artifactSets = new ArrayList<SingleArtifactSet>();
+        List<SingleArtifactSet> artifactSets = new ArrayList<>(artifacts.size());
         for (ResolvableArtifact artifact : artifacts) {
             artifactSets.add(new SingleArtifactSet(displayName, attributes, artifact));
         }
@@ -80,12 +79,6 @@ class ArtifactBackedResolvedVariant implements ResolvedVariant {
         return attributes;
     }
 
-    private static boolean isFromIncludedBuild(ResolvableArtifact artifact) {
-        ComponentIdentifier id = artifact.getId().getComponentIdentifier();
-        return id instanceof ProjectComponentIdentifier
-            && !((ProjectComponentIdentifier) id).getBuild().isCurrentBuild();
-    }
-
     private static class SingleArtifactSet implements ResolvedArtifactSet, ResolvedArtifactSet.Completion {
         private final DisplayName variantName;
         private final AttributeContainer variantAttributes;
@@ -99,14 +92,10 @@ class ArtifactBackedResolvedVariant implements ResolvedVariant {
         }
 
         @Override
-        public Completion startVisit(BuildOperationQueue<RunnableBuildOperation> actions, AsyncArtifactListener listener) {
+        public ResolvedArtifactSet.Completion startVisit(BuildOperationQueue<RunnableBuildOperation> actions, AsyncArtifactListener listener) {
             if (listener.requireArtifactFiles()) {
-                if (isFromIncludedBuild(artifact)) {
-                    // Cannot currently build these artifacts asynchronously due to various locking problems
-                    // Build it now instead
-                    new DownloadArtifactFile(artifact, this, listener).run(null);
-                } else if (artifact.isResolved()) {
-                    // Already resolved. Push the artifact to the listener now, rather than queuing it up
+                if (artifact.isResolveSynchronously()) {
+                    // Resolve it now
                     new DownloadArtifactFile(artifact, this, listener).run(null);
                 } else {
                     // Resolve it later
@@ -121,13 +110,24 @@ class ArtifactBackedResolvedVariant implements ResolvedVariant {
             if (failure != null) {
                 visitor.visitFailure(failure);
             } else {
-                visitor.visitArtifact(variantName.getDisplayName(), variantAttributes, artifact);
+                visitor.visitArtifact(variantName, variantAttributes, artifact);
+                visitor.endVisitCollection(FileCollectionInternal.OTHER);
             }
         }
 
         @Override
-        public void collectBuildDependencies(BuildDependenciesVisitor visitor) {
-            visitor.visitDependency(((Buildable) artifact).getBuildDependencies());
+        public void visitLocalArtifacts(LocalArtifactVisitor listener) {
+            listener.visitArtifact(artifact);
+        }
+
+        @Override
+        public void visitDependencies(TaskDependencyResolveContext context) {
+            context.add(artifact);
+        }
+
+        @Override
+        public String toString() {
+            return artifact.getId().getDisplayName();
         }
     }
 
@@ -153,7 +153,7 @@ class ArtifactBackedResolvedVariant implements ResolvedVariant {
                 if (context != null) {
                     context.setResult(DownloadArtifactBuildOperationType.RESULT);
                 }
-            } catch (Throwable t) {
+            } catch (Exception t) {
                 owner.failure = t;
             }
         }

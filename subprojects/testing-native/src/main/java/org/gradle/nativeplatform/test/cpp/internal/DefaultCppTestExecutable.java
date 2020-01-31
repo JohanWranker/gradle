@@ -16,15 +16,14 @@
 
 package org.gradle.nativeplatform.test.cpp.internal;
 
+import org.gradle.api.Task;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
-import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
@@ -32,7 +31,9 @@ import org.gradle.language.cpp.CppComponent;
 import org.gradle.language.cpp.CppPlatform;
 import org.gradle.language.cpp.internal.DefaultCppBinary;
 import org.gradle.language.cpp.internal.DefaultCppComponent;
+import org.gradle.language.cpp.internal.NativeVariantIdentity;
 import org.gradle.language.nativeplatform.internal.ConfigurableComponentWithExecutable;
+import org.gradle.language.nativeplatform.internal.Names;
 import org.gradle.nativeplatform.tasks.InstallExecutable;
 import org.gradle.nativeplatform.tasks.LinkExecutable;
 import org.gradle.nativeplatform.test.cpp.CppTestExecutable;
@@ -46,6 +47,7 @@ import java.util.concurrent.Callable;
 public class DefaultCppTestExecutable extends DefaultCppBinary implements CppTestExecutable, ConfigurableComponentWithExecutable {
     private final Provider<CppComponent> testedComponent;
     private final RegularFileProperty executableFile;
+    private final Property<Task> executableFileProducer;
     private final DirectoryProperty installationDirectory;
     private final Property<InstallExecutable> installTaskProperty;
     private final Property<LinkExecutable> linkTaskProperty;
@@ -54,16 +56,17 @@ public class DefaultCppTestExecutable extends DefaultCppBinary implements CppTes
     private final RegularFileProperty debuggerExecutableFile;
 
     @Inject
-    public DefaultCppTestExecutable(String name, ProjectLayout projectLayout, ObjectFactory objects, FileOperations fileOperations, Provider<String> baseName, boolean debuggable, boolean optimized, FileCollection sourceFiles, FileCollection componentHeaderDirs, ConfigurationContainer configurations, Configuration implementation, Provider<CppComponent> testedComponent, CppPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
-        super(name, projectLayout, objects, baseName, debuggable, optimized, sourceFiles, componentHeaderDirs, configurations, implementation, targetPlatform, toolChain, platformToolProvider);
+    public DefaultCppTestExecutable(Names names, Provider<String> baseName, FileCollection sourceFiles, FileCollection componentHeaderDirs, Configuration implementation, Provider<CppComponent> testedComponent, CppPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider, NativeVariantIdentity identity, ConfigurationContainer configurations, ObjectFactory objects) {
+        super(names, objects, baseName, sourceFiles, componentHeaderDirs, configurations, implementation, targetPlatform, toolChain, platformToolProvider, identity);
         this.testedComponent = testedComponent;
-        this.executableFile = projectLayout.fileProperty();
-        this.debuggerExecutableFile = projectLayout.fileProperty();
-        this.installationDirectory = projectLayout.directoryProperty();
+        this.executableFile = objects.fileProperty();
+        this.executableFileProducer = objects.property(Task.class);
+        this.debuggerExecutableFile = objects.fileProperty();
+        this.installationDirectory = objects.directoryProperty();
         this.linkTaskProperty = objects.property(LinkExecutable.class);
         this.installTaskProperty = objects.property(InstallExecutable.class);
-        this.outputs = fileOperations.files();
-        runTask = objects.property(RunTestExecutable.class);
+        this.outputs = objects.fileCollection();
+        this.runTask = objects.property(RunTestExecutable.class);
     }
 
     @Override
@@ -74,6 +77,11 @@ public class DefaultCppTestExecutable extends DefaultCppBinary implements CppTes
     @Override
     public RegularFileProperty getExecutableFile() {
         return executableFile;
+    }
+
+    @Override
+    public Property<Task> getExecutableFileProducer() {
+        return executableFileProducer;
     }
 
     @Override
@@ -104,12 +112,12 @@ public class DefaultCppTestExecutable extends DefaultCppBinary implements CppTes
     @Override
     public FileCollection getCompileIncludePath() {
         // TODO: This should be modeled differently, perhaps as a dependency on the implementation configuration
-        return super.getCompileIncludePath().plus(getFileOperations().files(new Callable<FileCollection>() {
+        return super.getCompileIncludePath().plus(getProjectLayout().files(new Callable<FileCollection>() {
             @Override
-            public FileCollection call() throws Exception {
+            public FileCollection call() {
                 CppComponent tested = testedComponent.getOrNull();
                 if (tested == null) {
-                    return getFileOperations().files();
+                    return getProjectLayout().files();
                 }
                 return ((DefaultCppComponent) tested).getAllHeaderDirs();
             }

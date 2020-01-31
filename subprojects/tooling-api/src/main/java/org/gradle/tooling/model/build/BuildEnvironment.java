@@ -16,7 +16,6 @@
 
 package org.gradle.tooling.model.build;
 
-import org.gradle.api.Incubating;
 import org.gradle.tooling.model.BuildIdentifier;
 import org.gradle.tooling.model.BuildModel;
 import org.gradle.tooling.model.Model;
@@ -48,7 +47,7 @@ public interface BuildEnvironment extends Model, BuildModel {
      *
      * @since 2.13
      */
-    @Incubating
+    @Override
     BuildIdentifier getBuildIdentifier();
 
     /**

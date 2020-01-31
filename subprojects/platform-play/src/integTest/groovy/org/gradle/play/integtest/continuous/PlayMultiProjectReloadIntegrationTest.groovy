@@ -16,6 +16,7 @@
 
 package org.gradle.play.integtest.continuous
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.play.integtest.fixtures.AbstractMultiVersionPlayReloadIntegrationTest
 import org.gradle.play.integtest.fixtures.MultiProjectRunningPlayApp
 import org.gradle.play.integtest.fixtures.PlayApp
@@ -25,8 +26,14 @@ import org.gradle.test.fixtures.file.TestFile
 
 class PlayMultiProjectReloadIntegrationTest extends AbstractMultiVersionPlayReloadIntegrationTest {
     RunningPlayApp runningApp = new MultiProjectRunningPlayApp(testDirectory)
-    PlayApp playApp = new PlayMultiProject()
+    PlayApp playApp = new PlayMultiProject(versionNumber)
     TestFile playRunBuildFile = file("primary/build.gradle")
+
+    def setup() {
+        buildFile << playLogbackDependenciesIfPlay25(versionNumber)
+        playRunBuildFile << playLogbackDependenciesIfPlay25(versionNumber)
+        file('submodule/build.gradle') << playLogbackDependenciesIfPlay25(versionNumber)
+    }
 
     def cleanup() {
         stopGradle()
@@ -35,6 +42,7 @@ class PlayMultiProjectReloadIntegrationTest extends AbstractMultiVersionPlayRelo
         }
     }
 
+    @ToBeFixedForInstantExecution
     def "can modify play app while app is running in continuous build and server restarts"() {
         when:
         succeeds(":primary:runPlayBinary")
@@ -53,7 +61,7 @@ class PlayMultiProjectReloadIntegrationTest extends AbstractMultiVersionPlayRelo
     }
 
     private void addHelloWorld() {
-        file("primary/conf/routes") << "\nGET     /hello                   controllers.Application.hello"
+        file("primary/conf/routes") << "\nGET     /hello                   ${controllers()}.Application.hello"
         file("primary/app/controllers/Application.scala").with {
             text = text.replaceFirst(/(?s)\}\s*$/, '''
   def hello = Action {
@@ -64,6 +72,7 @@ class PlayMultiProjectReloadIntegrationTest extends AbstractMultiVersionPlayRelo
         }
     }
 
+    @ToBeFixedForInstantExecution
     def "can modify sub module in multi-project play app while app is running in continuous build and server restarts"() {
         when:
         succeeds(":primary:runPlayBinary")
@@ -82,7 +91,7 @@ class PlayMultiProjectReloadIntegrationTest extends AbstractMultiVersionPlayRelo
     }
 
     private void addSubmoduleHelloWorld() {
-        file("primary/conf/routes") << "\nGET     /subhello                   controllers.submodule.Application.hello"
+        file("primary/conf/routes") << "\nGET     /subhello                   ${controllers()}.submodule.Application.hello"
         file("submodule/app/controllers/submodule/Application.scala").with {
             text = text.replaceFirst(/(?s)\}\s*$/, '''
   def hello = Action {
@@ -93,6 +102,7 @@ class PlayMultiProjectReloadIntegrationTest extends AbstractMultiVersionPlayRelo
         }
     }
 
+    @ToBeFixedForInstantExecution
     def "can modify java sub module in multi-project play app while app is running in continuous build and server restarts"() {
         when:
         succeeds(":primary:runPlayBinary")
@@ -111,7 +121,7 @@ class PlayMultiProjectReloadIntegrationTest extends AbstractMultiVersionPlayRelo
     }
 
     private void addSubmoduleHelloWorldFromJavaClass() {
-        file("primary/conf/routes") << "\nGET     /subhello                   controllers.submodule.Application.hello"
+        file("primary/conf/routes") << "\nGET     /subhello                   ${controllers()}.submodule.Application.hello"
         file("submodule/app/controllers/submodule/Application.scala").with {
             text = text.replaceFirst(~/(?m)^import\s/, '''
 import org.test.Util
@@ -138,6 +148,7 @@ dependencies {
 '''
     }
 
+    @ToBeFixedForInstantExecution
     def "can add javascript file to primary project and server does not restart"() {
         when:
         succeeds(":primary:runPlayBinary")
@@ -157,6 +168,7 @@ var message = "Hello JS";
         js.contains('Hello JS')
     }
 
+    @ToBeFixedForInstantExecution
     def "should reload with exception when modify java in submodule and server restarts"() {
         when:
         succeeds(":primary:runPlayBinary")
@@ -168,7 +180,7 @@ var message = "Hello JS";
 
         then:
         fails()
-        !executedTasks.contains(':primary:runPlayBinary')
+        notExecuted(':primary:runPlayBinary')
         errorPageHasTaskFailure(":submodule:compilePlayBinaryScala")
         serverStartCount == 1
 
@@ -179,7 +191,7 @@ var message = "Hello JS";
         succeeds()
         appIsRunningAndDeployed()
         runningApp.playUrl().text
-        serverStartCount > 1
+        serverRestart()
     }
 
     def addBadScala(path) {
@@ -196,6 +208,7 @@ object NewType {
 """
     }
 
+    @ToBeFixedForInstantExecution
     def "can add javascript file to sub module and server restarts"() {
         when:
         succeeds(":primary:runPlayBinary")

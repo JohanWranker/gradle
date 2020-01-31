@@ -17,6 +17,7 @@
 package org.gradle.initialization
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.util.SetSystemProperties
 import org.junit.Rule
 
@@ -65,17 +66,17 @@ task printSystemProp {
 }
 """
         when:
-        def result = run ':printSystemProp'
+        succeeds ':printSystemProp'
 
         then:
-        result.assertOutputContains('mySystemProp=properties file')
+        outputContains('mySystemProp=properties file')
 
         when:
         args '-DmySystemProp=commandline'
-        result = run ':printSystemProp'
+        succeeds ':printSystemProp'
 
         then:
-        result.assertOutputContains('mySystemProp=commandline')
+        outputContains('mySystemProp=commandline')
     }
 
     def "build property set on command line takes precedence over jvm args"() {
@@ -120,17 +121,17 @@ task printSystemProp {
 }
 """
         when:
-        def result = run ':printSystemProp'
+        succeeds ':printSystemProp'
 
         then:
-        result.assertOutputContains('mySystemProp=jvmarg')
+        outputContains('mySystemProp=jvmarg')
 
         when:
         args '-DmySystemProp=commandline'
-        result = run ':printSystemProp'
+        succeeds ':printSystemProp'
 
         then:
-        result.assertOutputContains('mySystemProp=commandline')
+        outputContains('mySystemProp=commandline')
     }
 
     def "can always change buildDir in properties file"() {
@@ -140,5 +141,57 @@ task printSystemProp {
         """
         then:
         succeeds ':help'
+    }
+
+    @ToBeFixedForInstantExecution
+    def "Gradle properties can be derived from environment variables"() {
+        given:
+        buildFile << """
+            task printProperty() {
+                doLast {
+                    println "myProp=\${project.ext.myProp}"
+                }
+            }
+        """
+
+        when:
+        executer.withEnvironmentVars(ORG_GRADLE_PROJECT_myProp: 'fromEnv')
+
+        then:
+        succeeds 'printProperty'
+
+        and:
+        outputContains("myProp=fromEnv")
+
+        when:
+        executer.withEnvironmentVars(ORG_GRADLE_PROJECT_myProp: 'fromEnv2')
+
+        then:
+        succeeds 'printProperty'
+
+        and:
+        outputContains("myProp=fromEnv2")
+    }
+
+    def "properties can be distributed as part of a custom Gradle installation"() {
+        given:
+        requireIsolatedGradleDistribution()
+
+        when:
+        distribution.gradleHomeDir.file('gradle.properties') << 'systemProp.mySystemProp=properties file'
+        buildFile << """
+            task printSystemProp {
+                doLast {
+                    println "mySystemProp=\${System.getProperty('mySystemProp')}"
+                }
+            }
+        """
+        succeeds ':printSystemProp'
+
+        then:
+        outputContains('mySystemProp=properties file')
+
+        cleanup:
+        executer.withArguments("--stop", "--info").run()
     }
 }

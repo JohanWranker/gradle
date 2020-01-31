@@ -16,8 +16,12 @@
 
 package org.gradle.process.internal;
 
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import org.gradle.initialization.BuildCancellationToken;
+import org.gradle.initialization.DefaultBuildCancellationToken;
 import org.gradle.internal.file.PathToFileResolver;
+import org.gradle.process.CommandLineArgumentProvider;
 import org.gradle.util.GUtil;
 
 import java.io.InputStream;
@@ -32,21 +36,29 @@ import java.util.concurrent.Executor;
  */
 public class DefaultExecHandleBuilder extends AbstractExecHandleBuilder implements ExecHandleBuilder {
     private final List<Object> arguments = new ArrayList<Object>();
+    private final List<CommandLineArgumentProvider> argumentProviders = new ArrayList<CommandLineArgumentProvider>();
 
     public DefaultExecHandleBuilder(PathToFileResolver fileResolver, Executor executor) {
-        super(fileResolver, executor);
+        this(fileResolver, executor, new DefaultBuildCancellationToken());
     }
 
+    public DefaultExecHandleBuilder(PathToFileResolver fileResolver, Executor executor, BuildCancellationToken buildCancellationToken) {
+        super(fileResolver, executor, buildCancellationToken);
+    }
+
+    @Override
     public DefaultExecHandleBuilder executable(Object executable) {
         super.executable(executable);
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder commandLine(Object... arguments) {
         commandLine(Arrays.asList(arguments));
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder commandLine(Iterable<?> args) {
         List<Object> argsList = Lists.newArrayList(args);
         executable(argsList.get(0));
@@ -54,18 +66,22 @@ public class DefaultExecHandleBuilder extends AbstractExecHandleBuilder implemen
         return this;
     }
 
+    @Override
     public void setCommandLine(List<String> args) {
         commandLine(args);
     }
 
+    @Override
     public void setCommandLine(Object... args) {
         commandLine(args);
     }
 
+    @Override
     public void setCommandLine(Iterable<?> args) {
         commandLine(args);
     }
 
+    @Override
     public DefaultExecHandleBuilder args(Object... args) {
         if (args == null) {
             throw new IllegalArgumentException("args == null!");
@@ -74,23 +90,27 @@ public class DefaultExecHandleBuilder extends AbstractExecHandleBuilder implemen
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder args(Iterable<?> args) {
         GUtil.addToCollection(arguments, args);
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder setArgs(List<String> arguments) {
         this.arguments.clear();
         this.arguments.addAll(arguments);
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder setArgs(Iterable<?> arguments) {
         this.arguments.clear();
         GUtil.addToCollection(this.arguments, arguments);
         return this;
     }
 
+    @Override
     public List<String> getArgs() {
         List<String> args = new ArrayList<String>();
         for (Object argument : arguments) {
@@ -100,8 +120,17 @@ public class DefaultExecHandleBuilder extends AbstractExecHandleBuilder implemen
     }
 
     @Override
+    public List<CommandLineArgumentProvider> getArgumentProviders() {
+        return argumentProviders;
+    }
+
+    @Override
     public List<String> getAllArguments() {
-        return getArgs();
+        List<String> args = new ArrayList<String>(getArgs());
+        for (CommandLineArgumentProvider argumentProvider : argumentProviders) {
+            Iterables.addAll(args, argumentProvider.asArguments());
+        }
+        return args;
     }
 
     @Override
@@ -122,16 +151,19 @@ public class DefaultExecHandleBuilder extends AbstractExecHandleBuilder implemen
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder redirectErrorStream() {
         super.redirectErrorStream();
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder setStandardOutput(OutputStream outputStream) {
         super.setStandardOutput(outputStream);
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder setStandardInput(InputStream inputStream) {
         super.setStandardInput(inputStream);
         return this;
@@ -143,16 +175,19 @@ public class DefaultExecHandleBuilder extends AbstractExecHandleBuilder implemen
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder listener(ExecHandleListener listener) {
         super.listener(listener);
         return this;
     }
 
+    @Override
     public DefaultExecHandleBuilder setTimeout(int timeoutMillis) {
         super.setTimeout(timeoutMillis);
         return this;
     }
 
+    @Override
     public ExecHandleBuilder setDaemon(boolean daemon) {
         super.daemon = daemon;
         return this;

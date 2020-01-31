@@ -15,25 +15,36 @@
  */
 package org.gradle.api.internal.artifacts.dsl.dependencies
 
+import groovy.transform.CompileStatic
 import org.gradle.api.Action
 import org.gradle.api.UnknownDomainObjectException
 import org.gradle.api.artifacts.ClientModule
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.ConfigurationContainer
+import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.DependencySet
-import org.gradle.api.artifacts.DirectDependency
 import org.gradle.api.artifacts.ExternalDependency
+import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.artifacts.VersionConstraint
 import org.gradle.api.artifacts.dsl.ComponentMetadataHandler
 import org.gradle.api.artifacts.dsl.ComponentModuleMetadataHandler
 import org.gradle.api.artifacts.dsl.DependencyConstraintHandler
 import org.gradle.api.attributes.AttributesSchema
-import org.gradle.api.internal.AsmBackedClassGenerator
+import org.gradle.api.attributes.Category
+import org.gradle.api.internal.artifacts.DependencyManagementTestUtil
 import org.gradle.api.internal.artifacts.VariantTransformRegistry
+import org.gradle.api.internal.artifacts.dependencies.DefaultExternalModuleDependency
+import org.gradle.api.internal.artifacts.dependencies.DefaultProjectDependency
 import org.gradle.api.internal.artifacts.query.ArtifactResolutionQueryFactory
+import org.gradle.api.plugins.ExtensionContainer
+import org.gradle.api.reflect.TypeOf
 import org.gradle.internal.Factory
+import org.gradle.util.AttributeTestUtil
+import org.gradle.util.TestUtil
 import spock.lang.Specification
+
+import java.util.concurrent.Callable
 
 class DefaultDependencyHandlerTest extends Specification {
 
@@ -46,9 +57,9 @@ class DefaultDependencyHandlerTest extends Specification {
     private ProjectFinder projectFinder = Mock()
     private DependencySet dependencySet = Mock()
 
-    private DefaultDependencyHandler dependencyHandler = new AsmBackedClassGenerator().newInstance(DefaultDependencyHandler,
+    private DefaultDependencyHandler dependencyHandler = TestUtil.instantiatorFactory().decorateLenient().newInstance(DefaultDependencyHandler,
         configurationContainer, dependencyFactory, projectFinder, Stub(DependencyConstraintHandler), Stub(ComponentMetadataHandler), Stub(ComponentModuleMetadataHandler), Stub(ArtifactResolutionQueryFactory),
-        Stub(AttributesSchema), Stub(VariantTransformRegistry), Stub(Factory))
+        Stub(AttributesSchema), Stub(VariantTransformRegistry), Stub(Factory), TestUtil.objectInstantiator(), DependencyManagementTestUtil.platformSupport())
 
     void setup() {
         _ * configurationContainer.findByName(TEST_CONF_NAME) >> configuration
@@ -58,7 +69,7 @@ class DefaultDependencyHandlerTest extends Specification {
     }
 
     void "creates and adds a dependency from some notation"() {
-        DirectDependency dependency = Mock()
+        Dependency dependency = Mock()
 
         when:
         def result = dependencyHandler.add(TEST_CONF_NAME, "someNotation")
@@ -89,7 +100,7 @@ class DefaultDependencyHandlerTest extends Specification {
     }
 
     void "creates a dependency from some notation"() {
-        DirectDependency dependency = Mock()
+        Dependency dependency = Mock()
 
         when:
         def result = dependencyHandler.create("someNotation")
@@ -108,7 +119,7 @@ class DefaultDependencyHandlerTest extends Specification {
         def result = dependencyHandler.create("someNotation") {
             force = true
             version {
-                it.prefer '1.0'
+                it.require '1.0'
             }
         }
 
@@ -122,7 +133,7 @@ class DefaultDependencyHandlerTest extends Specification {
     }
 
     void "can use dynamic method to add dependency"() {
-        DirectDependency dependency = Mock()
+        Dependency dependency = Mock()
 
         when:
         def result = dependencyHandler.someConf("someNotation")
@@ -152,8 +163,8 @@ class DefaultDependencyHandlerTest extends Specification {
     }
 
     void "can use dynamic method to add multiple dependencies"() {
-        DirectDependency dependency1 = Mock()
-        DirectDependency dependency2 = Mock()
+        Dependency dependency1 = Mock()
+        Dependency dependency2 = Mock()
 
         when:
         def result = dependencyHandler.someConf("someNotation", "someOther")
@@ -169,8 +180,8 @@ class DefaultDependencyHandlerTest extends Specification {
     }
 
     void "can use dynamic method to add multiple dependencies from nested lists"() {
-        DirectDependency dependency1 = Mock()
-        DirectDependency dependency2 = Mock()
+        Dependency dependency1 = Mock()
+        Dependency dependency2 = Mock()
 
         when:
         def result = dependencyHandler.someConf([["someNotation"], ["someOther"]])
@@ -274,7 +285,7 @@ class DefaultDependencyHandlerTest extends Specification {
     }
 
     void "creates gradle api dependency"() {
-        DirectDependency dependency = Mock()
+        Dependency dependency = Mock()
 
         when:
         def result = dependencyHandler.gradleApi()
@@ -287,7 +298,7 @@ class DefaultDependencyHandlerTest extends Specification {
     }
 
     void "creates Gradle test-kit dependency"() {
-        DirectDependency dependency = Mock()
+        Dependency dependency = Mock()
 
         when:
         def result = dependencyHandler.gradleTestKit()
@@ -300,7 +311,7 @@ class DefaultDependencyHandlerTest extends Specification {
     }
 
     void "creates local groovy dependency"() {
-        DirectDependency dependency = Mock()
+        Dependency dependency = Mock()
 
         when:
         def result = dependencyHandler.localGroovy()
@@ -326,5 +337,98 @@ class DefaultDependencyHandlerTest extends Specification {
 
         then:
         1 * dependencyFactory.createDependency(null)
+    }
+
+    void "platform dependencies are endorsing"() {
+        ModuleDependency dep1 = new DefaultExternalModuleDependency("org", "platform", "")
+        dep1.attributesFactory = AttributeTestUtil.attributesFactory()
+        ModuleDependency dep2 = new DefaultExternalModuleDependency("org", "platform", "")
+        dep2.attributesFactory = AttributeTestUtil.attributesFactory()
+
+        when:
+        dependencyHandler.platform("org:platform")
+
+        then:
+        1 * dependencyFactory.createDependency("org:platform") >> dep1
+        dep1.attributes.getAttribute(Category.CATEGORY_ATTRIBUTE).name == 'platform'
+        dep1.isEndorsingStrictVersions()
+        dep1.version == null
+
+        when:
+        dependencyHandler.platform("org:platform") { it.version { it.require('1.0') } }
+
+        then:
+        1 * dependencyFactory.createDependency("org:platform") >> dep2
+        dep2.attributes.getAttribute(Category.CATEGORY_ATTRIBUTE).name == 'platform'
+        dep2.isEndorsingStrictVersions()
+        dep2.version == '1.0'
+    }
+
+    void "local platform dependencies are endorsing"() {
+        ModuleDependency dep1 = new DefaultProjectDependency(null, null, false)
+        dep1.attributesFactory = AttributeTestUtil.attributesFactory()
+        ModuleDependency dep2 = new DefaultProjectDependency(null, null, false)
+        dep2.attributesFactory = AttributeTestUtil.attributesFactory()
+
+        when:
+        dependencyHandler.platform(dep1)
+
+        then:
+        1 * dependencyFactory.createDependency(dep1) >> dep1
+        dep1.attributes.getAttribute(Category.CATEGORY_ATTRIBUTE).name == 'platform'
+        dep1.isEndorsingStrictVersions()
+
+        when:
+        dependencyHandler.platform(dep2) { }
+
+        then:
+        1 * dependencyFactory.createDependency(dep2) >> dep2
+        dep2.attributes.getAttribute(Category.CATEGORY_ATTRIBUTE).name == 'platform'
+        dep2.isEndorsingStrictVersions()
+    }
+
+    void "platform dependency can be made non-endorsing"() {
+        ModuleDependency dep1 = new DefaultExternalModuleDependency("org", "platform", "")
+        dep1.attributesFactory = AttributeTestUtil.attributesFactory()
+
+        when:
+        dependencyHandler.platform("org:platform") { it.doNotEndorseStrictVersions() }
+
+        then:
+        1 * dependencyFactory.createDependency("org:platform") >> dep1
+        dep1.attributes.getAttribute(Category.CATEGORY_ATTRIBUTE).name == 'platform'
+        !dep1.isEndorsingStrictVersions()
+    }
+
+    void "local platform dependency can be made non-endorsing"() {
+        ModuleDependency dep1 = new DefaultProjectDependency(null, null, false)
+        dep1.attributesFactory = AttributeTestUtil.attributesFactory()
+
+        when:
+        dependencyHandler.platform(dep1) { it.doNotEndorseStrictVersions() }
+
+        then:
+        1 * dependencyFactory.createDependency(dep1) >> dep1
+        dep1.attributes.getAttribute(Category.CATEGORY_ATTRIBUTE).name == 'platform'
+        !dep1.isEndorsingStrictVersions()
+    }
+
+    @CompileStatic
+    void "can configure ExtensionAware statically"() {
+        String dependency = "some:random-dependency:0.1.1"
+        when:
+
+        Callable<List<String>> exampleDependencies = {
+            [dependency]
+        }
+
+        def callableType = new TypeOf<Callable<List<String>>>() {}
+        dependencyHandler.extensions.add(callableType, "example", exampleDependencies)
+
+        ExtensionContainer extension = dependencyHandler.extensions
+        Callable<List<String>> backOut = (extension.getByName("example") as Callable<List<String>>)
+        String backOutValue = backOut().first()
+        then:
+        backOutValue == dependency
     }
 }

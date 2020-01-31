@@ -15,7 +15,7 @@
  */
 package org.gradle.api.plugins;
 
-import org.gradle.api.Incubating;
+import org.gradle.api.NamedDomainObjectCollectionSchema;
 import org.gradle.api.reflect.TypeOf;
 
 /**
@@ -24,22 +24,27 @@ import org.gradle.api.reflect.TypeOf;
  * @see ExtensionContainer
  * @since 4.5
  */
-@Incubating
-public interface ExtensionsSchema extends Iterable<ExtensionsSchema.ExtensionSchema> {
+public interface ExtensionsSchema extends NamedDomainObjectCollectionSchema, Iterable<ExtensionsSchema.ExtensionSchema> {
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    Iterable<ExtensionSchema> getElements();
 
     /**
      * Schema of an extension.
      *
      * @since 4.5
      */
-    @Incubating
-    interface ExtensionSchema {
+    interface ExtensionSchema extends NamedDomainObjectCollectionSchema.NamedDomainObjectSchema {
 
         /**
          * The name of the extension.
          *
          * @return the name of the extension
          */
+        @Override
         String getName();
 
         /**
@@ -47,14 +52,7 @@ public interface ExtensionsSchema extends Iterable<ExtensionsSchema.ExtensionSch
          *
          * @return the public type of the extension
          */
+        @Override
         TypeOf<?> getPublicType();
-
-        /**
-         * Is the extension a deferred configurable.
-         *
-         * @see DeferredConfigurable
-         * @return {@code true} if the extension is a deferred configurable, {@code false} otherwise
-         */
-        boolean isDeferredConfigurable();
     }
 }

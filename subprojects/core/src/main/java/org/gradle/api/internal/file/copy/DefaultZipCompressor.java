@@ -15,10 +15,10 @@
  */
 package org.gradle.api.internal.file.copy;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.tools.zip.Zip64Mode;
 import org.apache.tools.zip.ZipOutputStream;
 import org.gradle.api.UncheckedIOException;
+import org.gradle.internal.IoActions;
 
 import java.io.File;
 import java.io.IOException;
@@ -32,6 +32,7 @@ public class DefaultZipCompressor implements ZipCompressor {
         zip64Mode = allowZip64Mode ? Zip64Mode.AsNeeded : Zip64Mode.Never;
     }
 
+    @Override
     public ZipOutputStream createArchiveOutputStream(File destination) throws IOException {
         ZipOutputStream outStream = new ZipOutputStream(destination);
         try {
@@ -39,7 +40,7 @@ public class DefaultZipCompressor implements ZipCompressor {
             outStream.setMethod(entryCompressionMethod);
             return outStream;
         } catch (Exception e) {
-            IOUtils.closeQuietly(outStream);
+            IoActions.closeQuietly(outStream);
             String message = String.format("Unable to create ZIP output stream for file %s.", destination);
             throw new UncheckedIOException(message, e);
         }

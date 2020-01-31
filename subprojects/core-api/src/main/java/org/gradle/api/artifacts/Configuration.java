@@ -18,7 +18,6 @@ package org.gradle.api.artifacts;
 import groovy.lang.Closure;
 import groovy.lang.DelegatesTo;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.attributes.HasConfigurableAttributes;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.specs.Spec;
@@ -43,7 +42,7 @@ import static groovy.lang.Closure.DELEGATE_FIRST;
  * please use {@link #getArtifacts()} or {@link #getAllArtifacts()}.
  * Read more about declaring artifacts in the configuration in docs for {@link org.gradle.api.artifacts.dsl.ArtifactHandler}
  *
- * Please see <a href="https://docs.gradle.org/current/userguide/defining_and_using_configurations.html" target="_top">the Defining and Using Configurations User Guide chapter</a> for more information.
+ * Please see the <a href="https://docs.gradle.org/current/userguide/declaring_dependencies.html" target="_top">Declaring Dependencies</a> User Manual chapter for more information.
  */
 @HasInternalProtocol
 public interface Configuration extends FileCollection, HasConfigurableAttributes<Configuration> {
@@ -103,6 +102,7 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * A {@link org.gradle.api.Namer} namer for configurations that returns {@link #getName()}.
      */
     class Namer implements org.gradle.api.Namer<Configuration> {
+        @Override
         public String determineName(Configuration c) {
             return c.getName();
         }
@@ -279,6 +279,7 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      *
      * @return a TaskDependency object
      */
+    @Override
     TaskDependency getBuildDependencies();
 
     /**
@@ -317,6 +318,26 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * @see #extendsFrom(Configuration...)
      */
     DependencySet getAllDependencies();
+
+    /**
+     * Gets the set of dependency constraints directly contained in this configuration
+     * (ignoring superconfigurations).
+     *
+     * @return the set of dependency constraints
+     *
+     * @since 4.6
+     */
+    DependencyConstraintSet getDependencyConstraints();
+
+    /**
+     * <p>Gets the complete set of dependency constraints including those contributed by
+     * superconfigurations.</p>
+     *
+     * @return the (read-only) set of dependency constraints
+     *
+     * @since 4.6
+     */
+    DependencyConstraintSet getAllDependencyConstraints();
 
     /**
      * Returns the artifacts of this configuration excluding the artifacts of extended configurations.
@@ -375,7 +396,6 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * @param action the action to execute when the configuration has no defined dependencies.
      * @return this
      */
-    @Incubating
     Configuration defaultDependencies(Action<? super DependencySet> action);
 
     /**
@@ -394,7 +414,7 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * configurations['conf'].withDependencies { dependencies -&gt;
      *      dependencies.each { dependency -&gt;
      *          if (dependency.version == null) {
-     *              dependency.version { prefer '1.0' }
+     *              dependency.version { require '1.0' }
      *          }
      *      }
      * }
@@ -406,7 +426,6 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * @param action a dependency action to execute before the configuration is used.
      * @return this
      */
-    @Incubating
     Configuration withDependencies(Action<? super DependencySet> action);
 
     /**
@@ -430,7 +449,6 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * @return The outgoing artifacts of this configuration.
      * @since 3.4
      */
-    @Incubating
     ConfigurationPublications getOutgoing();
 
     /**
@@ -439,7 +457,6 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * @param action The action to perform the configuration.
      * @since 3.4
      */
-    @Incubating
     void outgoing(Action<? super ConfigurationPublications> action);
 
     /**
@@ -499,7 +516,6 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      *
      * @since 3.3
      */
-    @Incubating
     void setCanBeConsumed(boolean allowed);
 
     /**
@@ -507,7 +523,6 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * @return true if this configuration can be consumed or published.
      * @since 3.3
      */
-    @Incubating
     boolean isCanBeConsumed();
 
     /**
@@ -515,7 +530,6 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      *
      * @since 3.3
      */
-    @Incubating
     void setCanBeResolved(boolean allowed);
 
     /**
@@ -523,7 +537,6 @@ public interface Configuration extends FileCollection, HasConfigurableAttributes
      * @return true if this configuration can be queried or resolved.
      * @since 3.3
      */
-    @Incubating
     boolean isCanBeResolved();
 
 }

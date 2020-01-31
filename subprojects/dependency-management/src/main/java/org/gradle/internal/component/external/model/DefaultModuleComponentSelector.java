@@ -15,55 +15,81 @@
  */
 package org.gradle.internal.component.external.model;
 
+import com.google.common.collect.ImmutableList;
+import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
+import org.gradle.api.attributes.AttributeContainer;
+import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.artifacts.ImmutableVersionConstraint;
 import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint;
+import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
+
+import java.util.Collection;
+import java.util.List;
 
 public class DefaultModuleComponentSelector implements ModuleComponentSelector {
-    private final String group;
-    private final String module;
+    private final ModuleIdentifier moduleIdentifier;
     private final ImmutableVersionConstraint versionConstraint;
+    private final ImmutableAttributes attributes;
+    private final ImmutableList<Capability> requestedCapabilities;
+    private final int hashCode;
 
-    private DefaultModuleComponentSelector(String group, String module, ImmutableVersionConstraint version) {
-        assert group != null : "group cannot be null";
+    private DefaultModuleComponentSelector(ModuleIdentifier module, ImmutableVersionConstraint version, ImmutableAttributes attributes, ImmutableList<Capability> requestedCapabilities) {
         assert module != null : "module cannot be null";
         assert version != null : "version cannot be null";
-        this.group = group;
-        this.module = module;
+        assert attributes != null : "attributes cannot be null";
+        assert requestedCapabilities != null : "capabilities cannot be null";
+        this.moduleIdentifier = module;
         this.versionConstraint = version;
+        this.attributes = attributes;
+        this.requestedCapabilities = requestedCapabilities;
+        // Do NOT change the order of members used in hash code here, it's been empirically
+        // tested to reduce the number of collisions on a large dependency graph (performance test)
+        this.hashCode = computeHashcode(module, version, attributes, requestedCapabilities);
     }
 
+    private int computeHashcode(ModuleIdentifier module, ImmutableVersionConstraint version, ImmutableAttributes attributes, ImmutableList<Capability> requestedCapabilities) {
+        int hashCode = version.hashCode();
+        hashCode = 31 * hashCode + module.hashCode();
+        hashCode = 31 * hashCode + attributes.hashCode();
+        hashCode = 31 * hashCode + requestedCapabilities.hashCode();
+        return hashCode;
+    }
+
+    @Override
     public String getDisplayName() {
-        StringBuilder builder = new StringBuilder(group.length() + module.length() + versionConstraint.getPreferredVersion().length() + 2);
+        String group = moduleIdentifier.getGroup();
+        String module = moduleIdentifier.getName();
+        StringBuilder builder = new StringBuilder(group.length() + module.length() + versionConstraint.getRequiredVersion().length() + 2);
         builder.append(group);
         builder.append(":");
         builder.append(module);
-        if (versionConstraint.getPreferredVersion().length() > 0) {
+        String versionString = versionConstraint.getDisplayName();
+        if (versionString.length() > 0) {
             builder.append(":");
-            builder.append(versionConstraint.getPreferredVersion());
-        }
-        if (versionConstraint.getBranch() != null) {
-            builder.append(" (branch: ");
-            builder.append(versionConstraint.getBranch());
-            builder.append(")");
+            builder.append(versionString);
         }
         return builder.toString();
     }
 
+    @Override
     public String getGroup() {
-        return group;
+        return moduleIdentifier.getGroup();
     }
 
+    @Override
     public String getModule() {
-        return module;
+        return moduleIdentifier.getName();
     }
 
+    @Override
     public String getVersion() {
-        return versionConstraint.getPreferredVersion();
+        return versionConstraint.getRequiredVersion();
     }
 
     @Override
@@ -71,14 +97,30 @@ public class DefaultModuleComponentSelector implements ModuleComponentSelector {
         return versionConstraint;
     }
 
+    @Override
+    public ModuleIdentifier getModuleIdentifier() {
+        return moduleIdentifier;
+    }
+
+    @Override
+    public List<Capability> getRequestedCapabilities() {
+        return requestedCapabilities;
+    }
+
+    @Override
+    public AttributeContainer getAttributes() {
+        return attributes;
+    }
+
+    @Override
     public boolean matchesStrictly(ComponentIdentifier identifier) {
         assert identifier != null : "identifier cannot be null";
 
         if (identifier instanceof ModuleComponentIdentifier) {
             ModuleComponentIdentifier moduleComponentIdentifier = (ModuleComponentIdentifier) identifier;
-            return module.equals(moduleComponentIdentifier.getModule())
-                && group.equals(moduleComponentIdentifier.getGroup())
-                && versionConstraint.getPreferredVersion().equals(moduleComponentIdentifier.getVersion());
+            return moduleIdentifier.getName().equals(moduleComponentIdentifier.getModule())
+                && moduleIdentifier.getGroup().equals(moduleComponentIdentifier.getGroup())
+                && getVersion().equals(moduleComponentIdentifier.getVersion());
         }
 
         return false;
@@ -95,13 +137,20 @@ public class DefaultModuleComponentSelector implements ModuleComponentSelector {
 
         DefaultModuleComponentSelector that = (DefaultModuleComponentSelector) o;
 
-        if (!group.equals(that.group)) {
+        if (hashCode != that.hashCode) {
             return false;
         }
-        if (!module.equals(that.module)) {
+
+        if (!moduleIdentifier.equals(that.moduleIdentifier)) {
             return false;
         }
         if (!versionConstraint.equals(that.versionConstraint)) {
+            return false;
+        }
+        if (!attributes.equals(that.attributes)) {
+            return false;
+        }
+        if (!requestedCapabilities.equals(that.requestedCapabilities)) {
             return false;
         }
 
@@ -110,10 +159,7 @@ public class DefaultModuleComponentSelector implements ModuleComponentSelector {
 
     @Override
     public int hashCode() {
-        int result = group.hashCode();
-        result = 31 * result + module.hashCode();
-        result = 31 * result + versionConstraint.hashCode();
-        return result;
+        return hashCode;
     }
 
     @Override
@@ -121,15 +167,31 @@ public class DefaultModuleComponentSelector implements ModuleComponentSelector {
         return getDisplayName();
     }
 
-    public static ModuleComponentSelector newSelector(String group, String name, VersionConstraint version) {
-        return new DefaultModuleComponentSelector(group, name, DefaultImmutableVersionConstraint.of(version));
+    public static ModuleComponentSelector newSelector(ModuleIdentifier id, VersionConstraint version, AttributeContainer attributes, Collection<Capability> requestedCapabilities) {
+        assert attributes != null : "attributes cannot be null";
+        assert version != null : "version cannot be null";
+        assert requestedCapabilities != null : "capabilities cannot be null";
+        assertModuleIdentifier(id);
+        return new DefaultModuleComponentSelector(id, DefaultImmutableVersionConstraint.of(version), ((AttributeContainerInternal)attributes).asImmutable(), ImmutableList.copyOf(requestedCapabilities));
     }
 
-    public static ModuleComponentSelector newSelector(String group, String name, String version) {
-        return new DefaultModuleComponentSelector(group, name, DefaultImmutableVersionConstraint.of(version));
+    private static void assertModuleIdentifier(ModuleIdentifier id) {
+        assert id.getGroup() != null : "group cannot be null";
+        assert id.getName() != null : "name cannot be null";
+    }
+
+    public static ModuleComponentSelector newSelector(ModuleIdentifier id, VersionConstraint version) {
+        assert version != null : "version cannot be null";
+        assertModuleIdentifier(id);
+        return new DefaultModuleComponentSelector(id, DefaultImmutableVersionConstraint.of(version), ImmutableAttributes.EMPTY, ImmutableList.of());
+    }
+
+    public static ModuleComponentSelector newSelector(ModuleIdentifier id, String version) {
+        assertModuleIdentifier(id);
+        return new DefaultModuleComponentSelector(id, DefaultImmutableVersionConstraint.of(version), ImmutableAttributes.EMPTY, ImmutableList.of());
     }
 
     public static ModuleComponentSelector newSelector(ModuleVersionSelector selector) {
-        return new DefaultModuleComponentSelector(selector.getGroup(), selector.getName(), DefaultImmutableVersionConstraint.of(selector.getVersion()));
+        return new DefaultModuleComponentSelector(selector.getModule(), DefaultImmutableVersionConstraint.of(selector.getVersion()), ImmutableAttributes.EMPTY, ImmutableList.of());
     }
 }

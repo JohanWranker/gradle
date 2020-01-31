@@ -16,7 +16,7 @@
 
 package org.gradle.platform.base.binary
 
-import org.gradle.api.internal.project.taskfactory.ITaskFactory
+
 import org.gradle.language.base.LanguageSourceSet
 import org.gradle.language.base.sources.BaseLanguageSourceSet
 import org.gradle.model.internal.core.ModelRuleExecutionException
@@ -70,7 +70,7 @@ class BaseBinarySpecTest extends PlatformBaseSpecification {
         e.cause instanceof ModelInstantiationException
         e.cause.message == "Could not create binary of type SampleBinary"
         e.cause.cause instanceof IllegalArgumentException
-        e.cause.cause.message.startsWith "Could not find any public constructor for class"
+        e.cause.cause.message == "Unable to determine constructor argument #1: missing parameter of type String, or no service of type String."
     }
 
     def "can own source sets"() {
@@ -97,7 +97,7 @@ class BaseBinarySpecTest extends PlatformBaseSpecification {
     }
 
     private <T extends BinarySpec, I extends BaseBinarySpec> T create(Class<T> type, Class<I> implType, String name, MutableModelNode componentNode = null) {
-        BaseBinaryFixtures.create(type, implType, name, componentNode, Mock(ITaskFactory))
+        BaseBinaryFixtures.create(type, implType, name, componentNode)
     }
 
     interface SampleComponent extends ComponentSpec {}

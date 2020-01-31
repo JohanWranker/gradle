@@ -18,7 +18,6 @@ package org.gradle.api.attributes;
 
 import org.gradle.api.Action;
 import org.gradle.api.ActionConfiguration;
-import org.gradle.api.Incubating;
 import org.gradle.internal.HasInternalProtocol;
 
 import java.util.Comparator;
@@ -35,7 +34,6 @@ import java.util.Comparator;
  *
  * @param <T> the concrete type of the attribute
  */
-@Incubating
 @HasInternalProtocol
 public interface DisambiguationRuleChain<T> {
 

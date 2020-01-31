@@ -16,6 +16,7 @@
 package org.gradle.integtests.resolve.maven
 
 import org.gradle.integtests.fixtures.AbstractDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.test.fixtures.maven.MavenModule
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
@@ -27,7 +28,11 @@ class MavenLocalRepoResolveIntegrationTest extends AbstractDependencyResolutionT
         using m2
         buildFile << """
                 repositories {
-                    mavenLocal()
+                    mavenLocal {
+                        content {
+                            excludeGroup 'unused'
+                        }
+                    }
                 }
                 configurations { compile }
                 dependencies {
@@ -64,7 +69,7 @@ class MavenLocalRepoResolveIntegrationTest extends AbstractDependencyResolutionT
         hasArtifact(moduleA)
     }
 
-    @Requires(TestPrecondition.JDK8_OR_EARLIER) //modifies environment variables
+    @Requires(TestPrecondition.SET_ENV_VARIABLE)
     def "can resolve artifacts from local m2 with custom local repository defined in global settings.xml"() {
         given:
         def sysPropRepo = mavenLocal("artifactrepo")
@@ -153,6 +158,7 @@ class MavenLocalRepoResolveIntegrationTest extends AbstractDependencyResolutionT
     }
 
     @Issue('GRADLE-2034')
+    @ToBeFixedForInstantExecution
     def "mavenLocal fails to resolve artifact if contains pom but not artifact"() {
         given:
         m2.mavenRepo().module('group', 'projectA', '1.2').publishPom()
@@ -164,6 +170,7 @@ class MavenLocalRepoResolveIntegrationTest extends AbstractDependencyResolutionT
         failure.assertHasCause('Could not find group:projectA:1.2')
     }
 
+    @ToBeFixedForInstantExecution
     def "mavenLocal reports and recovers from missing module"() {
         def module = m2.mavenRepo().module('group', 'projectA', '1.2')
 
@@ -173,8 +180,8 @@ class MavenLocalRepoResolveIntegrationTest extends AbstractDependencyResolutionT
         then:
         failure.assertHasCause("""Could not find group:projectA:1.2.
 Searched in the following locations:
-    ${module.pomFile.toURL()}
-    ${module.artifactFile.toURL()}
+  - ${module.pomFile.toURL()}
+If the artifact you are trying to retrieve can be found in the repository but without metadata in 'Maven POM' format, you need to adjust the 'metadataSources { ... }' of the repository declaration.
 Required by:
 """)
 
@@ -240,6 +247,7 @@ Required by:
     }
 
     @Issue('GRADLE-2034')
+    @ToBeFixedForInstantExecution
     def "mavenLocal fails to resolve snapshot artifact if contains pom but not artifact"() {
         given:
         m2.mavenRepo().module('group', 'projectA', '1.2-SNAPSHOT').publishPom()
@@ -267,6 +275,7 @@ Required by:
     }
 
     @Issue('GRADLE-2034')
+    @ToBeFixedForInstantExecution
     def "mavenLocal fails to resolve non-unique snapshot artifact if contains pom but not artifact"() {
         given:
         m2.mavenRepo().module('group', 'projectA', '1.2-SNAPSHOT').withNonUniqueSnapshots().publishPom()
@@ -353,6 +362,36 @@ Required by:
 
         then:
         hasArtifact(moduleARemote)
+    }
+
+    @Issue("gradle/gradle#11321")
+    def "mavenLocal version listing works without weaking metadata source configuration"() {
+        given:
+        m2.mavenRepo().module('group', 'projectA', '1.1').publish()
+        def module = m2.mavenRepo().module('group', 'projectA', '1.2').publish()
+
+        and:
+        buildFile.text = """
+                repositories {
+                    mavenLocal()
+                }
+                configurations { compile }
+                dependencies {
+                    compile 'group:projectA:[1.0,2.0['
+                }
+
+                task retrieve(type: Sync) {
+                    from configurations.compile
+                    into 'build'
+                }
+        """
+
+        when:
+        run 'retrieve'
+
+        then:
+        hasArtifact(module)
+
     }
 
     def hasArtifact(MavenModule module) {

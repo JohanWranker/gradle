@@ -21,21 +21,27 @@ import org.gradle.api.logging.Logging;
 import org.gradle.internal.classpath.ClassPath;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.event.ListenerManager;
+import org.gradle.internal.invocation.BuildAction;
 import org.gradle.internal.logging.LoggingManagerInternal;
 import org.gradle.internal.nativeintegration.ProcessEnvironment;
 import org.gradle.internal.nativeintegration.services.NativeServices;
 import org.gradle.internal.remote.internal.inet.InetAddressFactory;
+import org.gradle.internal.serialize.Serializer;
 import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.service.scopes.GlobalScopeServices;
+import org.gradle.internal.service.scopes.GradleUserHomeScopeServiceRegistry;
+import org.gradle.launcher.cli.action.BuildActionSerializer;
 import org.gradle.launcher.daemon.configuration.DaemonServerConfiguration;
 import org.gradle.launcher.daemon.context.DaemonContext;
 import org.gradle.launcher.daemon.context.DaemonContextBuilder;
 import org.gradle.launcher.daemon.diagnostics.DaemonDiagnostics;
+import org.gradle.launcher.daemon.protocol.DaemonMessageSerializer;
 import org.gradle.launcher.daemon.registry.DaemonDir;
 import org.gradle.launcher.daemon.registry.DaemonRegistry;
 import org.gradle.launcher.daemon.registry.DaemonRegistryServices;
 import org.gradle.launcher.daemon.server.api.DaemonCommandAction;
+import org.gradle.launcher.daemon.server.api.HandleInvalidateVirtualFileSystem;
 import org.gradle.launcher.daemon.server.api.HandleReportStatus;
 import org.gradle.launcher.daemon.server.api.HandleStop;
 import org.gradle.launcher.daemon.server.exec.DaemonCommandExecuter;
@@ -54,6 +60,7 @@ import org.gradle.launcher.daemon.server.health.DaemonHealthCheck;
 import org.gradle.launcher.daemon.server.health.DaemonHealthStats;
 import org.gradle.launcher.daemon.server.health.DaemonMemoryStatus;
 import org.gradle.launcher.daemon.server.health.HealthExpirationStrategy;
+import org.gradle.launcher.daemon.server.health.gc.GarbageCollectorMonitoringStrategy;
 import org.gradle.launcher.daemon.server.scaninfo.DaemonScanInfo;
 import org.gradle.launcher.daemon.server.scaninfo.DefaultDaemonScanInfo;
 import org.gradle.launcher.daemon.server.stats.DaemonRunningStats;
@@ -76,7 +83,7 @@ public class DaemonServices extends DefaultServiceRegistry {
         this.loggingManager = loggingManager;
 
         addProvider(new DaemonRegistryServices(configuration.getBaseDir()));
-        addProvider(new GlobalScopeServices(true, additionalModuleClassPath));
+        addProvider(new GlobalScopeServices(!configuration.isSingleUse(), additionalModuleClassPath));
     }
 
     protected DaemonContext createDaemonContext() {
@@ -84,6 +91,7 @@ public class DaemonServices extends DefaultServiceRegistry {
         builder.setDaemonRegistryDir(configuration.getBaseDir());
         builder.setIdleTimeout(configuration.getIdleTimeout());
         builder.setUid(configuration.getUid());
+        builder.setPriority(configuration.getPriority());
 
         LOGGER.debug("Creating daemon context with opts: {}", configuration.getJvmOptions());
 
@@ -99,8 +107,8 @@ public class DaemonServices extends DefaultServiceRegistry {
         return new File(get(DaemonDir.class).getVersionedDir(), fileName);
     }
 
-    protected DaemonMemoryStatus createDaemonMemoryStatus(DaemonHealthStats healthStats) {
-        return new DaemonMemoryStatus(healthStats);
+    protected DaemonMemoryStatus createDaemonMemoryStatus(DaemonHealthStats healthStats, GarbageCollectorMonitoringStrategy strategy) {
+        return new DaemonMemoryStatus(healthStats, strategy.getHeapUsageThreshold(), strategy.getGcRateThreshold(), strategy.getNonHeapUsageThreshold(), strategy.getThrashingThreshold());
     }
 
     protected DaemonHealthCheck createDaemonHealthCheck(ListenerManager listenerManager, HealthExpirationStrategy healthExpirationStrategy) {
@@ -123,8 +131,12 @@ public class DaemonServices extends DefaultServiceRegistry {
         return new HealthExpirationStrategy(memoryStatus);
     }
 
-    protected DaemonHealthStats createDaemonHealthStats(DaemonRunningStats runningStats, ExecutorFactory executorFactory) {
-        return new DaemonHealthStats(runningStats, executorFactory);
+    protected DaemonHealthStats createDaemonHealthStats(DaemonRunningStats runningStats, GarbageCollectorMonitoringStrategy strategy, ExecutorFactory executorFactory) {
+        return new DaemonHealthStats(runningStats, strategy, executorFactory);
+    }
+
+    protected GarbageCollectorMonitoringStrategy createGarbageCollectorMonitoringStrategy() {
+        return GarbageCollectorMonitoringStrategy.determineGcStrategy();
     }
 
     protected ImmutableList<DaemonCommandAction> createDaemonCommandActions(DaemonContext daemonContext, ProcessEnvironment processEnvironment, DaemonHealthStats healthStats, DaemonHealthCheck healthCheck, BuildExecuter buildActionExecuter, DaemonRunningStats runningStats) {
@@ -132,6 +144,7 @@ public class DaemonServices extends DefaultServiceRegistry {
         DaemonDiagnostics daemonDiagnostics = new DaemonDiagnostics(daemonLog, daemonContext.getPid());
         return ImmutableList.of(
             new HandleStop(get(ListenerManager.class)),
+            new HandleInvalidateVirtualFileSystem(get(GradleUserHomeScopeServiceRegistry.class)),
             new HandleCancel(),
             new HandleReportStatus(),
             new ReturnResult(),
@@ -148,11 +161,16 @@ public class DaemonServices extends DefaultServiceRegistry {
 
     }
 
-    protected Daemon createDaemon(ImmutableList<DaemonCommandAction> actions) {
+    Serializer<BuildAction> createBuildActionSerializer() {
+        return BuildActionSerializer.create();
+    }
+
+    protected Daemon createDaemon(ImmutableList<DaemonCommandAction> actions, Serializer<BuildAction> buildActionSerializer) {
         return new Daemon(
             new DaemonTcpServerConnector(
                 get(ExecutorFactory.class),
-                get(InetAddressFactory.class)
+                get(InetAddressFactory.class),
+                DaemonMessageSerializer.create(buildActionSerializer)
             ),
             get(DaemonRegistry.class),
             get(DaemonContext.class),
@@ -161,5 +179,4 @@ public class DaemonServices extends DefaultServiceRegistry {
             get(ListenerManager.class)
         );
     }
-
 }

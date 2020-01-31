@@ -19,6 +19,8 @@ package org.gradle.api.tasks
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import spock.lang.Unroll
 
+import static org.gradle.util.GUtil.loadProperties
+
 class WritePropertiesIntegrationTest extends AbstractIntegrationSpec {
     def "empty properties are written properly"() {
         given:
@@ -48,7 +50,7 @@ class WritePropertiesIntegrationTest extends AbstractIntegrationSpec {
         then:
         file("output.properties").text == normalize("""
             #Line comment
-        """)
+            """)
     }
 
     def "simple properties are written sorted alphabetically"() {
@@ -69,7 +71,7 @@ class WritePropertiesIntegrationTest extends AbstractIntegrationSpec {
             one=1
             three=three
             two=2
-        """)
+            """)
     }
 
     @Unroll
@@ -90,7 +92,7 @@ class WritePropertiesIntegrationTest extends AbstractIntegrationSpec {
         file("output.properties").text == normalize("""
             #Es\\u0151 les\\u0151
             n\\u00E9v=Rezs\\u0151
-        """)
+            """)
 
         where:
         encoding              | description
@@ -116,7 +118,7 @@ class WritePropertiesIntegrationTest extends AbstractIntegrationSpec {
         file("output.properties").getText("utf-8") == normalize("""
             #Es\\u0151 les\\u0151
             név=Rezső
-        """)
+            """)
     }
 
     def "specified line separator is used"() {
@@ -138,7 +140,7 @@ class WritePropertiesIntegrationTest extends AbstractIntegrationSpec {
             one=1
             three=three
             two=2
-        """).split("\n", -1).join("EOL")
+            """).split("\n", -1).join("EOL")
     }
 
     @Unroll
@@ -153,9 +155,23 @@ class WritePropertiesIntegrationTest extends AbstractIntegrationSpec {
         when:
         fails "props"
         then:
-        result.error.contains("Property 'someProp' is not allowed to have a null value.")
+        failure.assertHasCause("Property 'someProp' is not allowed to have a null value.")
         where:
         propValue << [ "null", "{ null }" ]
+    }
+
+    def "value can be provided"() {
+        given:
+        buildFile << """
+            task props(type: WriteProperties) {
+                property "provided", provider { "42" }
+                outputFile = file("output.properties")
+            }
+        """
+        when:
+        succeeds "props"
+        then:
+        loadProperties(file('output.properties'))['provided'] == '42'
     }
 
     private static String normalize(String text) {

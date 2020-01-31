@@ -16,76 +16,61 @@
 
 package org.gradle.api.internal.artifacts.transform
 
-import com.google.common.collect.Lists
+import com.google.common.collect.ImmutableList
+import org.gradle.api.Action
+import org.gradle.api.internal.tasks.NodeExecutionContext
+import org.gradle.internal.Try
 import spock.lang.Specification
 
 class ChainedTransformerTest extends Specification {
-
-    def "is cached if all parts are cached"() {
-        given:
-        def chain = new ChainedTransformer(new CachingTransformer(), new CachingTransformer())
-
-        expect:
-        chain.hasCachedResult(new File("foo"))
-    }
-
-    def "is not cached if first part is not cached"() {
-        given:
-        def chain = new ChainedTransformer(new NonCachingTransformer(), new CachingTransformer())
-
-        expect:
-        !chain.hasCachedResult(new File("foo"))
-    }
-
-    def "is not cached if second part is not cached"() {
-        given:
-        def chain = new ChainedTransformer(new CachingTransformer(), new NonCachingTransformer())
-
-        expect:
-        !chain.hasCachedResult(new File("foo"))
-    }
+    private TransformationSubject initialSubject = TransformationSubject.initial(new File("foo"))
 
     def "applies second transform on the result of the first"() {
         given:
-        def chain = new ChainedTransformer(new CachingTransformer(), new NonCachingTransformer())
+        def chain = new TransformationChain(new TestTransformation("first"), new TestTransformation("second"))
 
         expect:
-        chain.transform(new File("foo")) == [new File("foo/cached/non-cached")]
+        chain.createInvocation(initialSubject, Mock(ExecutionGraphDependenciesResolver), null).invoke().get().files == [new File("foo/first/second")]
     }
 
-    class CachingTransformer implements ArtifactTransformer {
+    class TestTransformation implements Transformation {
 
-        @Override
-        List<File> transform(File input) {
-            Lists.newArrayList(new File(input, "cached"));
+        private final String name
+
+        TestTransformation(String name) {
+            this.name = name
         }
 
         @Override
-        boolean hasCachedResult(File input) {
-            return true
+        CacheableInvocation<TransformationSubject> createInvocation(TransformationSubject subjectToTransform, ExecutionGraphDependenciesResolver dependenciesResolver, NodeExecutionContext context) {
+            return CacheableInvocation.cached(Try.successful(
+                subjectToTransform.createSubjectFromResult(ImmutableList.of(new File(subjectToTransform.files.first(), name)))
+            ))
         }
 
         @Override
-        String getDisplayName() {
-            return null;
-        }
-    }
-
-    class NonCachingTransformer implements ArtifactTransformer {
-
-        @Override
-        List<File> transform(File input) {
-            Lists.newArrayList(new File(input, "non-cached"));
-        }
-
-        @Override
-        boolean hasCachedResult(File input) {
+        boolean requiresDependencies() {
             return false
         }
 
         @Override
+        void visitTransformationSteps(Action<? super TransformationStep> action) {
+        }
+
+
+        @Override
+        boolean endsWith(Transformation otherTransform) {
+            return false
+        }
+
+        @Override
+        int stepsCount() {
+            return 1
+        }
+
+        @Override
         String getDisplayName() {
-            return null;
+            return name
         }
     }
 }

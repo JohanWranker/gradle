@@ -25,21 +25,7 @@ import org.gradle.test.fixtures.maven.MavenModule
 @CompileStatic
 @SelfType(AbstractIntegrationSpec)
 trait GradleMetadataAwarePublishingSpec {
-    boolean publishModuleMetadata = true
     boolean requiresExternalDependencies
-
-    // cannot use "setup" because of a bug with Spock
-    void prepare() {
-        executer.beforeExecute {
-            if (publishModuleMetadata) {
-                withArgument("-Dorg.gradle.gradlemetadata=true")
-            }
-        }
-    }
-
-    void disableModuleMetadataPublishing() {
-        publishModuleMetadata = false
-    }
 
     static String sq(String input) {
         return escapeForSingleQuoting(input)

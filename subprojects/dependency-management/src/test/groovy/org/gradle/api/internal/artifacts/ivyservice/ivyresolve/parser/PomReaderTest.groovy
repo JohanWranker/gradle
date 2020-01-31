@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 package org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser
+
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.data.MavenDependencyKey
@@ -98,6 +100,7 @@ class PomReaderTest extends AbstractPomReaderTest {
         pomReader.properties['project.parent.groupId'] == 'group-one'
         pomReader.properties['project.parent.artifactId'] == 'artifact-one'
         pomReader.relocation == null
+        !pomReader.hasGradleMetadataMarker()
     }
 
     def "use custom properties in POM project coordinates"() {
@@ -849,5 +852,204 @@ class PomReaderTest extends AbstractPomReaderTest {
         pomReader.groupId == pomReader.parentGroupId
         pomReader.artifactId == pomReader.parentArtifactId
         pomReader.version == pomReader.parentVersion
+    }
+
+    @Issue("gradle/gradle#5092")
+    def 'can parse exclusion defined only by artifactId'() {
+        when:
+        pomFile << """
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>group</groupId>
+    <artifactId>artifact</artifactId>
+    <version>version</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>group-two</groupId>
+            <artifactId>artifact-two</artifactId>
+            <version>version-two</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>bar</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+</project>
+"""
+        pomReader = new PomReader(locallyAvailableExternalResource, moduleIdentifierFactory)
+        MavenDependencyKey keyGroupTwo = new MavenDependencyKey('group-two', 'artifact-two', 'jar', null)
+        moduleIdentifierFactory.module('*', 'bar') >> DefaultModuleIdentifier.newId('*', 'bar')
+
+        then:
+        def excluded = pomReader.dependencies[keyGroupTwo].excludedModules
+        excluded == [DefaultModuleIdentifier.newId("*", "bar")]
+    }
+
+    @Issue("gradle/gradle#5092")
+    def 'can parse exclusion defined only by groupId'() {
+        when:
+        pomFile << """
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>group</groupId>
+    <artifactId>artifact</artifactId>
+    <version>version</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>group-two</groupId>
+            <artifactId>artifact-two</artifactId>
+            <version>version-two</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>bar</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+</project>
+"""
+        pomReader = new PomReader(locallyAvailableExternalResource, moduleIdentifierFactory)
+        MavenDependencyKey keyGroupTwo = new MavenDependencyKey('group-two', 'artifact-two', 'jar', null)
+        moduleIdentifierFactory.module('bar', '*') >> DefaultModuleIdentifier.newId('bar', '*')
+
+        then:
+        def excluded = pomReader.dependencies[keyGroupTwo].excludedModules
+        excluded == [DefaultModuleIdentifier.newId('bar', '*')]
+    }
+
+    @Issue("gradle/gradle#5092")
+    def 'can parse exclusion defined by groupId and artifactId'() {
+        when:
+        pomFile << """
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>group</groupId>
+    <artifactId>artifact</artifactId>
+    <version>version</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>group-two</groupId>
+            <artifactId>artifact-two</artifactId>
+            <version>version-two</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>bar</groupId>
+                    <artifactId>bar</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+</project>
+"""
+        pomReader = new PomReader(locallyAvailableExternalResource, moduleIdentifierFactory)
+        MavenDependencyKey keyGroupTwo = new MavenDependencyKey('group-two', 'artifact-two', 'jar', null)
+        moduleIdentifierFactory.module('bar', 'bar') >> DefaultModuleIdentifier.newId('bar', 'bar')
+
+        then:
+        def excluded = pomReader.dependencies[keyGroupTwo].excludedModules
+        excluded == [DefaultModuleIdentifier.newId('bar', 'bar')]
+    }
+
+    @Issue("gradle/gradle#5092")
+    def 'ignores empty exclusion block'() {
+        when:
+        pomFile << """
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>group</groupId>
+    <artifactId>artifact</artifactId>
+    <version>version</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>group-two</groupId>
+            <artifactId>artifact-two</artifactId>
+            <version>version-two</version>
+            <exclusions>
+                <exclusion>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+</project>
+"""
+        pomReader = new PomReader(locallyAvailableExternalResource, moduleIdentifierFactory)
+        MavenDependencyKey keyGroupTwo = new MavenDependencyKey('group-two', 'artifact-two', 'jar', null)
+
+        then:
+        pomReader.dependencies[keyGroupTwo].excludedModules.isEmpty()
+        0 * moduleIdentifierFactory.module(_, _)
+    }
+
+    @Issue("gradle/gradle#5092")
+    def 'can parse a wildcard exclusion block'() {
+        when:
+        pomFile << """
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>group</groupId>
+    <artifactId>artifact</artifactId>
+    <version>version</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>group-two</groupId>
+            <artifactId>artifact-two</artifactId>
+            <version>version-two</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+</project>
+"""
+        pomReader = new PomReader(locallyAvailableExternalResource, moduleIdentifierFactory)
+        MavenDependencyKey keyGroupTwo = new MavenDependencyKey('group-two', 'artifact-two', 'jar', null)
+        moduleIdentifierFactory.module('*', '*') >> DefaultModuleIdentifier.newId('*', '*')
+
+        then:
+        def excluded = pomReader.dependencies[keyGroupTwo].excludedModules
+        excluded == [DefaultModuleIdentifier.newId('*', '*')]
+    }
+
+    def 'parses old gradle module metadata marker'() {
+        when:
+        pomFile << """
+<project>
+    <!-- do-not-remove: published-with-gradle-metadata -->
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>group</groupId>
+    <artifactId>artifact</artifactId>
+    <version>version</version>
+</project>
+"""
+        pomReader = new PomReader(locallyAvailableExternalResource, moduleIdentifierFactory)
+
+        then:
+        pomReader.hasGradleMetadataMarker()
+    }
+
+    def 'parses gradle module metadata marker'() {
+        when:
+        pomFile << """
+<project>
+    <!-- do_not_remove: published-with-gradle-metadata -->
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>group</groupId>
+    <artifactId>artifact</artifactId>
+    <version>version</version>
+</project>
+"""
+        pomReader = new PomReader(locallyAvailableExternalResource, moduleIdentifierFactory)
+
+        then:
+        pomReader.hasGradleMetadataMarker()
     }
 }

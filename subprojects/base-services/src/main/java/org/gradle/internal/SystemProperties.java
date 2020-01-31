@@ -15,13 +15,14 @@
  */
 package org.gradle.internal;
 
+import com.google.common.collect.Maps;
+
+import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 
 /**
@@ -66,15 +67,12 @@ public class SystemProperties {
     private static final Set<String> IMPORTANT_NON_STANDARD_PROPERTIES = Collections.singleton("java.runtime.version");
 
     private static final SystemProperties INSTANCE = new SystemProperties();
-    private final Lock lock = new ReentrantLock();
 
     public static SystemProperties getInstance() {
         return INSTANCE;
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, String> asMap() {
-        return (Map) System.getProperties();
+    private SystemProperties() {
     }
 
     public String getLineSeparator() {
@@ -101,17 +99,6 @@ public class SystemProperties {
         return new File(System.getProperty("user.dir"));
     }
 
-    public File getJavaHomeDir() {
-        lock.lock();
-        File javaHomeDir;
-        try {
-            javaHomeDir = new File(System.getProperty("java.home"));
-        } finally {
-            lock.unlock();
-        }
-        return javaHomeDir;
-    }
-
     /**
      * Creates instance for Factory implementation with the provided Java home directory. Setting the "java.home" system property is thread-safe
      * and is set back to the original value of "java.home" after the operation.
@@ -132,39 +119,87 @@ public class SystemProperties {
      * @param value The value to temporarily set the property to
      * @param factory Instance created by the Factory implementation
      */
-    public <T> T withSystemProperty(String propertyName, String value, Factory<T> factory) {
-        lock.lock();
-        String originalValue = System.getProperty(propertyName);
-        System.setProperty(propertyName, value);
+    public synchronized <T> T withSystemProperty(String propertyName, String value, Factory<T> factory) {
+        String originalValue = overrideProperty(propertyName, value);
 
         try {
             return factory.create();
         } finally {
-            if (originalValue != null) {
-                System.setProperty(propertyName, originalValue);
-            } else {
-                System.clearProperty(propertyName);
-            }
-            lock.unlock();
+            restoreProperty(propertyName, originalValue);
         }
     }
 
     /**
-     * Returns the keys that are guaranteed to be contained in System.getProperties() by default,
-     * as specified in the Javadoc for that method.
+     * Provides safe access to the system properties, preventing concurrent {@link #withSystemProperty(String, String, Factory)} calls.
+     *
+     * This can be used to wrap 3rd party APIs that iterate over the system properties, so they won't result in {@link java.util.ConcurrentModificationException}s.
+     *
+     * This method should not be used when you need to temporarily change system properties.
      */
-    public Set<String> getStandardProperties() {
-        return STANDARD_PROPERTIES;
+    public synchronized <T> T withSystemProperties(Factory<T> factory) {
+        return factory.create();
     }
 
     /**
-     * Returns the names of properties that are not guaranteed to be contained in System.getProperties()
-     * but are usually there and if there should not be adjusted.
+     * Provides safe access to the system properties, preventing concurrent calls to change system properties.
      *
-     * @return the set of keys of {@code System.getProperties()} which should not be adjusted
-     *   by client code. This method never returns {@code null}.
+     * This can be used to wrap 3rd party APIs that iterate over the system properties, so they won't result in {@link java.util.ConcurrentModificationException}s.
+     *
+     * This method can be used to override system properties temporarily.  The original values of the given system properties are restored before returning.
      */
-    public Set<String> getNonStandardImportantProperties() {
-        return IMPORTANT_NON_STANDARD_PROPERTIES;
+    public synchronized <T> T withSystemProperties(Map<String, String> properties, Factory<T> factory) {
+        Map<String, String> originalProperties = Maps.newHashMap();
+        for (Map.Entry<String, String> property : properties.entrySet()) {
+            String propertyName = property.getKey();
+            String value = property.getValue();
+            String originalValue = overrideProperty(propertyName, value);
+            originalProperties.put(propertyName, originalValue);
+        }
+
+        try {
+            return factory.create();
+        } finally {
+            for (Map.Entry<String, String> property : originalProperties.entrySet()) {
+                String propertyName = property.getKey();
+                String originalValue = property.getValue();
+                restoreProperty(propertyName, originalValue);
+            }
+        }
+    }
+
+    @Nullable
+    private String overrideProperty(String propertyName, String value) {
+        // Overwrite property
+        String originalValue = System.getProperty(propertyName);
+        if (value != null) {
+            System.setProperty(propertyName, value);
+        } else {
+            System.clearProperty(propertyName);
+        }
+        return originalValue;
+    }
+
+    private void restoreProperty(String propertyName, @Nullable String originalValue) {
+        if (originalValue != null) {
+            System.setProperty(propertyName, originalValue);
+        } else {
+            System.clearProperty(propertyName);
+        }
+    }
+
+    /**
+     * Returns true if the given key is guaranteed to be contained in System.getProperties() by default,
+     * as specified in the Javadoc for that method.
+     */
+    public boolean isStandardProperty(String key) {
+        return STANDARD_PROPERTIES.contains(key);
+    }
+
+    /**
+     * Returns true if the key is an important property that is not guaranteed to be contained in System.getProperties().
+     * The property is usually there and should not be adjusted.
+     */
+    public boolean isNonStandardImportantProperty(String key) {
+        return IMPORTANT_NON_STANDARD_PROPERTIES.contains(key);
     }
 }

@@ -16,9 +16,9 @@
 package org.gradle.api.internal.artifacts.repositories.resolver;
 
 import com.google.common.collect.ImmutableSet;
-import org.gradle.api.artifacts.ComponentMetadataSupplier;
+import org.gradle.api.artifacts.ComponentMetadataListerDetails;
+import org.gradle.api.artifacts.ComponentMetadataSupplierDetails;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
-import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ModuleComponentRepositoryAccess;
 import org.gradle.api.internal.artifacts.repositories.maven.MavenMetadata;
 import org.gradle.api.internal.artifacts.repositories.maven.MavenMetadataLoader;
@@ -27,15 +27,20 @@ import org.gradle.api.internal.artifacts.repositories.metadata.MetadataArtifactP
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport;
 import org.gradle.api.internal.component.ArtifactType;
 import org.gradle.api.resources.MissingResourceException;
+import org.gradle.internal.action.InstantiatingAction;
 import org.gradle.internal.component.external.model.FixedComponentArtifacts;
-import org.gradle.internal.component.external.model.MavenModuleResolveMetadata;
 import org.gradle.internal.component.external.model.MetadataSourcedComponentArtifacts;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
-import org.gradle.internal.component.external.model.MutableMavenModuleResolveMetadata;
+import org.gradle.internal.component.external.model.maven.MavenModuleResolveMetadata;
+import org.gradle.internal.component.external.model.maven.MutableMavenModuleResolveMetadata;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ComponentOverrideMetadata;
-import org.gradle.internal.component.model.ModuleSource;
+import org.gradle.internal.component.model.ConfigurationMetadata;
+import org.gradle.internal.component.model.ModuleSources;
+import org.gradle.internal.component.model.MutableModuleSources;
+import org.gradle.internal.hash.ChecksumService;
+import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.resolve.result.BuildableArtifactSetResolveResult;
 import org.gradle.internal.resolve.result.BuildableComponentArtifactsResolveResult;
 import org.gradle.internal.resolve.result.BuildableModuleComponentMetaDataResolveResult;
@@ -62,22 +67,29 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
     private final MavenLocalRepositoryAccess localAccess = new MavenLocalRepositoryAccess();
     private final MavenRemoteRepositoryAccess remoteAccess = new MavenRemoteRepositoryAccess();
 
-    public MavenResolver(String name, URI rootUri,
+    public MavenResolver(String name,
+                         URI rootUri,
                          RepositoryTransport transport,
                          LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> locallyAvailableResourceFinder,
                          FileStore<ModuleComponentArtifactIdentifier> artifactFileStore,
-                         ImmutableModuleIdentifierFactory moduleIdentifierFactory,
                          ImmutableMetadataSources metadataSources,
                          MetadataArtifactProvider metadataArtifactProvider,
-                         MavenMetadataLoader mavenMetadataLoader) {
+                         MavenMetadataLoader mavenMetadataLoader,
+                         @Nullable InstantiatingAction<ComponentMetadataSupplierDetails> componentMetadataSupplierFactory,
+                         @Nullable InstantiatingAction<ComponentMetadataListerDetails> versionListerFactory,
+                         Instantiator injector,
+                         ChecksumService checksumService) {
         super(name, transport.isLocal(),
             transport.getRepository(),
             transport.getResourceAccessor(),
             locallyAvailableResourceFinder,
             artifactFileStore,
-            moduleIdentifierFactory,
             metadataSources,
-            metadataArtifactProvider);
+            metadataArtifactProvider,
+            componentMetadataSupplierFactory,
+            versionListerFactory,
+            injector,
+            checksumService);
         this.mavenMetaDataLoader = mavenMetadataLoader;
         this.root = rootUri;
         updatePatterns();
@@ -97,6 +109,7 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
         return root;
     }
 
+    @Override
     protected void doResolveComponentMetaData(ModuleComponentIdentifier moduleComponentIdentifier, ComponentOverrideMetadata prescribedMetaData, BuildableModuleComponentMetaDataResolveResult result) {
         if (isNonUniqueSnapshot(moduleComponentIdentifier)) {
             MavenUniqueSnapshotModuleSource uniqueSnapshotVersion = findUniqueSnapshotVersion(moduleComponentIdentifier, result);
@@ -117,22 +130,24 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
         resolveStaticDependency(moduleComponentIdentifier, prescribedMetaData, result, super.createArtifactResolver());
     }
 
+    @Override
     protected boolean isMetaDataArtifact(ArtifactType artifactType) {
         return artifactType == ArtifactType.MAVEN_POM;
     }
 
     private void resolveUniqueSnapshotDependency(MavenUniqueSnapshotComponentIdentifier module, ComponentOverrideMetadata prescribedMetaData, BuildableModuleComponentMetaDataResolveResult result, MavenUniqueSnapshotModuleSource snapshotSource) {
-        resolveStaticDependency(module, prescribedMetaData, result, createArtifactResolver(snapshotSource));
+        resolveStaticDependency(module, prescribedMetaData, result, createArtifactResolver(MutableModuleSources.of(snapshotSource)));
     }
 
     @Override
-    protected ExternalResourceArtifactResolver createArtifactResolver(ModuleSource moduleSource) {
-
-        if (moduleSource instanceof MavenUniqueSnapshotModuleSource) {
-            return new MavenUniqueSnapshotExternalResourceArtifactResolver(super.createArtifactResolver(moduleSource), (MavenUniqueSnapshotModuleSource) moduleSource);
-        }
-
-        return super.createArtifactResolver(moduleSource);
+    protected ExternalResourceArtifactResolver createArtifactResolver(final ModuleSources moduleSources) {
+        return moduleSources.withSource(MavenUniqueSnapshotModuleSource.class, source -> {
+            if (source.isPresent()) {
+                return new MavenUniqueSnapshotExternalResourceArtifactResolver(super.createArtifactResolver(moduleSources), source.get());
+            } else {
+                return super.createArtifactResolver(moduleSources);
+            }
+        });
     }
 
     public void addArtifactLocation(URI baseUri) {
@@ -155,6 +170,7 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
         setArtifactPatterns(artifactPatterns);
     }
 
+    @Nullable
     private MavenUniqueSnapshotModuleSource findUniqueSnapshotVersion(ModuleComponentIdentifier module, ResourceAwareResolveResult result) {
         M2ResourcePattern wholePattern = getWholePattern();
         if (!wholePattern.isComplete(module)) {
@@ -190,29 +206,32 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
         }
     }
 
+    @Override
     public ModuleComponentRepositoryAccess getLocalAccess() {
         return localAccess;
     }
 
+    @Override
     public ModuleComponentRepositoryAccess getRemoteAccess() {
         return remoteAccess;
     }
 
-    public ComponentMetadataSupplier createMetadataSupplier() {
-        return null;
-    }
-
     public static MutableMavenModuleResolveMetadata processMetaData(MutableMavenModuleResolveMetadata metaData) {
-        if (isNonUniqueSnapshot(metaData.getComponentId())) {
+        ModuleComponentIdentifier id = metaData.getId();
+        if (isNonUniqueSnapshot(id)) {
             metaData.setChanging(true);
+        }
+        if (isUniqueSnapshot(id)) {
+            MavenUniqueSnapshotComponentIdentifier mus = (MavenUniqueSnapshotComponentIdentifier) id;
+            metaData.setSnapshotTimestamp(mus.getTimestamp());
         }
         return metaData;
     }
 
     private class MavenLocalRepositoryAccess extends LocalRepositoryAccess {
         @Override
-        protected void resolveModuleArtifacts(MavenModuleResolveMetadata module, BuildableComponentArtifactsResolveResult result) {
-            if (!module.getVariants().isEmpty()) {
+        protected void resolveModuleArtifacts(MavenModuleResolveMetadata module, ConfigurationMetadata variant, BuildableComponentArtifactsResolveResult result) {
+            if (!variant.requiresMavenArtifactDiscovery()) {
                 result.resolved(new MetadataSourcedComponentArtifacts());
             } else if (module.isKnownJarPackaging()) {
                 ModuleComponentArtifactMetadata artifact = module.artifact("jar", "jar", null);
@@ -235,13 +254,13 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
 
     private class MavenRemoteRepositoryAccess extends RemoteRepositoryAccess {
         @Override
-        protected void resolveModuleArtifacts(MavenModuleResolveMetadata module, BuildableComponentArtifactsResolveResult result) {
+        protected void resolveModuleArtifacts(MavenModuleResolveMetadata module, ConfigurationMetadata variant, BuildableComponentArtifactsResolveResult result) {
             if (module.isPomPackaging()) {
                 result.resolved(new FixedComponentArtifacts(findOptionalArtifacts(module, "jar", null)));
             } else {
                 ModuleComponentArtifactMetadata artifactMetaData = module.artifact(module.getPackaging(), module.getPackaging(), null);
 
-                if (createArtifactResolver(module.getSource()).artifactExists(artifactMetaData, new DefaultResourceAwareResolveResult())) {
+                if (createArtifactResolver(module.getSources()).artifactExists(artifactMetaData, new DefaultResourceAwareResolveResult())) {
                     result.resolved(new FixedComponentArtifacts(ImmutableSet.of(artifactMetaData)));
                 } else {
                     ModuleComponentArtifactMetadata artifact = module.artifact("jar", "jar", null);
@@ -261,13 +280,17 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
         }
     }
 
+    private static boolean isUniqueSnapshot(ModuleComponentIdentifier id) {
+        return id instanceof MavenUniqueSnapshotComponentIdentifier;
+    }
+
     protected static boolean isNonUniqueSnapshot(ModuleComponentIdentifier moduleComponentIdentifier) {
         return moduleComponentIdentifier.getVersion().endsWith("-SNAPSHOT");
     }
 
     private MavenUniqueSnapshotComponentIdentifier composeSnapshotIdentifier(ModuleComponentIdentifier moduleComponentIdentifier, MavenUniqueSnapshotModuleSource uniqueSnapshotVersion) {
-        return new MavenUniqueSnapshotComponentIdentifier(moduleComponentIdentifier.getGroup(),
-            moduleComponentIdentifier.getModule(),
+        return new MavenUniqueSnapshotComponentIdentifier(
+            moduleComponentIdentifier.getModuleIdentifier(),
             moduleComponentIdentifier.getVersion(),
             uniqueSnapshotVersion.getTimestamp());
     }

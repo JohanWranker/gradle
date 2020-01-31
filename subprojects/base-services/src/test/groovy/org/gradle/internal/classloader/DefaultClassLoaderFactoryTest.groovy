@@ -15,6 +15,8 @@
  */
 package org.gradle.internal.classloader
 
+
+import org.gradle.internal.classpath.DefaultClassPath
 import spock.lang.Specification
 
 class DefaultClassLoaderFactoryTest extends Specification {
@@ -31,7 +33,7 @@ class DefaultClassLoaderFactoryTest extends Specification {
 
     def "classes from specified URLs are visible in isolated ClassLoader"() {
         when:
-        def cl = factory.createIsolatedClassLoader(classpath)
+        def cl = factory.createIsolatedClassLoader("test", classpath)
         def c = cl.loadClass(DefaultClassLoaderFactoryTestHelper.name)
 
         then:
@@ -41,7 +43,7 @@ class DefaultClassLoaderFactoryTest extends Specification {
 
     def "application classes are not visible in isolated ClassLoader"() {
         when:
-        def cl = factory.createIsolatedClassLoader(classpath)
+        def cl = factory.createIsolatedClassLoader("test", classpath)
         cl.loadClass(Closure.name)
 
         then:
@@ -52,7 +54,7 @@ class DefaultClassLoaderFactoryTest extends Specification {
         assert ClassLoader.getSystemResource("META-INF/services/javax.xml.parsers.SAXParserFactory")
 
         when:
-        def cl = new URLClassLoader(classpath.collect { it.toURL() } as URL[], factory.createFilteringClassLoader(getClass().classLoader, new FilteringClassLoader.Spec()))
+        def cl = new URLClassLoader(classpath.asURLArray, factory.createFilteringClassLoader(getClass().classLoader, new FilteringClassLoader.Spec()))
         def c = cl.loadClass(DefaultClassLoaderFactoryTestHelper.name)
 
         then:
@@ -60,14 +62,14 @@ class DefaultClassLoaderFactoryTest extends Specification {
 
         when:
         Thread.currentThread().contextClassLoader = cl
-        c.newInstance().doStuff()
+        c.getConstructor().newInstance().doStuff()
 
         then:
         notThrown()
     }
 
     def getClasspath() {
-        return [ClasspathUtil.getClasspathForClass(DefaultClassLoaderFactoryTestHelper)]
+        return DefaultClassPath.of(ClasspathUtil.getClasspathForClass(DefaultClassLoaderFactoryTestHelper))
     }
 }
 

@@ -17,6 +17,7 @@ package org.gradle.internal.logging;
 
 import org.gradle.api.logging.LogLevel;
 import org.gradle.api.logging.LoggingManager;
+import org.gradle.api.logging.StandardOutputListener;
 
 /**
  * Provides access to and control over the logging system. Log manager represents some 'scope', and log managers can be nested in a stack.
@@ -27,11 +28,13 @@ public interface LoggingManagerInternal extends LoggingManager, StandardOutputCa
      *
      * <p>While a log manager is active, any changes made to the settings will take effect immediately. When a log manager is not active, changes to its settings will apply only once it is made active by calling {@link #start()}.</p>
      */
+    @Override
     LoggingManagerInternal start();
 
     /**
      * Stops logging, restoring the log manger that was active when {@link #start()} was called on this manager. Shuts down the logging system when there was no log manager active prior to starting this one.
      */
+    @Override
     LoggingManagerInternal stop();
 
     /**
@@ -42,12 +45,21 @@ public interface LoggingManagerInternal extends LoggingManager, StandardOutputCa
     /**
      * Sets the log level to capture stdout at. Does not enable capture.
      */
+    @Override
     LoggingManagerInternal captureStandardOutput(LogLevel level);
 
     /**
      * Sets the log level to capture stderr at. Does not enable capture.
      */
+    @Override
     LoggingManagerInternal captureStandardError(LogLevel level);
 
     LoggingManagerInternal setLevelInternal(LogLevel logLevel);
+
+    /**
+     * Allows {@link org.gradle.api.logging.LoggingOutput#addStandardOutputListener(StandardOutputListener)} and {@link org.gradle.api.logging.LoggingOutput#addStandardErrorListener(StandardOutputListener)} to be used.
+     *
+     * <p>This should be used only when custom user listeners are required, i.e. only in the build JVM around the build execution.
+     */
+    LoggingManagerInternal enableUserStandardOutputListeners();
 }

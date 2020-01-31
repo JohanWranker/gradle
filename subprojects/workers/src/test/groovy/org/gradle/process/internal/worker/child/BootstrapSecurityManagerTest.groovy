@@ -16,15 +16,18 @@
 
 package org.gradle.process.internal.worker.child
 
-import org.gradle.process.internal.streams.EncodedStream
+import org.gradle.internal.stream.EncodedStream
 import org.gradle.util.RedirectStdIn
+import org.gradle.util.Requires
 import org.gradle.util.SetSystemProperties
+import org.gradle.util.TestPrecondition
 import org.junit.Rule
 import spock.lang.Specification
 
 import java.security.AllPermission
 import java.security.Permission
 
+@Requires(TestPrecondition.JDK8_OR_EARLIER)
 class BootstrapSecurityManagerTest extends Specification {
     @Rule SetSystemProperties systemProperties
     @Rule RedirectStdIn stdIn
@@ -62,6 +65,24 @@ class BootstrapSecurityManagerTest extends Specification {
         then:
         0 * cl._
         System.getProperty("java.class.path") == [entry1.absolutePath, entry2.absolutePath].join(File.pathSeparator)
+    }
+
+    def "fails with proper error message if System.in is not delivering all expected data"() {
+        given:
+        def incompleteStream = new ByteArrayOutputStream()
+        def dataOut = new DataOutputStream(new EncodedStream.EncodedOutput(incompleteStream))
+        dataOut.writeInt(1) // expect one classpath entry
+        dataOut.write(1234) // but the entry is not a complete UTF-8 encoded String
+
+        System.in = new ByteArrayInputStream(incompleteStream.toByteArray())
+
+        when:
+        new BootstrapSecurityManager(new TestClassLoader()).checkPermission(new AllPermission())
+
+        then:
+        RuntimeException e = thrown()
+        e.message == "Could not initialise system classpath."
+        e.cause instanceof EOFException
     }
 
     def "installs custom SecurityManager"() {

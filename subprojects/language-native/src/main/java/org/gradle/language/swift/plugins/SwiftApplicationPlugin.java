@@ -16,30 +16,27 @@
 
 package org.gradle.language.swift.plugins;
 
-import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
-import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.artifacts.ConfigurationContainer;
-import org.gradle.api.attributes.Usage;
-import org.gradle.api.internal.file.FileOperations;
-import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.provider.ProviderFactory;
 import org.gradle.language.internal.NativeComponentFactory;
-import org.gradle.language.nativeplatform.internal.ComponentWithNames;
-import org.gradle.language.nativeplatform.internal.Names;
+import org.gradle.language.nativeplatform.internal.Dimensions;
 import org.gradle.language.nativeplatform.internal.toolchains.ToolChainSelector;
 import org.gradle.language.swift.SwiftApplication;
 import org.gradle.language.swift.SwiftExecutable;
 import org.gradle.language.swift.SwiftPlatform;
 import org.gradle.language.swift.internal.DefaultSwiftApplication;
+import org.gradle.language.swift.internal.DefaultSwiftPlatform;
+import org.gradle.nativeplatform.TargetMachineFactory;
+import org.gradle.nativeplatform.platform.internal.Architectures;
+import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
 import org.gradle.util.GUtil;
 
 import javax.inject.Inject;
 
-import static org.gradle.language.cpp.CppBinary.DEBUGGABLE_ATTRIBUTE;
-import static org.gradle.language.cpp.CppBinary.OPTIMIZED_ATTRIBUTE;
+import static org.gradle.language.nativeplatform.internal.Dimensions.tryToBuildOnHost;
 
 /**
  * <p>A plugin that produces an executable from Swift source.</p>
@@ -50,27 +47,31 @@ import static org.gradle.language.cpp.CppBinary.OPTIMIZED_ATTRIBUTE;
  *
  * @since 4.5
  */
-@Incubating
-public class SwiftApplicationPlugin implements Plugin<ProjectInternal> {
+public class SwiftApplicationPlugin implements Plugin<Project> {
     private final NativeComponentFactory componentFactory;
     private final ToolChainSelector toolChainSelector;
+    private final ImmutableAttributesFactory attributesFactory;
+    private final TargetMachineFactory targetMachineFactory;
 
     /**
-     * Injects a {@link FileOperations} instance.
+     * SwiftApplicationPlugin.
      *
      * @since 4.2
      */
     @Inject
-    public SwiftApplicationPlugin(NativeComponentFactory componentFactory, ToolChainSelector toolChainSelector) {
+    public SwiftApplicationPlugin(NativeComponentFactory componentFactory, ToolChainSelector toolChainSelector, ImmutableAttributesFactory attributesFactory, TargetMachineFactory targetMachineFactory) {
         this.componentFactory = componentFactory;
         this.toolChainSelector = toolChainSelector;
+        this.attributesFactory = attributesFactory;
+        this.targetMachineFactory = targetMachineFactory;
     }
 
     @Override
-    public void apply(final ProjectInternal project) {
+    public void apply(final Project project) {
         project.getPluginManager().apply(SwiftBasePlugin.class);
 
-        final ConfigurationContainer configurations = project.getConfigurations();
+        final ObjectFactory objectFactory = project.getObjects();
+        final ProviderFactory providers = project.getProviders();
 
         // Add the application and extension
         final DefaultSwiftApplication application = componentFactory.newInstance(SwiftApplication.class, DefaultSwiftApplication.class, "main");
@@ -78,44 +79,37 @@ public class SwiftApplicationPlugin implements Plugin<ProjectInternal> {
         project.getComponents().add(application);
 
         // Setup component
-        application.getModule().set(GUtil.toCamelCase(project.getName()));
+        application.getModule().convention(GUtil.toCamelCase(project.getName()));
 
-        project.afterEvaluate(new Action<Project>() {
-            @Override
-            public void execute(Project project) {
-                final ObjectFactory objectFactory = project.getObjects();
+        application.getTargetMachines().convention(Dimensions.useHostAsDefaultTargetMachine(targetMachineFactory));
+        application.getDevelopmentBinary().convention(project.provider(() -> {
+            return application.getBinaries().get().stream()
+                    .filter(SwiftExecutable.class::isInstance)
+                    .map(SwiftExecutable.class::cast)
+                    .filter(binary -> !binary.isOptimized() && Architectures.forInput(binary.getTargetMachine().getArchitecture().getName()).equals(DefaultNativePlatform.host().getArchitecture()))
+                    .findFirst()
+                    .orElse(application.getBinaries().get().stream()
+                            .filter(SwiftExecutable.class::isInstance)
+                            .map(SwiftExecutable.class::cast)
+                            .filter(binary -> !binary.isOptimized())
+                            .findFirst()
+                            .orElse(null));
+        }));
 
-                ToolChainSelector.Result<SwiftPlatform> result = toolChainSelector.select(SwiftPlatform.class);
+        project.afterEvaluate(p -> {
+            // TODO: make build type configurable for components
+            Dimensions.applicationVariants(application.getModule(), application.getTargetMachines(), objectFactory, attributesFactory,
+                    providers.provider(() -> project.getGroup().toString()), providers.provider(() -> project.getVersion().toString()),
+                    variantIdentity -> {
+                        if (tryToBuildOnHost(variantIdentity)) {
+                            application.getSourceCompatibility().finalizeValue();
+                            ToolChainSelector.Result<SwiftPlatform> result = toolChainSelector.select(SwiftPlatform.class, new DefaultSwiftPlatform(variantIdentity.getTargetMachine(), application.getSourceCompatibility().getOrNull()));
+                            application.addExecutable(variantIdentity, variantIdentity.isDebuggable() && !variantIdentity.isOptimized(), result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
+                        }
+                    });
 
-                SwiftExecutable debugExecutable = application.addExecutable("debug", true, false, true, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
-                application.addExecutable("release", true, true, false, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
-
-                // Add outgoing APIs
-                // TODO - remove this
-
-                final Configuration implementation = application.getImplementationDependencies();
-                final Usage apiUsage = objectFactory.named(Usage.class, Usage.SWIFT_API);
-
-                application.getBinaries().whenElementKnown(SwiftExecutable.class, new Action<SwiftExecutable>() {
-                    @Override
-                    public void execute(SwiftExecutable executable) {
-                        Names names = ((ComponentWithNames) executable).getNames();
-                        Configuration apiElements = configurations.create(names.withSuffix("SwiftApiElements"));
-                        apiElements.extendsFrom(implementation);
-                        apiElements.setCanBeResolved(false);
-                        apiElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, apiUsage);
-                        apiElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, executable.isDebuggable());
-                        apiElements.getAttributes().attribute(OPTIMIZED_ATTRIBUTE, executable.isOptimized());
-                        apiElements.getOutgoing().artifact(executable.getModuleFile());
-                    }
-                });
-
-                // Use the debug variant as the development variant
-                application.getDevelopmentBinary().set(debugExecutable);
-
-                // Configure the binaries
-                application.getBinaries().realizeNow();
-            }
+            // Configure the binaries
+            application.getBinaries().realizeNow();
         });
     }
 }

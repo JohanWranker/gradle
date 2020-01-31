@@ -16,16 +16,15 @@
 package org.gradle.groovy.scripts.internal
 
 import org.gradle.api.Action
-import org.gradle.api.internal.initialization.ClassLoaderIds
+import org.gradle.api.internal.initialization.ClassLoaderScope
 import org.gradle.api.internal.initialization.loadercache.ClassLoaderCache
 import org.gradle.cache.CacheBuilder
 import org.gradle.cache.CacheRepository
-import org.gradle.cache.CacheValidator
 import org.gradle.cache.PersistentCache
 import org.gradle.groovy.scripts.Script
 import org.gradle.groovy.scripts.ScriptSource
 import org.gradle.groovy.scripts.Transformer
-import org.gradle.internal.classloader.ClassLoaderHierarchyHasher
+import org.gradle.internal.hash.ClassLoaderHierarchyHasher
 import org.gradle.internal.hash.HashCode
 import org.gradle.internal.logging.progress.ProgressLogger
 import org.gradle.internal.logging.progress.ProgressLoggerFactory
@@ -37,7 +36,6 @@ class FileCacheBackedScriptClassCompilerTest extends Specification {
     final CacheRepository cacheRepository = Mock()
     final CacheBuilder localCacheBuilder = Mock()
     final CacheBuilder globalCacheBuilder = Mock()
-    final CacheValidator validator = Mock()
     final PersistentCache localCache = Mock()
     final PersistentCache globalCache = Mock()
     final ScriptSource source = Mock()
@@ -45,7 +43,9 @@ class FileCacheBackedScriptClassCompilerTest extends Specification {
     final classLoader = Mock(ClassLoader)
     final Transformer transformer = Mock()
     final CompileOperation<?> operation = Mock()
-    final ScriptSourceHasher hasher = Mock()
+    final ClassLoaderScope targetScope = Mock() {
+        getExportClassLoader() >> classLoader
+    }
     final ClassLoaderCache classLoaderCache = Mock()
     final classLoaderHierarchyHasher = Mock(ClassLoaderHierarchyHasher) {
         getClassLoaderHash(classLoader) >> HashCode.fromInt(9999)
@@ -53,18 +53,17 @@ class FileCacheBackedScriptClassCompilerTest extends Specification {
     final File localDir = new File("local-dir")
     final File globalDir = new File("global-dir")
     final File classesDir = new File(globalDir, "classes")
-    final File metadataDir = new File(globalDir, "metadata")
-    final FileCacheBackedScriptClassCompiler compiler = new FileCacheBackedScriptClassCompiler(cacheRepository, validator, scriptCompilationHandler, Stub(ProgressLoggerFactory), hasher, classLoaderCache, classLoaderHierarchyHasher)
+    final FileCacheBackedScriptClassCompiler compiler = new FileCacheBackedScriptClassCompiler(cacheRepository, scriptCompilationHandler, Stub(ProgressLoggerFactory), classLoaderCache, classLoaderHierarchyHasher)
     final Action verifier = Stub()
     final CompiledScript compiledScript = Stub() {
         loadClass() >> Script
     }
-    def classLoaderId = ClassLoaderIds.buildScript("foo", "bar")
 
     def setup() {
         _ * source.resource >> resource
         _ * resource.contentCached >> true
         _ * resource.text >> 'this is the script'
+        _ * resource.contentHash >> HashCode.fromInt(0)
         _ * source.className >> 'ScriptClassName'
         _ * source.fileName >> 'ScriptFileName'
         _ * source.displayName >> 'Build Script'
@@ -72,25 +71,22 @@ class FileCacheBackedScriptClassCompilerTest extends Specification {
         _ * operation.transformer >> transformer
         _ * localCache.baseDir >> localDir
         _ * globalCache.baseDir >> globalDir
-        _ * validator.isValid() >> true
     }
 
     def "loads classes from cache directory"() {
         def initializer
 
         when:
-        def result = compiler.compile(source, classLoader, classLoaderId, operation, Script, verifier).loadClass()
+        def result = compiler.compile(source, targetScope, operation, Script, verifier).loadClass()
 
         then:
         result == Script
-        1 * hasher.hash(source) >> HashCode.fromInt(0x0123)
         1 * cacheRepository.cache({ it =~ "scripts-remapped/ScriptClassName/\\p{XDigit}+/TransformerId\\p{XDigit}+" }) >> localCacheBuilder
         1 * localCacheBuilder.withInitializer(!null) >> { args ->
             initializer = args[0]
             localCacheBuilder
         }
         1 * localCacheBuilder.withDisplayName(!null) >> localCacheBuilder
-        1 * localCacheBuilder.withValidator(!null) >> localCacheBuilder
         1 * localCacheBuilder.open() >> {
             initializer.execute(localCache)
             localCache
@@ -99,28 +95,10 @@ class FileCacheBackedScriptClassCompilerTest extends Specification {
         1 * cacheRepository.cache({ it =~ "scripts/\\p{XDigit}+/TransformerId/TransformerId\\p{XDigit}+" }) >> globalCacheBuilder
         1 * globalCacheBuilder.withDisplayName(!null) >> globalCacheBuilder
         1 * globalCacheBuilder.withInitializer(!null) >> globalCacheBuilder
-        1 * globalCacheBuilder.withValidator(!null) >> globalCacheBuilder
         1 * globalCacheBuilder.open() >> globalCache
 
-        1 * scriptCompilationHandler.loadFromDir(source, _, classLoader, new File(localDir, 'classes'), new File(localDir, 'metadata'), operation, Script, classLoaderId) >> compiledScript
+        1 * scriptCompilationHandler.loadFromDir(source, _, targetScope, new File(localDir, 'classes'), new File(localDir, 'metadata'), operation, Script) >> compiledScript
         0 * scriptCompilationHandler._
-    }
-
-    def "passes CacheValidator to cache builders"() {
-        setup:
-        hasher.hash(source) >> HashCode.fromInt(0x0123)
-        cacheRepository.cache({ it =~ "scripts-remapped/ScriptClassName/\\p{XDigit}+/TransformerId\\p{XDigit}+" }) >> localCacheBuilder
-        localCacheBuilder.withProperties(!null) >> localCacheBuilder
-        localCacheBuilder.withInitializer(!null) >> localCacheBuilder
-        localCacheBuilder.withDisplayName(!null) >> localCacheBuilder
-        localCacheBuilder.open() >> localCache
-        scriptCompilationHandler.loadFromDir(source, classLoader, classesDir, metadataDir, operation, Script, classLoaderId) >> compiledScript
-
-        when:
-        compiler.compile(source, classLoader, classLoaderId, operation, Script, verifier)
-
-        then:
-        1 * localCacheBuilder.withValidator(validator) >> localCacheBuilder
     }
 
     def "compiles classes to cache directory when cache is invalid"() {
@@ -131,18 +109,16 @@ class FileCacheBackedScriptClassCompilerTest extends Specification {
         def localClassesDir = new File(localDir, "classes")
 
         when:
-        def result = compiler.compile(source, classLoader, classLoaderId, operation, Script, verifier).loadClass()
+        def result = compiler.compile(source, targetScope, operation, Script, verifier).loadClass()
 
         then:
         result == Script
-        1 * hasher.hash(source) >> HashCode.fromInt(0x0123)
         1 * cacheRepository.cache({ it =~ "scripts-remapped/ScriptClassName/\\p{XDigit}+/TransformerId\\p{XDigit}+" }) >> localCacheBuilder
         1 * localCacheBuilder.withInitializer(!null) >> { args ->
             initializer = args[0]
             localCacheBuilder
         }
         1 * localCacheBuilder.withDisplayName(!null) >> localCacheBuilder
-        1 * localCacheBuilder.withValidator(!null) >> localCacheBuilder
         1 * localCacheBuilder.open() >> {
             initializer.execute(localCache)
             localCache
@@ -154,14 +130,13 @@ class FileCacheBackedScriptClassCompilerTest extends Specification {
             globalInitializer = args[0]
             globalCacheBuilder
         }
-        1 * globalCacheBuilder.withValidator(!null) >> globalCacheBuilder
         1 * globalCacheBuilder.open() >> {
             globalInitializer.execute(globalCache)
             globalCache
         }
 
         1 * scriptCompilationHandler.compileToDir({ it instanceof RemappingScriptSource }, classLoader, classesDir, metadataDir, operation, Script, verifier)
-        1 * scriptCompilationHandler.loadFromDir(source, _, classLoader, localClassesDir, localMetadataDir, operation, Script, classLoaderId) >> compiledScript
+        1 * scriptCompilationHandler.loadFromDir(source, _, targetScope, localClassesDir, localMetadataDir, operation, Script) >> compiledScript
         0 * scriptCompilationHandler._
     }
 

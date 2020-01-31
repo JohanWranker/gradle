@@ -18,14 +18,22 @@ package org.gradle.api.internal.artifacts.result;
 
 import org.gradle.api.artifacts.result.ResolvedVariantResult;
 import org.gradle.api.attributes.AttributeContainer;
+import org.gradle.api.capabilities.Capability;
+import org.gradle.internal.DisplayName;
+
+import java.util.List;
 
 public class DefaultResolvedVariantResult implements ResolvedVariantResult {
-    private final String displayName;
+    private final DisplayName displayName;
     private final AttributeContainer attributes;
+    private final List<Capability> capabilities;
+    private final int hashCode;
 
-    public DefaultResolvedVariantResult(String displayName, AttributeContainer attributes) {
+    public DefaultResolvedVariantResult(DisplayName displayName, AttributeContainer attributes, List<Capability> capabilities) {
         this.displayName = displayName;
         this.attributes = attributes;
+        this.capabilities = capabilities;
+        this.hashCode = computeHashCode();
     }
 
     @Override
@@ -35,6 +43,49 @@ public class DefaultResolvedVariantResult implements ResolvedVariantResult {
 
     @Override
     public String getDisplayName() {
-        return displayName;
+        return displayName.getDisplayName();
+    }
+
+    @Override
+    public List<Capability> getCapabilities() {
+        return capabilities;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        DefaultResolvedVariantResult that = (DefaultResolvedVariantResult) o;
+
+        if (!displayName.equals(that.displayName)) {
+            return false;
+        }
+        if (!attributes.equals(that.attributes)) {
+            return false;
+        }
+        return capabilities.equals(that.capabilities);
+
+    }
+
+    @Override
+    public int hashCode() {
+        return hashCode;
+    }
+
+    private int computeHashCode() {
+        int result = displayName.hashCode();
+        result = 31 * result + attributes.hashCode();
+        result = 31 * result + capabilities.hashCode();
+        return result;
+    }
+
+    @Override
+    public String toString() {
+        return displayName.toString();
     }
 }

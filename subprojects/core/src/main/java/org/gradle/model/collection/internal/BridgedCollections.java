@@ -19,23 +19,26 @@ package org.gradle.model.collection.internal;
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectCollection;
 import org.gradle.api.Namer;
+import org.gradle.api.Task;
 import org.gradle.api.Transformer;
-import org.gradle.api.internal.plugins.DslObject;
+import org.gradle.api.internal.DefaultNamedDomainObjectCollection;
+import org.gradle.api.internal.tasks.DefaultTaskCollection;
 import org.gradle.internal.Factory;
-import org.gradle.model.internal.core.*;
+import org.gradle.model.internal.core.ModelActionRole;
+import org.gradle.model.internal.core.ModelPath;
+import org.gradle.model.internal.core.ModelReference;
+import org.gradle.model.internal.core.ModelRegistration;
+import org.gradle.model.internal.core.ModelRegistrations;
+import org.gradle.model.internal.core.MutableModelNode;
 import org.gradle.model.internal.core.rule.describe.SimpleModelRuleDescriptor;
 import org.gradle.model.internal.type.ModelType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public abstract class BridgedCollections {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(BridgedCollections.class);
 
     private BridgedCollections() {
     }
 
-    public static <I, C extends NamedDomainObjectCollection<I>> ModelRegistrations.Builder registration(
+    public static <I extends Task, C extends DefaultTaskCollection<I>> ModelRegistrations.Builder bridgeTaskCollection(
         final ModelReference<C> containerReference,
         final Transformer<? extends C, ? super MutableModelNode> containerFactory,
         final Namer<? super I> namer,
@@ -48,23 +51,28 @@ public abstract class BridgedCollections {
 
         return ModelRegistrations.of(containerPath)
             .action(ModelActionRole.Create, new Action<MutableModelNode>() {
+                @Override
                 public void execute(final MutableModelNode containerNode) {
                     final C container = containerFactory.transform(containerNode);
                     containerNode.setPrivateData(containerType, container);
-                    container.all(new Action<I>() {
-                        public void execute(final I item) {
-                            final String name = namer.determineName(item);
-
-                            // For now, ignore elements added after the container has been closed
+                }
+            })
+            .action(ModelActionRole.Create, new Action<MutableModelNode>() {
+                @Override
+                public void execute(final MutableModelNode containerNode) {
+                    final C container = containerNode.getPrivateData(containerType);
+                    container.whenElementKnown(new Action<DefaultNamedDomainObjectCollection.ElementInfo<I>>() {
+                        @Override
+                        public void execute(DefaultNamedDomainObjectCollection.ElementInfo<I> info) {
+                            final String name = info.getName();
                             if (!containerNode.isMutable()) {
-                                LOGGER.debug("Ignoring element '{}' added to '{}' after it is closed.", containerPath, name);
+                                // Ignore tasks created after not closed
                                 return;
                             }
-
                             if (!containerNode.hasLink(name)) {
                                 ModelRegistration itemRegistration = ModelRegistrations
                                     .unmanagedInstanceOf(
-                                        ModelReference.of(containerPath.child(name), new DslObject(item).getDeclaredType()),
+                                        ModelReference.of(containerPath.child(name), (Class)info.getType()),
                                         new ExtractFromParentContainer<I, C>(name, containerType)
                                     )
                                     .descriptor(new SimpleModelRuleDescriptor(new Factory<String>() {
@@ -78,7 +86,8 @@ public abstract class BridgedCollections {
                             }
                         }
                     });
-                    container.whenObjectRemoved(new Action<I>() {
+                    container.whenObjectRemovedInternal(new Action<I>() {
+                        @Override
                         public void execute(I item) {
                             String name = namer.determineName(item);
                             containerNode.removeLink(name);

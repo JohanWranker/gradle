@@ -23,15 +23,21 @@ import org.gradle.api.file.DuplicatesStrategy;
 import org.gradle.api.file.FileVisitDetails;
 import org.gradle.api.file.RelativePath;
 import org.gradle.api.internal.file.AbstractFileTreeElement;
-import org.gradle.internal.nativeintegration.filesystem.Chmod;
+import org.gradle.internal.file.Chmod;
 
-import java.io.*;
+import javax.annotation.Nullable;
+import java.io.File;
+import java.io.FilterReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Map;
 
 public class DefaultFileCopyDetails extends AbstractFileTreeElement implements FileVisitDetails, FileCopyDetailsInternal {
     private final FileVisitDetails fileDetails;
     private final CopySpecResolver specResolver;
     private final FilterChain filterChain;
+    private boolean defaultDuplicatesStrategy;
     private RelativePath relativePath;
     private boolean excluded;
     private Integer mode;
@@ -43,20 +49,25 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         this.fileDetails = fileDetails;
         this.specResolver = specResolver;
         this.duplicatesStrategy = specResolver.getDuplicatesStrategy();
+        this.defaultDuplicatesStrategy = specResolver.isDefaultDuplicateStrategy();
     }
 
+    @Override
     public boolean isIncludeEmptyDirs() {
         return specResolver.getIncludeEmptyDirs();
     }
 
+    @Override
     public String getDisplayName() {
         return fileDetails.toString();
     }
 
+    @Override
     public void stopVisiting() {
         fileDetails.stopVisiting();
     }
 
+    @Override
     public File getFile() {
         if (filterChain.hasFilters()) {
             throw new UnsupportedOperationException();
@@ -65,14 +76,17 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         }
     }
 
+    @Override
     public boolean isDirectory() {
         return fileDetails.isDirectory();
     }
 
+    @Override
     public long getLastModified() {
         return fileDetails.getLastModified();
     }
 
+    @Override
     public long getSize() {
         if (filterChain.hasFilters()) {
             ByteCountingOutputStream outputStream = new ByteCountingOutputStream();
@@ -83,6 +97,7 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         }
     }
 
+    @Override
     public InputStream open() {
         if (filterChain.hasFilters()) {
             return filterChain.transform(fileDetails.open());
@@ -91,6 +106,7 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         }
     }
 
+    @Override
     public void copyTo(OutputStream output) {
         if (filterChain.hasFilters()) {
             super.copyTo(output);
@@ -99,6 +115,7 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         }
     }
 
+    @Override
     public boolean copyTo(File target) {
         if (filterChain.hasFilters()) {
             return super.copyTo(target);
@@ -114,6 +131,7 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         getChmod().chmod(target, specMode);
     }
 
+    @Override
     public RelativePath getRelativePath() {
         if (relativePath == null) {
             RelativePath path = fileDetails.getRelativePath();
@@ -122,6 +140,7 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         return relativePath;
     }
 
+    @Override
     public int getMode() {
         if (mode != null) {
             return mode;
@@ -135,18 +154,22 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         return fileDetails.getMode();
     }
 
+    @Nullable
     private Integer getSpecMode() {
         return fileDetails.isDirectory() ? specResolver.getDirMode() : specResolver.getFileMode();
     }
 
+    @Override
     public void setRelativePath(RelativePath path) {
         this.relativePath = path;
     }
 
+    @Override
     public void setName(String name) {
         relativePath = getRelativePath().replaceLastName(name);
     }
 
+    @Override
     public void setPath(String path) {
         relativePath = RelativePath.parse(getRelativePath().isFile(), path);
     }
@@ -155,14 +178,17 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         return excluded;
     }
 
+    @Override
     public void exclude() {
         excluded = true;
     }
 
+    @Override
     public void setMode(int mode) {
         this.mode = mode;
     }
 
+    @Override
     public ContentFilterable filter(Closure closure) {
         return filter(new ClosureBackedTransformer(closure));
     }
@@ -173,37 +199,50 @@ public class DefaultFileCopyDetails extends AbstractFileTreeElement implements F
         return this;
     }
 
+    @Override
     public ContentFilterable filter(Map<String, ?> properties, Class<? extends FilterReader> filterType) {
         filterChain.add(filterType, properties);
         return this;
     }
 
+    @Override
     public ContentFilterable filter(Class<? extends FilterReader> filterType) {
         filterChain.add(filterType);
         return this;
     }
 
+    @Override
     public ContentFilterable expand(Map<String, ?> properties) {
         filterChain.expand(properties);
         return this;
     }
 
+    @Override
     public void setDuplicatesStrategy(DuplicatesStrategy strategy) {
         this.duplicatesStrategy = strategy;
+        this.defaultDuplicatesStrategy = strategy == DuplicatesStrategy.INHERIT;
     }
 
+    @Override
     public DuplicatesStrategy getDuplicatesStrategy() {
         return this.duplicatesStrategy;
     }
 
+    public boolean isDefaultDuplicatesStrategy() {
+        return defaultDuplicatesStrategy;
+    }
+
+    @Override
     public String getSourceName() {
         return this.fileDetails.getName();
     }
 
+    @Override
     public String getSourcePath() {
         return this.fileDetails.getPath();
     }
 
+    @Override
     public RelativePath getRelativeSourcePath() {
         return this.fileDetails.getRelativePath();
     }

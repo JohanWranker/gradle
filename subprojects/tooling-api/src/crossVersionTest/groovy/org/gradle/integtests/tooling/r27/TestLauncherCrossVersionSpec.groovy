@@ -18,14 +18,14 @@ package org.gradle.integtests.tooling.r27
 
 import org.gradle.integtests.tooling.TestLauncherSpec
 import org.gradle.integtests.tooling.fixture.TargetGradleVersion
-import org.gradle.integtests.tooling.fixture.ToolingApiVersion
 import org.gradle.tooling.TestExecutionException
 import org.gradle.tooling.TestLauncher
+import spock.lang.Timeout
 
 import static org.gradle.integtests.tooling.fixture.TextUtil.normaliseLineSeparators
 
-@ToolingApiVersion(">=2.7")
 @TargetGradleVersion(">=2.7")
+@Timeout(120)
 class TestLauncherCrossVersionSpec extends TestLauncherSpec {
 
     def "can execute test methods of JVM test class"() {
@@ -37,7 +37,7 @@ class TestLauncherCrossVersionSpec extends TestLauncherSpec {
 
         assertTestExecuted(className: "example.MyTest", methodName: "foo", task: ":test")
         assertTestExecuted(className: "example.MyTest", methodName: "foo", task: ":secondTest")
-        events.tests.size() == 12
+        events.tests.size() == (supportsEfficientClassFiltering() ? 8 : 12)
 
         assertTestNotExecuted(className: "example.MyTest", methodName: "foo2", task: ":secondTest")
         assertTestNotExecuted(className: "example.MyTest", methodName: "foo2", task: ":test")
@@ -61,7 +61,7 @@ class TestLauncherCrossVersionSpec extends TestLauncherSpec {
 
         assertTestExecuted(className: "example2.MyOtherTest", methodName: "bar", task: ":test")
         assertTestExecuted(className: "example2.MyOtherTest", methodName: "bar", task: ":secondTest")
-        events.tests.size() == 16
+        events.tests.size() == (supportsEfficientClassFiltering() ? 14 : 16)
 
         assertTestNotExecuted(className: "example2.MyOtherTest2", methodName: "baz", task: ":test")
         assertTestNotExecuted(className: "example2.MyOtherTest2", methodName: "baz", task: ":secondTest")
@@ -79,7 +79,7 @@ class TestLauncherCrossVersionSpec extends TestLauncherSpec {
         assertTestExecuted(className: "example.MyTest", methodName: "foo", task: ":secondTest")
         assertTestExecuted(className: "example.MyTest", methodName: "foo2", task: ":secondTest")
         assertTestExecuted(className: "example.MyTest", methodName: "foo2", task: ":test")
-        events.tests.size() == 14
+        events.tests.size() == (supportsEfficientClassFiltering() ? 10 : 14)
 
         assertTestNotExecuted(className: "example2.MyOtherTest", methodName: "bar", task: ":test")
         assertTestNotExecuted(className: "example2.MyOtherTest2", methodName: "baz", task: ":test")
@@ -99,7 +99,7 @@ class TestLauncherCrossVersionSpec extends TestLauncherSpec {
         assertTestExecuted(className: "example.MyTest", methodName: "foo", task: ":secondTest")
         assertTestExecuted(className: "example.MyTest", methodName: "foo2", task: ":secondTest")
         assertTestExecuted(className: "example.MyTest", methodName: "foo2", task: ":test")
-        events.tests.size() == 14
+        events.tests.size() == (supportsEfficientClassFiltering() ? 10 : 14)
     }
 
     def "fails with meaningful error when requested tests not found"() {

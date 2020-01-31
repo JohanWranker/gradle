@@ -16,13 +16,11 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.projectmodule;
 
-import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.internal.DisplayName;
 
 /**
- * Provides information on a "logical" publication of a project.
- * The publication could have been declared via `publishing.publications`,
- * an `uploadArchives` task, etc.
+ * Provides information about a publication of a project.
  */
 public interface ProjectPublication {
-    ModuleVersionIdentifier getId();
+    DisplayName getDisplayName();
 }

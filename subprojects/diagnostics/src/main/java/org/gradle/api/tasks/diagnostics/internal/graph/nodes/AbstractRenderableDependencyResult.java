@@ -19,11 +19,8 @@ import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
-import org.gradle.api.artifacts.result.ResolvedVariantResult;
 
-import javax.annotation.Nullable;
-
-public abstract class AbstractRenderableDependencyResult implements RenderableDependency {
+public abstract class AbstractRenderableDependencyResult extends AbstractRenderableDependency {
     @Override
     public ComponentIdentifier getId() {
         return getActual();
@@ -34,38 +31,19 @@ public abstract class AbstractRenderableDependencyResult implements RenderableDe
         ComponentSelector requested = getRequested();
         ComponentIdentifier selected = getActual();
 
-        if(requested.matchesStrictly(selected)) {
+        if(exactMatch(requested, selected)) {
             return getSimpleName();
         }
 
         if(requested instanceof ModuleComponentSelector && selected instanceof ModuleComponentIdentifier) {
             ModuleComponentSelector requestedModuleComponentSelector = (ModuleComponentSelector)requested;
             ModuleComponentIdentifier selectedModuleComponentedIdentifier = (ModuleComponentIdentifier)selected;
-
-            if(isSameGroupAndModuleButDifferentVersion(requestedModuleComponentSelector, selectedModuleComponentedIdentifier)) {
+            if(requestedModuleComponentSelector.getModuleIdentifier().equals(selectedModuleComponentedIdentifier.getModuleIdentifier())) {
                 return getSimpleName() + " -> " + selectedModuleComponentedIdentifier.getVersion();
             }
         }
 
         return getSimpleName() + " -> " + selected.getDisplayName();
-    }
-
-    @Override
-    public ResolvedVariantResult getResolvedVariant() {
-        return null;
-    }
-
-    /**
-     * Checks if requested and selected module component differ by version.
-     *
-     * @param requested Requested module component selector
-     * @param selected Selected module component identifier
-     * @return Indicates whether version differs
-     */
-    private boolean isSameGroupAndModuleButDifferentVersion(ModuleComponentSelector requested, ModuleComponentIdentifier selected) {
-        return requested.getGroup().equals(selected.getGroup())
-            && requested.getModule().equals(selected.getModule())
-            && !requested.getVersionConstraint().getPreferredVersion().equals(selected.getVersion());
     }
 
     /**
@@ -75,12 +53,6 @@ public abstract class AbstractRenderableDependencyResult implements RenderableDe
      */
     private String getSimpleName() {
         return getRequested().getDisplayName();
-    }
-
-    @Override
-    @Nullable
-    public String getDescription() {
-        return null;
     }
 
     protected abstract ComponentSelector getRequested();

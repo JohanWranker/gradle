@@ -16,6 +16,7 @@
 
 package org.gradle.language.java
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.jvm.TestJvmComponent
 import org.gradle.integtests.language.AbstractJvmLanguageIncrementalBuildIntegrationTest
 import org.gradle.language.fixtures.TestJavaComponent
@@ -23,8 +24,10 @@ import org.gradle.language.fixtures.TestJavaComponent
 class JavaLanguageIncrementalBuildIntegrationTest extends AbstractJvmLanguageIncrementalBuildIntegrationTest {
     TestJvmComponent testComponent = new TestJavaComponent()
 
+    @ToBeFixedForInstantExecution
     def "rebuilds jar when input property changed"() {
         given:
+        expectDeprecationWarnings()
         run "mainJar"
 
         when:
@@ -33,12 +36,14 @@ class JavaLanguageIncrementalBuildIntegrationTest extends AbstractJvmLanguageInc
         options.debug = false
     }
 """
+        expectDeprecationWarnings()
         run "mainJar"
 
         then:
         executedAndNotSkipped ":compileMainJarMainJava", ":createMainJar", ":mainJar"
     }
 
+    @ToBeFixedForInstantExecution
     def "task outcome is up to date when no recompilation necessary"() {
         given:
         buildFile.text = ""
@@ -47,21 +52,17 @@ class JavaLanguageIncrementalBuildIntegrationTest extends AbstractJvmLanguageInc
                 subprojects {
                     apply plugin: 'jvm-component'
                     apply plugin: '${testComponent.languageName}-lang'
-                    
+
                     ${mavenCentralRepository()}
-                
-                    tasks.withType(org.gradle.api.tasks.compile.AbstractCompile) {
-                        it.options.incremental = true
-                    }
                 }
                 project(':library') {
                     model {
                         components {
                             main(JvmLibrarySpec)
                         }
-                    }                    
+                    }
                 }
-                
+
                 project(':app') {
                     model {
                         components {
@@ -80,6 +81,7 @@ class JavaLanguageIncrementalBuildIntegrationTest extends AbstractJvmLanguageInc
         resourceFiles = testComponent.writeResources(file("app/src/main/resources"))
 
         when:
+        expectDeprecationWarnings()
         succeeds mainCompileTaskName
 
         then:
@@ -90,10 +92,11 @@ class JavaLanguageIncrementalBuildIntegrationTest extends AbstractJvmLanguageInc
 
         and:
         executer.withArgument('-i')
+        expectDeprecationWarnings()
         succeeds mainCompileTaskName
 
         then:
-        result.output.contains "None of the classes needs to be compiled!"
-        result.output.contains "${mainCompileTaskName} UP-TO-DATE"
+        outputContains "None of the classes needs to be compiled!"
+        outputContains "${mainCompileTaskName} UP-TO-DATE"
     }
 }

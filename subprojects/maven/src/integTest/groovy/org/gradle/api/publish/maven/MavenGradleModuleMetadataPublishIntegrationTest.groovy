@@ -16,7 +16,9 @@
 
 package org.gradle.api.publish.maven
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.publish.maven.AbstractMavenPublishIntegTest
+import spock.lang.Unroll
 
 class MavenGradleModuleMetadataPublishIntegrationTest extends AbstractMavenPublishIntegTest {
     def setup() {
@@ -34,7 +36,9 @@ class TestUsage implements org.gradle.api.internal.component.UsageContext {
     Set dependencies = []
     Set dependencyConstraints = []
     Set artifacts = []
-    AttributeContainer attributes
+    Set capabilities = []
+    Set globalExcludes = []
+    AttributeContainer attributes = org.gradle.api.internal.attributes.ImmutableAttributes.EMPTY
 }
 
 class TestVariant implements org.gradle.api.internal.component.SoftwareComponentInternal {
@@ -42,13 +46,24 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
     Set usages = []
 }
 
+class TestCapability implements Capability {
+    String group
+    String name
+    String version
+}
+
     allprojects {
         configurations { implementation }
     }
+
+    def testAttributes = project.services.get(org.gradle.api.internal.attributes.ImmutableAttributesFactory)
+         .mutable()
+         .attribute(Attribute.of('foo', String), 'value')
 """
     }
 
-    def "generates metadata for component with no variants"() {
+    @ToBeFixedForInstantExecution
+    def "fails to generate metadata for component with no variants"() {
         given:
         settingsFile << "rootProject.name = 'root'"
         buildFile << """
@@ -72,14 +87,304 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
         """
 
         when:
+        fails 'publish'
+
+        then:
+        failure.assertHasCause """Invalid publication 'maven':
+  - This publication must publish at least one variant"""
+    }
+
+    @ToBeFixedForInstantExecution
+    def "fails to generate Gradle metadata if 2 variants have the same attributes"() {
+        given:
+        settingsFile.text = """
+            rootProject.name = 'root'
+        """
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
+
+            comp.usages.add(new TestUsage(
+                    name: 'impl',
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+
+        """
+
+        settingsFile << "rootProject.name = 'publishTest' "
+
+        when:
+        fails 'publish'
+
+        then:
+        failure.assertHasCause """Invalid publication 'maven':
+  - Variants 'api' and 'impl' have the same attributes and capabilities. Please make sure either attributes or capabilities are different."""
+    }
+
+    @ToBeFixedForInstantExecution
+    def "generates Gradle metadata if 2 variants have the same attributes but different capabilities"() {
+        given:
+        settingsFile.text = """
+            rootProject.name = 'root'
+        """
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
+
+            comp.usages.add(new TestUsage(
+                    name: 'impl',
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes,
+                    capabilities: [new TestCapability(group:'org.test', name: 'test', version: '1')]))
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+
+        """
+
+        settingsFile << "rootProject.name = 'publishTest' "
+
+        when:
         succeeds 'publish'
 
         then:
-        def module = mavenRepo.module('group', 'root', '1.0')
+        succeeds 'publish'
+
+        then:
+        def module = mavenRepo.module('group', 'publishTest', '1.0')
         module.assertPublished()
-        module.parsedModuleMetadata.variants.empty
+        module.parsedModuleMetadata.variants.size() == 2
     }
 
+    @ToBeFixedForInstantExecution
+    def "fails to generate Gradle metadata if 2 variants have the same name"() {
+        given:
+        settingsFile.text = """
+            rootProject.name = 'root'
+        """
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
+
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'impl'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+
+        """
+
+        settingsFile << "rootProject.name = 'publishTest' "
+
+        when:
+        fails 'publish'
+
+        then:
+        failure.assertHasCause """Invalid publication 'maven':
+  - It is invalid to have multiple variants with the same name ('api')"""
+    }
+
+    @ToBeFixedForInstantExecution
+    def "fails to generate Gradle metadata if a variant doesn't have attributes"() {
+        given:
+        settingsFile.text = """
+            rootProject.name = 'root'
+        """
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    dependencies: configurations.implementation.allDependencies))
+
+            comp.usages.add(new TestUsage(
+                    name: 'impl',
+                    usage: objects.named(Usage, 'impl'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+
+        """
+
+        settingsFile << "rootProject.name = 'publishTest' "
+
+        when:
+        fails 'publish'
+
+        then:
+        failure.assertHasCause """Invalid publication 'maven':
+  - Variant 'api' must declare at least one attribute."""
+    }
+
+    @ToBeFixedForInstantExecution
+    def "fails to produce Gradle metadata if no dependencies have version information"() {
+        given:
+        settingsFile.text = """
+            rootProject.name = 'root'
+        """
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            dependencies {
+                implementation("org.test:test")
+            }
+
+            def comp = new TestComponent()
+            comp.usages.add(new TestUsage(
+                    name: 'impl',
+                    usage: objects.named(Usage, 'impl'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+
+        """
+
+        settingsFile << "rootProject.name = 'publishTest' "
+
+        when:
+        fails 'publish'
+
+        then:
+        failure.assertHasCause """Invalid publication 'maven':
+  - Publication only contains dependencies and/or constraints without a version. You need to"""
+    }
+
+    @Unroll
+    @ToBeFixedForInstantExecution
+    def "publishes Gradle metadata redirection marker when Gradle metadata task is enabled (enabled=#enabled)"() {
+        given:
+        settingsFile.text = """
+            rootProject.name = 'root'
+        """
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+
+            generateMetadataFileForMavenPublication.enabled = $enabled
+        """
+
+        settingsFile << "rootProject.name = 'publishTest' "
+
+        when:
+        succeeds 'publish'
+
+        then:
+        def module = mavenRepo.module('group', 'publishTest', '1.0')
+        module.hasGradleMetadataRedirectionMarker() == hasMarker
+
+        where:
+        enabled | hasMarker
+        false   | false
+        true    | true
+    }
+
+    @ToBeFixedForInstantExecution
     def "maps project dependencies"() {
         given:
         settingsFile << """rootProject.name = 'root'
@@ -88,7 +393,7 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
         buildFile << """
             allprojects {
                 apply plugin: 'maven-publish'
-    
+
                 group = 'group'
                 version = '1.0'
 
@@ -102,9 +407,9 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
             def comp = new TestComponent()
             comp.usages.add(new TestUsage(
                     name: 'api',
-                    usage: objects.named(Usage, 'api'), 
-                    dependencies: configurations.implementation.allDependencies, 
-                    attributes: configurations.implementation.attributes))
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
 
             dependencies {
                 implementation project(':a')
@@ -118,12 +423,12 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
                     }
                 }
             }
-            
+
             project(':a') {
                 publishing {
                     publications {
                         maven(MavenPublication) {
-                            groupId = 'group.a' 
+                            groupId = 'group.a'
                             artifactId = 'lib_a'
                             version = '4.5'
                         }
@@ -134,7 +439,7 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
                 publishing {
                     publications {
                         maven(MavenPublication) {
-                            groupId = 'group.b' 
+                            groupId = 'group.b'
                             artifactId = 'utils'
                             version = '0.01'
                         }
@@ -155,7 +460,8 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
         api.dependencies[1].coords == 'group.b:utils:0.01'
     }
 
-    def "publishes component with strict dependencies"() {
+    @ToBeFixedForInstantExecution
+    def "publishes component with strict and prefer dependencies"() {
         settingsFile << "rootProject.name = 'root'"
         buildFile << """
             apply plugin: 'maven-publish'
@@ -166,9 +472,9 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
             def comp = new TestComponent()
             comp.usages.add(new TestUsage(
                     name: 'api',
-                    usage: objects.named(Usage, 'api'), 
-                    dependencies: configurations.implementation.allDependencies, 
-                    attributes: configurations.implementation.attributes))
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
 
             dependencies {
                 implementation("org:foo") {
@@ -176,7 +482,12 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
                         strictly '1.0'
                     }
                 }
-                implementation("org:bar:2.0")
+                implementation("org:bar") {
+                    version {
+                        prefer '2.0'
+                    }
+                }
+                implementation("org:baz:3.0")
             }
 
             publishing {
@@ -199,19 +510,31 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
         module.assertPublished()
         module.parsedModuleMetadata.variants.size() == 1
         def variant = module.parsedModuleMetadata.variants[0]
-        variant.dependencies.size() == 2
+        variant.dependencies.size() == 3
 
         variant.dependencies[0].group == 'org'
         variant.dependencies[0].module == 'foo'
         variant.dependencies[0].version == '1.0'
-        variant.dependencies[0].rejectsVersion == [']1.0,)']
+        variant.dependencies[0].prefers == null
+        variant.dependencies[0].strictly == '1.0'
+        variant.dependencies[0].rejectsVersion == []
 
         variant.dependencies[1].group == 'org'
         variant.dependencies[1].module == 'bar'
-        variant.dependencies[1].version == '2.0'
+        variant.dependencies[1].version == null
+        variant.dependencies[1].prefers == '2.0'
+        variant.dependencies[1].strictly == null
         variant.dependencies[1].rejectsVersion == []
+
+        variant.dependencies[2].group == 'org'
+        variant.dependencies[2].module == 'baz'
+        variant.dependencies[2].version == '3.0'
+        variant.dependencies[2].prefers == null
+        variant.dependencies[2].strictly == null
+        variant.dependencies[2].rejectsVersion == []
     }
 
+    @ToBeFixedForInstantExecution
     def "publishes component with dependency constraints"() {
         settingsFile << "rootProject.name = 'root'"
         buildFile << """
@@ -223,10 +546,10 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
             def comp = new TestComponent()
             comp.usages.add(new TestUsage(
                     name: 'api',
-                    usage: objects.named(Usage, 'api'), 
+                    usage: objects.named(Usage, 'api'),
                     dependencies: configurations.implementation.allDependencies.withType(ModuleDependency),
-                    dependencyConstraints: configurations.implementation.allDependencies.withType(DependencyConstraint),
-                    attributes: configurations.implementation.attributes))
+                    dependencyConstraints: configurations.implementation.allDependencyConstraints,
+                    attributes: testAttributes))
 
             dependencies {
                 constraints {
@@ -263,6 +586,7 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
         variant.dependencyConstraints[0].rejectsVersion == []
     }
 
+    @ToBeFixedForInstantExecution
     def "publishes component with version rejects"() {
         settingsFile << "rootProject.name = 'root'"
         buildFile << """
@@ -274,14 +598,14 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
             def comp = new TestComponent()
             comp.usages.add(new TestUsage(
                     name: 'api',
-                    usage: objects.named(Usage, 'api'), 
-                    dependencies: configurations.implementation.allDependencies, 
-                    attributes: configurations.implementation.attributes))
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    attributes: testAttributes))
 
             dependencies {
                 implementation("org:foo") {
                     version {
-                        prefer '1.0'
+                        require '1.0'
                         reject '1.1', '[1.3,1.4]'
                     }
                 }
@@ -321,6 +645,7 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
         variant.dependencies[1].rejectsVersion == []
     }
 
+    @ToBeFixedForInstantExecution
     def "publishes dependency reasons"() {
         settingsFile << "rootProject.name = 'root'"
         buildFile << """
@@ -332,16 +657,16 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
             def comp = new TestComponent()
             comp.usages.add(new TestUsage(
                     name: 'api',
-                    usage: objects.named(Usage, 'api'), 
+                    usage: objects.named(Usage, 'api'),
                     dependencies: configurations.implementation.allDependencies.withType(ModuleDependency),
-                    dependencyConstraints: configurations.implementation.allDependencies.withType(DependencyConstraint),
-                    attributes: configurations.implementation.attributes))
+                    dependencyConstraints: configurations.implementation.allDependencyConstraints,
+                    attributes: testAttributes))
 
             dependencies {
                 implementation("org:foo:1.0") {
-                   because 'version 1.0 is tested'                
+                   because 'version 1.0 is tested'
                 }
-                constraints {                
+                constraints {
                     implementation("org:bar:2.0") {
                         because 'because 2.0 is cool'
                     }
@@ -377,4 +702,190 @@ class TestVariant implements org.gradle.api.internal.component.SoftwareComponent
         }
     }
 
+    @ToBeFixedForInstantExecution
+    def "publishes capabilities"() {
+        settingsFile << "rootProject.name = 'root'"
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'api'),
+                    attributes: testAttributes,
+                    capabilities: [new TestCapability(group:'org.test', name: 'test', version: '1')]))
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+        """
+
+        when:
+        succeeds 'publish'
+
+        then:
+        def module = mavenRepo.module('group', 'root', '1.0')
+        module.assertPublished()
+        module.parsedModuleMetadata.variant('api') {
+            capability('org.test', 'test', '1')
+            noMoreCapabilities()
+            noMoreDependencies()
+        }
+    }
+
+    @ToBeFixedForInstantExecution
+    def "publishes dependency/constraint attributes"() {
+        settingsFile << "rootProject.name = 'root'"
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            def attr1 = Attribute.of('custom', String)
+            def attr2 = Attribute.of('nice', Boolean)
+
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies.withType(ModuleDependency),
+                    dependencyConstraints: configurations.implementation.allDependencyConstraints,
+                    attributes: testAttributes))
+
+            dependencies {
+                implementation("org:foo:1.0") {
+                   attributes {
+                      attribute(attr1, 'foo')
+                   }
+                }
+                constraints {
+                    implementation("org:bar:2.0") {
+                        attributes {
+                           attribute(attr2, true)
+                        }
+                    }
+                }
+            }
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+        """
+
+        when:
+        succeeds 'publish'
+
+        then:
+        def module = mavenRepo.module('group', 'root', '1.0')
+        module.assertPublished()
+        module.parsedModuleMetadata.variant('api') {
+            dependency('org:foo:1.0') {
+                hasAttribute('custom', 'foo')
+            }
+            constraint('org:bar:2.0') {
+                hasAttribute('nice', true)
+            }
+            noMoreDependencies()
+        }
+    }
+
+    @ToBeFixedForInstantExecution
+    def "publishes component with strict version constraints"() {
+        settingsFile << "rootProject.name = 'root'"
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'api'),
+                    dependencies: configurations.implementation.allDependencies,
+                    dependencyConstraints: configurations.implementation.allDependencyConstraints,
+                    attributes: testAttributes))
+
+            dependencies {
+                implementation("org:platform:1.0") {
+                    endorseStrictVersions()
+                }
+                implementation("org:foo") {
+                    version {
+                        strictly '1.0'
+                    }
+                }
+                constraints {
+                    implementation("org:bar") {
+                        version {
+                            strictly '1.1'
+                        }
+                    }
+                }
+            }
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+        """
+
+        when:
+        succeeds 'publish'
+
+        then:
+        def module = mavenRepo.module('group', 'root', '1.0')
+        module.assertPublished()
+        module.parsedModuleMetadata.variants.size() == 1
+        def variant = module.parsedModuleMetadata.variants[0]
+        variant.dependencies.size() == 2
+        variant.dependencyConstraints.size() == 1
+
+        variant.dependencies[0].endorseStrictVersions
+        variant.dependencies[0].group == 'org'
+        variant.dependencies[0].module == 'platform'
+        variant.dependencies[0].version == '1.0'
+        variant.dependencies[0].prefers == null
+        variant.dependencies[0].strictly == null
+        variant.dependencies[0].rejectsVersion == []
+
+        !variant.dependencies[1].endorseStrictVersions
+        variant.dependencies[1].group == 'org'
+        variant.dependencies[1].module == 'foo'
+        variant.dependencies[1].version == '1.0'
+        variant.dependencies[1].prefers == null
+        variant.dependencies[1].strictly == '1.0'
+        variant.dependencies[1].rejectsVersion == []
+
+        variant.dependencyConstraints[0].group == 'org'
+        variant.dependencyConstraints[0].module == 'bar'
+        variant.dependencyConstraints[0].version == '1.1'
+        variant.dependencyConstraints[0].prefers == null
+        variant.dependencyConstraints[0].strictly == '1.1'
+        variant.dependencyConstraints[0].rejectsVersion == []
+    }
 }

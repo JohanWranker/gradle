@@ -21,6 +21,7 @@ import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.plugins.AppliedPlugin;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.play.plugins.ide.internal.PlayIdeaPlugin;
 
 /**
@@ -29,9 +30,11 @@ import org.gradle.play.plugins.ide.internal.PlayIdeaPlugin;
  * <p>NOTE: This currently supports configuring the 'idea' plugin only.</p>
  */
 @Incubating
+@Deprecated
 public class PlayIdePlugin implements Plugin<Project> {
     @Override
     public void apply(final Project project) {
+        DeprecationLogger.deprecatePlugin("Play Ide").replaceWithExternalPlugin("org.gradle.playframework-ide").withUserManual("play_plugin").nagUser();
         project.getPluginManager().withPlugin("idea", new Action<AppliedPlugin>() {
             @Override
             public void execute(AppliedPlugin appliedPlugin) {

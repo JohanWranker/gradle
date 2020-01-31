@@ -11,9 +11,19 @@ configurations {
 
 dependencies {
     jmockit "com.googlecode.jmockit:jmockit:0.999.13"
-    testCompile "junit:junit:4.12"
+    testImplementation "junit:junit:4.12"
 }
 
 test {
-    jvmArgs "-javaagent:${configurations.jmockit.singleFile.absolutePath}"
+    jvmArgumentProviders.add(new JMockitAgent(jmockitClasspath: configurations.jmockit))
+}
+
+class JMockitAgent implements CommandLineArgumentProvider {
+    @Classpath
+    FileCollection jmockitClasspath
+
+    @Override
+    List<String> asArguments() {
+        ["-javaagent:${jmockitClasspath.singleFile.absolutePath}".toString()]
+    }
 }

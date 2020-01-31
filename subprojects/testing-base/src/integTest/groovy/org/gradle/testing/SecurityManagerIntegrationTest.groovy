@@ -17,13 +17,15 @@
 package org.gradle.testing
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
 import org.gradle.util.GradleVersion
-import spock.lang.Timeout
 
-import java.util.concurrent.TimeUnit
+import static org.gradle.util.Matchers.containsText
+import static org.gradle.util.Matchers.matchesRegexp
 
 class SecurityManagerIntegrationTest extends AbstractIntegrationSpec {
-    @Timeout(value = 90, unit = TimeUnit.SECONDS)
+
+    @IntegrationTestTimeout(120)
     def "should not hang when running with security manager"() {
         given:
         buildFile << """ 
@@ -32,7 +34,7 @@ apply plugin:"java"
 ${mavenCentralRepository()}
 
 dependencies {
-    testCompile 'junit:junit:4.12'
+    testImplementation 'junit:junit:4.12'
 }
 """
         file('src/test/java/SecurityManagerTest.java') << '''
@@ -54,8 +56,12 @@ public class SecurityManagerTest {
 '''
 
         expect:
+        // This test causes the test process to exit ungracefully without closing connections.  This can sometimes
+        // cause connection errors to show up in stderr.
+        executer.withStackTraceChecksDisabled()
         fails('test')
-        result.error.contains("Process 'Gradle Test Executor 1' finished with non-zero exit value 1")
-        result.error.contains("Please refer to the test execution section in the user guide at https://docs.gradle.org/${GradleVersion.current().version}/userguide/java_plugin.html#sec:test_execution")
+        failure.assertThatCause(matchesRegexp(".*Process 'Gradle Test Executor \\d+' finished with non-zero exit value 1.*"))
+        failure.assertThatCause(containsText("This problem might be caused by incorrect test process configuration."))
+        failure.assertThatCause(containsText("Please refer to the test execution section in the User Manual at https://docs.gradle.org/${GradleVersion.current().version}/userguide/java_testing.html#sec:test_execution"))
     }
 }

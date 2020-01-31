@@ -11,6 +11,9 @@
                 <td>args</td>
             </tr>
             <tr>
+                <td>argumentProviders</td>
+            </tr>
+            <tr>
                 <td>commandLine</td>
             </tr>
             <tr>
@@ -36,6 +39,9 @@
             </tr>
             <tr>
                 <td>execResult</td>
+            </tr>
+            <tr>
+                <td>executionResult</td>
             </tr>
         </table>
     </section>

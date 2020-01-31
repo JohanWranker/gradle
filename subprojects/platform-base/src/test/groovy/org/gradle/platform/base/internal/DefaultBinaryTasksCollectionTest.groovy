@@ -20,25 +20,27 @@ import org.gradle.api.Action
 import org.gradle.api.DefaultTask
 import org.gradle.api.Task
 import org.gradle.api.UnknownDomainObjectException
-import org.gradle.api.internal.project.taskfactory.ITaskFactory
+import org.gradle.api.internal.CollectionCallbackActionDecorator
 import org.gradle.api.tasks.Copy
+import org.gradle.model.internal.core.NamedEntityInstantiator
 import spock.lang.Specification
 
 class DefaultBinaryTasksCollectionTest extends Specification {
     def binary = Mock(BinarySpecInternal)
-    def ITaskFactory taskFactory = Mock(ITaskFactory)
-    def tasks = new DefaultBinaryTasksCollection(binary, taskFactory)
+    def taskFactory = Mock(NamedEntityInstantiator)
+    def tasks = new DefaultBinaryTasksCollection(binary, taskFactory, CollectionCallbackActionDecorator.NOOP)
     def task = Mock(Task)
 
     def "can create task"() {
         def action = Mock(Action)
+        def task = Stub(Task)
 
         when:
         tasks.create("foo", DefaultTask, action)
 
         then:
-        1 * taskFactory.create("foo", DefaultTask)
-        1 * action.execute(_)
+        1 * taskFactory.create("foo", DefaultTask) >> task
+        1 * action.execute(task)
     }
 
     def "provides lifecycle task for binary"() {
@@ -77,7 +79,7 @@ class DefaultBinaryTasksCollectionTest extends Specification {
         def t = thrown UnknownDomainObjectException
         t.message == "Multiple tasks with type 'Copy' found."
     }
-    
+
     def "generates a task name"() {
         given:
         binary.projectScopedName >> "myLibJar"

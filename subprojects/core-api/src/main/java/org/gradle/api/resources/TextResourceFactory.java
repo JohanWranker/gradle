@@ -37,6 +37,10 @@ import org.gradle.api.Incubating;
  * configurations { someConfig } // assumption: contains a single archive
  * def sourcedFromConfiguration =
  *   resources.text.fromArchiveEntry(configurations.someConfig, "path/to/archive/entry.txt")
+ *
+ * def sourceFromUri = resources.text.fromUri("https://example.com/resource")
+ *
+ * def sourceFromInsecureUri = resources.text.fromInsecureUri("http://example.com/resource")
  * </pre>
  *
  * File based factory methods optionally accept a character encoding. If no encoding is specified,
@@ -44,7 +48,6 @@ import org.gradle.api.Incubating;
  *
  * @since 2.2
  */
-@Incubating
 public interface TextResourceFactory {
     /**
      * Creates a text resource backed by the given string.
@@ -65,6 +68,8 @@ public interface TextResourceFactory {
 
     /**
      * Same as {@code fromFile(file, Charset.defaultCharset())}.
+     *
+     * @see #fromFile(Object, String)
      */
     TextResource fromFile(Object file);
 
@@ -85,4 +90,29 @@ public interface TextResourceFactory {
      * Same as {@code fromArchiveEntry(archive, path, Charset.defaultCharset().name())}.
      */
     TextResource fromArchiveEntry(Object archive, String path);
+
+    /**
+     * Creates a text resource backed by the given uri.
+     *
+     * @param uri a URI as evaluated by {@link org.gradle.api.Project#uri(Object)}
+     *
+     * @return a text resource backed by the given uri
+     * @since 4.8
+     */
+    TextResource fromUri(Object uri);
+
+    /**
+     * Creates a text resource backed by the given uri.
+     *
+     * <b>NOTE:</b> This method allows insecure protocols (like HTTP) to be used. Only use this method if you're comfortable with the dangers.
+     *
+     * @param uri a URI as evaluated by {@link org.gradle.api.Project#uri(Object)}
+     *
+     * @return a text resource backed by the given uri
+     * @since 6.0
+     * @see #fromUri(Object)
+     */
+    @Incubating
+    TextResource fromInsecureUri(Object uri);
+
 }

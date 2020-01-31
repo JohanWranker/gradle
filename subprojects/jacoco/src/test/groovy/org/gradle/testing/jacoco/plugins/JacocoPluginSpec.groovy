@@ -17,6 +17,7 @@ package org.gradle.testing.jacoco.plugins
 
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.testing.Test
+import org.gradle.integtests.fixtures.RepoScriptBlockUtil
 import org.gradle.language.base.plugins.LifecycleBasePlugin
 import org.gradle.test.fixtures.AbstractProjectBuilderSpec
 import org.gradle.util.Requires
@@ -51,14 +52,13 @@ class JacocoPluginSpec extends AbstractProjectBuilderSpec {
     def 'jacoco task extension can be configured. includeNoLocationClasses: #includeNoLocationClassesValue'() {
         given:
         project.apply plugin: 'java'
-        project.repositories.jcenter()
+        RepoScriptBlockUtil.configureJcenter(project.repositories)
         def testTask = project.tasks.getByName('test')
         JacocoTaskExtension extension = testTask.extensions.getByType(JacocoTaskExtension)
 
         when:
         extension.with {
             destinationFile = project.file('build/jacoco/fake.exec')
-            append = false
             includes = ['org.*', '*.?acoco*']
             excludes = ['org.?joberstar']
             excludeClassLoaders = ['com.sun.*', 'org.fak?.*']
@@ -74,7 +74,7 @@ class JacocoPluginSpec extends AbstractProjectBuilderSpec {
 
         def expected = new StringBuilder().with { builder ->
             builder << "destfile=build/jacoco/fake.exec,"
-            builder << "append=false,"
+            builder << "append=true,"
             builder << "includes=org.*:*.?acoco*,"
             builder << "excludes=org.?joberstar,"
             builder << "exclclassloader=com.sun.*:org.fak?.*,"

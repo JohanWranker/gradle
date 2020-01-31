@@ -11,22 +11,22 @@
             </thead>
             <tr>
                 <td>name</td>
-                <td><literal><replaceable>${project.name}</replaceable> (sometimes prefixed with parts of <replaceable>${project.path}</replaceable> to guarantee uniqeness)</literal></td>
+                <td><literal><replaceable>${project.name}</replaceable> (sometimes prefixed with parts of <replaceable>${project.path}</replaceable> to guarantee uniqueness)</literal></td>
                 <td/>
             </tr>
             <tr>
                 <td>sourceDirs</td>
                 <td><literal>[]</literal></td>
-                <td>source dirs from <literal>project.sourceSets.main.allSource</literal></td>
+                <td>project.sourceSets.main.allJava</td>
             </tr>
             <tr>
                 <td>scopes</td>
                 <td><literal>[:]</literal></td>
                 <td>
                     <itemizedlist>
-                        <listitem><literal>COMPILE</literal> -> <literal>project.configurations.compile</literal></listitem>
-                        <listitem><literal>RUNTIME</literal> -> <literal>project.configurations.runtime - project.configurations.compile</literal></listitem>
-                        <listitem><literal>TEST</literal> -> <literal>project.configurations.testRuntime - project.configurations.runtime</literal></listitem>
+                        <listitem><literal>COMPILE</literal> -> <literal>project.configurations.compileClasspath</literal></listitem>
+                        <listitem><literal>RUNTIME</literal> -> <literal>project.configurations.runtimeClasspath - project.configurations.compileClasspath</literal></listitem>
+                        <listitem><literal>TEST</literal> -> <literal>project.configurations.testRuntimeClasspath - project.configurations.runtimeClasspath</literal></listitem>
                         <listitem><literal>PROVIDED</literal></listitem>
                     </itemizedlist>
                 </td>
@@ -54,8 +54,20 @@
             <tr>
                 <td>testSourceDirs</td>
                 <td><literal>[]</literal></td>
-                <td>source dirs from <literal>project.sourceSets.test.allSource</literal></td>
+                <td>project.sourceSets.test.allJava</td>
             </tr>
+            <tr>
+                <td>resourceDirs</td>
+                <td><literal>[]</literal></td>
+                <td>resource dirs from <literal>project.sourceSets.main.resources</literal></td>
+            </tr>
+            <tr>
+                <td>testResourceDirs</td>
+                <td><literal>[]</literal></td>
+                <td>resource dirs from <literal>project.sourceSets.test.resources</literal></td>
+            </tr>
+
+
             <tr>
                 <td>excludeDirs</td>
                 <td><literal>[project.buildDir, project.file('.gradle')]</literal></td>

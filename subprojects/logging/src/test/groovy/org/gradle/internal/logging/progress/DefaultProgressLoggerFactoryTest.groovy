@@ -15,17 +15,19 @@
  */
 package org.gradle.internal.logging.progress
 
-import org.gradle.internal.logging.events.OperationIdentifier
 import org.gradle.internal.logging.events.ProgressCompleteEvent
 import org.gradle.internal.logging.events.ProgressEvent
 import org.gradle.internal.logging.events.ProgressStartEvent
+import org.gradle.internal.operations.DefaultBuildOperationIdFactory
+import org.gradle.internal.operations.OperationIdentifier
 import org.gradle.internal.time.Clock
 import org.gradle.test.fixtures.concurrent.ConcurrentSpec
 
 class DefaultProgressLoggerFactoryTest extends ConcurrentSpec {
     def progressListener = Mock(ProgressListener)
     def timeProvider = Mock(Clock)
-    def factory = new DefaultProgressLoggerFactory(progressListener, timeProvider)
+    def buildOperationIdFactory = new DefaultBuildOperationIdFactory()
+    def factory = new DefaultProgressLoggerFactory(progressListener, timeProvider, buildOperationIdFactory)
 
     def progressLoggerBroadcastsEvents() {
         when:
@@ -40,7 +42,6 @@ class DefaultProgressLoggerFactoryTest extends ConcurrentSpec {
             assert event.timestamp == 100L
             assert event.category == 'logger'
             assert event.description == 'description'
-            assert event.shortDescription == null
             assert event.loggingHeader == null
             assert event.status == 'started'
         }
@@ -194,32 +195,6 @@ class DefaultProgressLoggerFactoryTest extends ConcurrentSpec {
         }
     }
 
-    def canSpecifyShortDescription() {
-        when:
-        def logger = factory.newOperation('logger')
-        logger.description = 'description'
-        logger.shortDescription = 'short'
-        logger.started()
-
-        then:
-        1 * progressListener.started(!null) >> { ProgressStartEvent event ->
-            assert event.shortDescription == 'short'
-        }
-    }
-
-    def canSpecifyLoggingHeader() {
-        when:
-        def logger = factory.newOperation('logger')
-        logger.description = 'description'
-        logger.loggingHeader = 'header'
-        logger.started()
-
-        then:
-        1 * progressListener.started(!null) >> { ProgressStartEvent event ->
-            assert event.loggingHeader == 'header'
-        }
-    }
-
     def canSpecifyNullStatus() {
         def logger = factory.newOperation('logger')
         logger.description = 'not empty'
@@ -253,32 +228,6 @@ class DefaultProgressLoggerFactoryTest extends ConcurrentSpec {
 
         when:
         logger.description = 'new'
-
-        then:
-        IllegalStateException e = thrown()
-        e.message == 'Cannot configure this operation (logger - old) once it has started.'
-    }
-
-    def cannotChangeShortDescriptionAfterStart() {
-        def logger = factory.newOperation('logger')
-        logger.description = 'old'
-        logger.started()
-
-        when:
-        logger.shortDescription = 'new'
-
-        then:
-        IllegalStateException e = thrown()
-        e.message == 'Cannot configure this operation (logger - old) once it has started.'
-    }
-
-    def cannotChangeLoggingHeaderAfterStart() {
-        def logger = factory.newOperation('logger')
-        logger.description = 'old'
-        logger.started()
-
-        when:
-        logger.loggingHeader = 'new'
 
         then:
         IllegalStateException e = thrown()
@@ -370,8 +319,10 @@ class DefaultProgressLoggerFactoryTest extends ConcurrentSpec {
 
         then:
         logger.description == "foo"
-        logger.shortDescription == "f"
-        1 * progressListener.started(!null)
+        1 * progressListener.started(!null) >> { ProgressStartEvent event ->
+            assert event.description == 'foo'
+            assert event.status == 'f'
+        }
     }
 }
 

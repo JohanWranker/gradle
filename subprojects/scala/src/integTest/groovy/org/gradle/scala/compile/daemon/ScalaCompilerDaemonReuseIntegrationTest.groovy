@@ -35,7 +35,7 @@ class ScalaCompilerDaemonReuseIntegrationTest extends AbstractCompilerDaemonReus
             ${mavenCentralRepository()}
             
             dependencies {
-                compile 'org.scala-lang:scala-library:2.11.8'
+                implementation 'org.scala-lang:scala-library:2.11.12'
             }
         """
     }

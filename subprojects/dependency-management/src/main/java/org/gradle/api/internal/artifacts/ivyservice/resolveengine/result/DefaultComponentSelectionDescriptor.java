@@ -16,19 +16,35 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.result;
 
 import com.google.common.base.Objects;
+import org.gradle.api.Describable;
 import org.gradle.api.artifacts.result.ComponentSelectionCause;
+import org.gradle.internal.Describables;
 
 public class DefaultComponentSelectionDescriptor implements ComponentSelectionDescriptorInternal {
     private final ComponentSelectionCause cause;
-    private final String description;
+    private final Describable description;
+    private final boolean hasCustomDescription;
+    private final int hashCode;
+    private final boolean isEquivalentToForce;
 
     public DefaultComponentSelectionDescriptor(ComponentSelectionCause cause) {
-        this(cause, cause.getDefaultReason());
+        this(cause, Describables.of(cause.getDefaultReason()), false, cause == ComponentSelectionCause.FORCED);
     }
 
-    public DefaultComponentSelectionDescriptor(ComponentSelectionCause cause, String description) {
+    public DefaultComponentSelectionDescriptor(ComponentSelectionCause cause, Describable description) {
+        this(cause, description, true, cause == ComponentSelectionCause.FORCED);
+    }
+
+    private DefaultComponentSelectionDescriptor(ComponentSelectionCause cause, Describable description, boolean hasCustomDescription, boolean isEquivalentToForce) {
         this.cause = cause;
         this.description = description;
+        this.hasCustomDescription = hasCustomDescription;
+        this.isEquivalentToForce = isEquivalentToForce;
+        if (hasCustomDescription) {
+            this.hashCode = 31 * (31 * cause.hashCode() + description.hashCode()) + (isEquivalentToForce ? 1 : 0);
+        } else {
+            this.hashCode = 31 * cause.hashCode() + (isEquivalentToForce ? 1 : 0);
+        }
     }
 
     @Override
@@ -38,12 +54,17 @@ public class DefaultComponentSelectionDescriptor implements ComponentSelectionDe
 
     @Override
     public String getDescription() {
-        return description;
+        return description.getDisplayName();
     }
 
     @Override
     public boolean hasCustomDescription() {
-        return !cause.getDefaultReason().equals(description);
+        return hasCustomDescription;
+    }
+
+    @Override
+    public Describable getDescribable() {
+        return description;
     }
 
     @Override
@@ -55,25 +76,37 @@ public class DefaultComponentSelectionDescriptor implements ComponentSelectionDe
             return false;
         }
         DefaultComponentSelectionDescriptor that = (DefaultComponentSelectionDescriptor) o;
-        return cause == that.cause
+        return hashCode == that.hashCode
+            && cause == that.cause
+            && isEquivalentToForce == that.isEquivalentToForce
             && Objects.equal(description, that.description);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(cause, description);
+        return hashCode;
     }
 
     @Override
     public String toString() {
-        return description;
+        return description.getDisplayName();
     }
 
     @Override
-    public ComponentSelectionDescriptorInternal withReason(String reason) {
-        if (description.equals(reason)) {
+    public ComponentSelectionDescriptorInternal withDescription(Describable description) {
+        if (this.description.equals(description)) {
             return this;
         }
-        return new DefaultComponentSelectionDescriptor(cause, reason);
+        return new DefaultComponentSelectionDescriptor(cause, description, true, isEquivalentToForce);
+    }
+
+    @Override
+    public ComponentSelectionDescriptorInternal markAsEquivalentToForce() {
+        return new DefaultComponentSelectionDescriptor(cause, description, hasCustomDescription, true);
+    }
+
+    @Override
+    public boolean isEquivalentToForce() {
+        return isEquivalentToForce;
     }
 }

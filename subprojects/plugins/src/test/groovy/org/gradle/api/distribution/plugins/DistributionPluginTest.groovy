@@ -18,7 +18,6 @@ package org.gradle.api.distribution.plugins
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
-import org.gradle.api.Task
 import org.gradle.api.distribution.DistributionContainer
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.TaskDependencyMatchers
@@ -144,7 +143,7 @@ class DistributionPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         def task = project.assembleDist
-        task.dependsOn.findAll {it instanceof Task}.collect{ it.path }.containsAll([":distTar", ":distZip"])
+        task.dependsOn.containsAll(["distTar", "distZip"])
     }
 
     public void "distribution name is configurable"() {

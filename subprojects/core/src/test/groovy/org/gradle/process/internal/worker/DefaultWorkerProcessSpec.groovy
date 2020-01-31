@@ -30,7 +30,7 @@ import spock.lang.Specification
 
 import java.util.concurrent.TimeUnit
 
-import static org.hamcrest.Matchers.equalTo
+import static org.hamcrest.CoreMatchers.equalTo
 import static org.junit.Assert.assertThat
 import static org.junit.Assert.fail
 
@@ -172,6 +172,27 @@ class DefaultWorkerProcessSpec extends Specification {
         1 * execHandle.start()
         1 * execHandle.waitForFinish() >> execResult
         1 * execResult.assertNormalExitValue() >> execResult
+        1 * execHandle.abort()
+        1 * acceptor.requestStop()
+        1 * connection.stop()
+    }
+
+    def "stopNow ignores exit value"() {
+        when:
+        workerProcess.startAccepting(acceptor)
+        workerProcess.setExecHandle(execHandle)
+
+        op.start {
+            op.callbackLater {
+                workerProcess.onConnect(connection)
+            }
+            workerProcess.start()
+            workerProcess.stopNow()
+        }
+
+        then:
+        1 * execHandle.start()
+        0 * execHandle.waitForFinish()
         1 * execHandle.abort()
         1 * acceptor.requestStop()
         1 * connection.stop()

@@ -16,8 +16,9 @@
 
 package org.gradle.integtests.composite
 
+import org.gradle.api.internal.tasks.execution.ExecuteTaskBuildOperationType
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
-import org.gradle.internal.execution.ExecuteTaskBuildOperationType
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
 import org.junit.Rule
 import spock.lang.IgnoreIf
@@ -28,6 +29,7 @@ class CompositeBuildParallelIntegrationTest extends AbstractCompositeBuildIntegr
     @Rule BlockingHttpServer server = new BlockingHttpServer()
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "works when number of included builds exceeds max-workers --max-workers=#maxWorkers"() {
         def totalIncludedBuilds = 5*maxWorkers
         buildA.buildFile << """
@@ -54,6 +56,7 @@ class CompositeBuildParallelIntegrationTest extends AbstractCompositeBuildIntegr
         maxWorkers << [ 1, 2, 4 ]
     }
 
+    @ToBeFixedForInstantExecution
     def "can build transitive dependency chain with --max-workers == 1"() {
         def previousBuild = buildA
         ['buildB', 'buildC', 'buildD'].each { buildName ->
@@ -71,6 +74,7 @@ class CompositeBuildParallelIntegrationTest extends AbstractCompositeBuildIntegr
         execute(buildA, "jar", "--max-workers=1")
     }
 
+    @ToBeFixedForInstantExecution
     def "constructs included build artifacts in parallel"() {
         given:
         server.start()
@@ -96,6 +100,7 @@ class CompositeBuildParallelIntegrationTest extends AbstractCompositeBuildIntegr
         execute(buildA, "jar", "--max-workers=4")
     }
 
+    @ToBeFixedForInstantExecution
     def "constructs included build artifacts in parallel with multi-project included build"() {
         given:
         def maxWorkers = 4
@@ -123,36 +128,4 @@ class CompositeBuildParallelIntegrationTest extends AbstractCompositeBuildIntegr
         execute(buildA, "jar", "--parallel", "--max-workers=$maxWorkers")
         operations.assertConcurrentOperationsDoNotExceed(ExecuteTaskBuildOperationType, maxWorkers, true)
     }
-
-    def "builds IDE metadata artifacts in parallel"() {
-        given:
-        server.start()
-
-        when:
-        buildA.buildFile << """
-            apply plugin: 'idea'
-        """
-
-        def included = ['buildB', 'buildC', 'buildD']
-        included.each { buildName ->
-            def build = singleProjectBuild(buildName) {
-                buildFile << """
-                    apply plugin: 'java'
-                    apply plugin: 'idea'
-
-                    ideaModule.doLast {
-                        ${server.callFromBuild(buildName)}
-                    }
-                """
-            }
-            dependency "org.test:${buildName}:1.0"
-            includeBuild build
-        }
-
-        server.expectConcurrent(included)
-
-        then:
-        execute(buildA, ":idea", "--max-workers=4")
-    }
-
 }

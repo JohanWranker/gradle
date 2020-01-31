@@ -18,15 +18,9 @@ package org.gradle.integtests.fixtures
 
 class FeaturePreviewsFixture {
 
-    static void enableGradleMetadata(File file) {
-        file << """
-org.gradle.gradlemetadata=true
-"""
-    }
-
-    static void enableAdvancedPomSupport(File file) {
-        file << """
-org.gradle.advancedpomsupport=true
+    static void enableGroovyCompilationAvoidance(File settings) {
+        settings << """
+enableFeaturePreview('GROOVY_COMPILATION_AVOIDANCE')
 """
     }
 }

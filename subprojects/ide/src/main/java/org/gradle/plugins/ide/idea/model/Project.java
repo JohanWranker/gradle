@@ -21,7 +21,6 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import groovy.util.Node;
 import groovy.util.NodeList;
-import org.gradle.api.Incubating;
 import org.gradle.api.JavaVersion;
 import org.gradle.internal.xml.XmlTransformer;
 import org.gradle.plugins.ide.internal.generator.XmlPersistableConfigurationObject;
@@ -72,7 +71,6 @@ public class Project extends XmlPersistableConfigurationObject {
      *
      * @since 4.0
      */
-    @Incubating
     public void addModulePath(File moduleFile) {
         modulePaths.add(pathFactory.relativePath("PROJECT_DIR", moduleFile));
     }
@@ -102,12 +100,10 @@ public class Project extends XmlPersistableConfigurationObject {
     /**
      * The vcs used by the project.
      */
-    @Incubating
     public String getVcs() {
         return vcs;
     }
 
-    @Incubating
     public void setVcs(String vcs) {
         this.vcs = vcs;
     }
@@ -115,12 +111,10 @@ public class Project extends XmlPersistableConfigurationObject {
     /**
      * The project-level libraries of the IDEA project.
      */
-    @Incubating
     public Set<ProjectLibrary> getProjectLibraries() {
         return projectLibraries;
     }
 
-    @Incubating
     public void setProjectLibraries(Set<ProjectLibrary> projectLibraries) {
         this.projectLibraries = projectLibraries;
     }

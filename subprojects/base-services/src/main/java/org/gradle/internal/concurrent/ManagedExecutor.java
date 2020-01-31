@@ -23,6 +23,7 @@ public interface ManagedExecutor extends AsyncStoppable, ExecutorService {
     /**
      * Stops accepting new jobs and blocks until all currently executing jobs have been completed.
      */
+    @Override
     void stop();
 
     /**
@@ -37,4 +38,9 @@ public interface ManagedExecutor extends AsyncStoppable, ExecutorService {
      * Sets the fixed size of the thread pool for the executor.
      */
     void setFixedPoolSize(int numThreads);
+
+    /**
+     * Sets the keep alive time for the thread pool of the executor.
+     */
+    void setKeepAlive(int timeout, TimeUnit timeUnit);
 }

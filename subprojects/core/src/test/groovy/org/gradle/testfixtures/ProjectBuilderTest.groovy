@@ -19,7 +19,12 @@ package org.gradle.testfixtures
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
 import org.gradle.api.internal.project.DefaultProject
+import org.gradle.api.logging.configuration.WarningMode
+import org.gradle.internal.featurelifecycle.DeprecatedUsageBuildOperationProgressBroadcaster
+import org.gradle.internal.featurelifecycle.UsageLocationReporter
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.internal.deprecation.DeprecationLogger
+import org.gradle.util.IncubationLogger
 import org.gradle.util.Resources
 import org.junit.Rule
 import spock.lang.Ignore
@@ -34,7 +39,7 @@ class ProjectBuilderTest extends Specification {
     @Rule
     public final Resources resources = new Resources()
 
-    def canCreateARootProject() {
+    def "can create a root project"() {
 
         when:
         def project = ProjectBuilder.builder().build()
@@ -44,10 +49,24 @@ class ProjectBuilderTest extends Specification {
         project.name == 'test'
         project.path == ':'
         project.projectDir.parentFile != null
+        project.buildFile == project.file("build.gradle")
         project.gradle != null
         project.gradle.rootProject == project
         project.gradle.gradleHomeDir == project.file('gradleHome')
         project.gradle.gradleUserHomeDir == project.file('userHome')
+    }
+
+    def "can create a child project"() {
+
+        when:
+        def root = ProjectBuilder.builder().build()
+        def child = ProjectBuilder.builder().withParent(root).build()
+
+        then:
+        child.name == 'test'
+        child.path == ':test'
+        child.projectDir == root.file("test")
+        child.buildFile == child.file("build.gradle")
     }
 
     private Project buildProject() {
@@ -148,6 +167,26 @@ class ProjectBuilderTest extends Specification {
         then:
         noExceptionThrown()
         latch.get()
+    }
+
+    def "ProjectBuilder can not be directly instantiated"() {
+        expect:
+        ProjectBuilder.constructors.size() == 0
+    }
+
+    def "does not emit deprecation warning when using the builder() method"() {
+        given:
+        def broadcaster = Mock(DeprecatedUsageBuildOperationProgressBroadcaster)
+        DeprecationLogger.init(Mock(UsageLocationReporter), WarningMode.None, broadcaster)
+
+        when:
+        ProjectBuilder.builder()
+
+        then:
+        0 * broadcaster.progress(_)
+
+        cleanup:
+        IncubationLogger.reset()
     }
 }
 

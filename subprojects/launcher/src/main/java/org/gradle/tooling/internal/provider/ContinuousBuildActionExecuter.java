@@ -29,7 +29,6 @@ import org.gradle.initialization.BuildCancellationToken;
 import org.gradle.initialization.BuildRequestContext;
 import org.gradle.initialization.ContinuousExecutionGate;
 import org.gradle.initialization.DefaultContinuousExecutionGate;
-import org.gradle.initialization.ReportedException;
 import org.gradle.internal.buildevents.BuildStartedTime;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.event.ListenerManager;
@@ -47,8 +46,8 @@ import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.time.Clock;
 import org.gradle.launcher.exec.BuildActionExecuter;
 import org.gradle.launcher.exec.BuildActionParameters;
+import org.gradle.launcher.exec.BuildActionResult;
 import org.gradle.util.DisconnectableInputStream;
-import org.gradle.util.SingleMessageLogger;
 
 public class ContinuousBuildActionExecuter implements BuildActionExecuter<BuildActionParameters> {
     private final BuildActionExecuter<BuildActionParameters> delegate;
@@ -68,26 +67,25 @@ public class ContinuousBuildActionExecuter implements BuildActionExecuter<BuildA
     }
 
     @Override
-    public Object execute(BuildAction action, BuildRequestContext requestContext, final BuildActionParameters actionParameters, ServiceRegistry buildSessionScopeServices) {
+    public BuildActionResult execute(BuildAction action, BuildRequestContext requestContext, final BuildActionParameters actionParameters, ServiceRegistry buildSessionScopeServices) {
         BuildCancellationToken cancellationToken = requestContext.getCancellationToken();
         if (actionParameters.isContinuous()) {
-            SingleMessageLogger.incubatingFeatureUsed("Continuous build");
             DefaultContinuousExecutionGate alwaysOpenExecutionGate = new DefaultContinuousExecutionGate();
-            final CancellableOperationManager cancellableOperationManager = createCancellableOperationManager(actionParameters, cancellationToken);
+            final CancellableOperationManager cancellableOperationManager = createCancellableOperationManager(requestContext, cancellationToken);
             return executeMultipleBuilds(action, requestContext, actionParameters, buildSessionScopeServices, cancellableOperationManager, alwaysOpenExecutionGate);
         } else {
             try {
                 return delegate.execute(action, requestContext, actionParameters, buildSessionScopeServices);
             } finally {
-                final CancellableOperationManager cancellableOperationManager = createCancellableOperationManager(actionParameters, cancellationToken);
+                final CancellableOperationManager cancellableOperationManager = createCancellableOperationManager(requestContext, cancellationToken);
                 waitForDeployments(action, requestContext, actionParameters, buildSessionScopeServices, cancellableOperationManager);
             }
         }
     }
 
-    private CancellableOperationManager createCancellableOperationManager(BuildActionParameters actionParameters, BuildCancellationToken cancellationToken) {
+    private CancellableOperationManager createCancellableOperationManager(BuildRequestContext requestContext, BuildCancellationToken cancellationToken) {
         final CancellableOperationManager cancellableOperationManager;
-        if (actionParameters.isInteractive()) {
+        if (requestContext.isInteractive()) {
             if (!(System.in instanceof DisconnectableInputStream)) {
                 System.setIn(new DisconnectableInputStream(System.in));
             }
@@ -107,34 +105,26 @@ public class ContinuousBuildActionExecuter implements BuildActionExecuter<BuildA
                 ((DeploymentInternal) deployment).outOfDate();
             }
             logger.println().println("Reloadable deployment detected. Entering continuous build.");
+            resetBuildStartedTime(buildSessionScopeServices);
             ContinuousExecutionGate deploymentRequestExecutionGate = deploymentRegistry.getExecutionGate();
             executeMultipleBuilds(action, requestContext, actionParameters, buildSessionScopeServices, cancellableOperationManager, deploymentRequestExecutionGate);
         }
         cancellableOperationManager.closeInput();
     }
 
-    private Object executeMultipleBuilds(BuildAction action, BuildRequestContext requestContext, final BuildActionParameters actionParameters, final ServiceRegistry buildSessionScopeServices,
+    private BuildActionResult executeMultipleBuilds(BuildAction action, final BuildRequestContext requestContext, final BuildActionParameters actionParameters, final ServiceRegistry buildSessionScopeServices,
                                          CancellableOperationManager cancellableOperationManager, ContinuousExecutionGate continuousExecutionGate) {
         BuildCancellationToken cancellationToken = requestContext.getCancellationToken();
-        BuildStartedTime buildStartedTime = buildSessionScopeServices.get(BuildStartedTime.class);
-        Clock clock = buildSessionScopeServices.get(Clock.class);
 
-        Object lastResult;
+        BuildActionResult lastResult;
         while (true) {
             PendingChangesListener pendingChangesListener = buildSessionScopeServices.get(ListenerManager.class).getBroadcaster(PendingChangesListener.class);
             final FileSystemChangeWaiter waiter = changeWaiterFactory.createChangeWaiter(new SingleFirePendingChangesListener(pendingChangesListener), cancellationToken, continuousExecutionGate);
             try {
-                try {
-                    lastResult = executeBuildAndAccumulateInputs(action, requestContext, actionParameters, waiter, buildSessionScopeServices);
-                } catch (ReportedException t) {
-                    lastResult = t;
-                }
+                lastResult = executeBuildAndAccumulateInputs(action, requestContext, actionParameters, waiter, buildSessionScopeServices);
 
                 if (!waiter.isWatching()) {
                     logger.println().withStyle(StyledTextOutput.Style.Failure).println("Exiting continuous build as no executed tasks declared file system inputs.");
-                    if (lastResult instanceof ReportedException) {
-                        throw (ReportedException) lastResult;
-                    }
                     return lastResult;
                 } else {
                     cancellableOperationManager.monitorInput(new Action<BuildCancellationToken>() {
@@ -144,7 +134,7 @@ public class ContinuousBuildActionExecuter implements BuildActionExecuter<BuildA
                             waiter.wait(new Runnable() {
                                 @Override
                                 public void run() {
-                                    logger.println().println("Waiting for changes to input files of tasks..." + determineExitHint(actionParameters));
+                                    logger.println().println("Waiting for changes to input files of tasks..." + determineExitHint(requestContext));
                                 }
                             }, reporter);
                             if (!cancellationToken.isCancellationRequested()) {
@@ -161,19 +151,22 @@ public class ContinuousBuildActionExecuter implements BuildActionExecuter<BuildA
                 break;
             } else {
                 logger.println("Change detected, executing build...").println();
-                buildStartedTime.reset(clock.getCurrentTime());
+                resetBuildStartedTime(buildSessionScopeServices);
             }
         }
 
         logger.println("Build cancelled.");
-        if (lastResult instanceof ReportedException) {
-            throw (ReportedException) lastResult;
-        }
         return lastResult;
     }
 
-    private String determineExitHint(BuildActionParameters actionParameters) {
-        if (actionParameters.isInteractive()) {
+    private void resetBuildStartedTime(ServiceRegistry buildSessionScopeServices) {
+        BuildStartedTime buildStartedTime = buildSessionScopeServices.get(BuildStartedTime.class);
+        Clock clock = buildSessionScopeServices.get(Clock.class);
+        buildStartedTime.reset(clock.getCurrentTime());
+    }
+
+    private String determineExitHint(BuildRequestContext requestContext) {
+        if (requestContext.isInteractive()) {
             if (operatingSystem.isWindows()) {
                 return " (ctrl-d then enter to exit)";
             } else {
@@ -184,7 +177,7 @@ public class ContinuousBuildActionExecuter implements BuildActionExecuter<BuildA
         }
     }
 
-    private Object executeBuildAndAccumulateInputs(BuildAction action, BuildRequestContext requestContext, BuildActionParameters actionParameters, final FileSystemChangeWaiter waiter, ServiceRegistry buildSessionScopeServices) {
+    private BuildActionResult executeBuildAndAccumulateInputs(BuildAction action, BuildRequestContext requestContext, BuildActionParameters actionParameters, final FileSystemChangeWaiter waiter, ServiceRegistry buildSessionScopeServices) {
         try {
             inputsListener.setFileSystemWaiter(waiter);
             return delegate.execute(action, requestContext, actionParameters, buildSessionScopeServices);

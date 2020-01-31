@@ -65,6 +65,8 @@ public class GroovyCompileOptions extends AbstractOptions {
 
     private boolean javaAnnotationProcessing;
 
+    private boolean parameters;
+
     /**
      * Tells whether the compilation task should fail if compile errors occurred. Defaults to {@code true}.
      */
@@ -146,8 +148,8 @@ public class GroovyCompileOptions extends AbstractOptions {
      * The script is executed as Groovy code, with the following context:
      * </p>
      * <ul>
-     * <li>The instance of <a href="http://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/control/CompilerConfiguration.html">CompilerConfiguration</a> available as the {@code configuration} variable.</li>
-     * <li>All static members of <a href="http://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/control/customizers/builder/CompilerCustomizationBuilder.html">CompilerCustomizationBuilder</a> pre imported.</li>
+     * <li>The instance of <a href="https://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/control/CompilerConfiguration.html">CompilerConfiguration</a> available as the {@code configuration} variable.</li>
+     * <li>All static members of <a href="https://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/control/customizers/builder/CompilerCustomizationBuilder.html">CompilerCustomizationBuilder</a> pre imported.</li>
      * </ul>
      * <p>
      * This facilitates the following pattern:
@@ -168,19 +170,19 @@ public class GroovyCompileOptions extends AbstractOptions {
      * }
      * </pre>
      * <p>
-     * Please see <a href="http://docs.groovy-lang.org/latest/html/documentation/#compilation-customizers">the Groovy compiler customization builder documentation</a>
+     * Please see <a href="https://docs.groovy-lang.org/latest/html/documentation/#compilation-customizers">the Groovy compiler customization builder documentation</a>
      * for more information about the compiler configuration DSL.
      * </p>
      * <p>
      * <b>This feature is only available if compiling with Groovy 2.1 or later.</b>
      * </p>
-     * @see <a href="http://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/control/CompilerConfiguration.html">CompilerConfiguration</a>
-     * @see <a href="http://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/control/customizers/builder/CompilerCustomizationBuilder.html">CompilerCustomizationBuilder</a>
+     * @see <a href="https://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/control/CompilerConfiguration.html">CompilerConfiguration</a>
+     * @see <a href="https://docs.groovy-lang.org/latest/html/gapi/org/codehaus/groovy/control/customizers/builder/CompilerCustomizationBuilder.html">CompilerCustomizationBuilder</a>
      */
+    @Nullable
+    @Optional
     @PathSensitive(PathSensitivity.NONE)
     @InputFile
-    @Incubating
-    @Optional
     public File getConfigurationScript() {
         return configurationScript;
     }
@@ -190,7 +192,6 @@ public class GroovyCompileOptions extends AbstractOptions {
      *
      * @see #getConfigurationScript()
      */
-    @Incubating
     public void setConfigurationScript(@Nullable File configurationFile) {
         this.configurationScript = configurationFile;
     }
@@ -207,7 +208,6 @@ public class GroovyCompileOptions extends AbstractOptions {
      * If the compiler argument {@code "-proc:none"} was specified as part of the Java compile options, the value of this flag will be ignored.
      * No annotation processing will be performed regardless, on Java or Groovy source.
      */
-    @Incubating
     @Input
     public boolean isJavaAnnotationProcessing() {
         return javaAnnotationProcessing;
@@ -218,9 +218,30 @@ public class GroovyCompileOptions extends AbstractOptions {
      *
      * Defaults to {@code false}.
      */
-    @Incubating
     public void setJavaAnnotationProcessing(boolean javaAnnotationProcessing) {
         this.javaAnnotationProcessing = javaAnnotationProcessing;
+    }
+
+    /**
+     * Whether the Groovy compiler generate metadata for reflection on method parameter names on JDK 8 and above.
+     *
+     * @since 6.1
+     */
+    @Incubating
+    @Input
+    public boolean isParameters() {
+        return parameters;
+    }
+
+    /**
+     * Sets whether metadata for reflection on method parameter names should be generated.
+     * Defaults to {@code false}
+     *
+     * @since 6.1
+     */
+    @Incubating
+    public void setParameters(boolean parameters) {
+        this.parameters = parameters;
     }
 
     /**
@@ -255,7 +276,7 @@ public class GroovyCompileOptions extends AbstractOptions {
      *     <dd>Enable or disable all optimizations. Note that some optimizations might be mutually exclusive.
      * </dl>
      */
-    @Optional @Input
+    @Nullable @Optional @Input
     public Map<String, Boolean> getOptimizationOptions() {
         return optimizationOptions;
     }
@@ -264,7 +285,7 @@ public class GroovyCompileOptions extends AbstractOptions {
      * Sets optimization options for the Groovy compiler. Allowed values for an option are {@code true} and {@code false}.
      * Only takes effect when compiling against Groovy 1.8 or higher.
      */
-    public void setOptimizationOptions(Map<String, Boolean> optimizationOptions) {
+    public void setOptimizationOptions(@Nullable Map<String, Boolean> optimizationOptions) {
         this.optimizationOptions = optimizationOptions;
     }
 
@@ -291,7 +312,6 @@ public class GroovyCompileOptions extends AbstractOptions {
      * Groovy 1.7 or higher. Defaults to {@code ImmutableList.of("java", "groovy")}.
      */
     @Input
-    @Incubating
     public List<String> getFileExtensions() {
         return fileExtensions;
     }
@@ -300,7 +320,6 @@ public class GroovyCompileOptions extends AbstractOptions {
      * Sets the list of acceptable source file extensions. Only takes effect when compiling against
      * Groovy 1.7 or higher. Defaults to {@code ImmutableList.of("java", "groovy")}.
      */
-    @Incubating
     public void setFileExtensions(List<String> fileExtensions) {
         this.fileExtensions = fileExtensions;
     }

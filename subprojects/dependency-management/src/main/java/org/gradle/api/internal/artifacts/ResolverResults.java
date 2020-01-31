@@ -21,6 +21,8 @@ import org.gradle.api.artifacts.result.ResolutionResult;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.VisitedArtifactSet;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.projectresult.ResolvedLocalComponentsResult;
 
+import javax.annotation.Nullable;
+
 public interface ResolverResults {
     boolean hasError();
 
@@ -47,11 +49,6 @@ public interface ResolverResults {
     /**
      * Marks the dependency graph resolution as successful, with the given result.
      */
-    void graphResolved(VisitedArtifactSet visitedArtifacts);
-
-    /**
-     * Marks the dependency graph resolution as successful, with the given result.
-     */
     void graphResolved(ResolutionResult resolutionResult, ResolvedLocalComponentsResult resolvedLocalComponentsResult, VisitedArtifactSet visitedArtifacts);
 
     void failed(ResolveException failure);
@@ -70,4 +67,23 @@ public interface ResolverResults {
      * Marks artifact resolution as successful, clearing state provided by {@link #retainState(Object)}.
      */
     void artifactsResolved(ResolvedConfiguration resolvedConfiguration, VisitedArtifactSet visitedArtifacts);
+
+    /**
+     * Consumes the failure, allowing to either throw or do something else with it. Consuming effectively
+     * removes the exception from the underlying resolver results, meaning that subsequent calls to consume
+     * will return null.
+     */
+    @Nullable
+    ResolveException consumeNonFatalFailure();
+
+    /**
+     * Returns the failure, fatal or non fatal, or null if there's no failure. Used internally to
+     * set the failure on the resolution build operation result. In opposite to {@link #consumeNonFatalFailure()},
+     * this doesn't consume the error, so subsequent calls will return the same instance, unless the error was
+     * consumed in between.
+     */
+    @Nullable
+    Throwable getFailure();
+
+    boolean hasResolutionResult();
 }

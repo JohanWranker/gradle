@@ -16,6 +16,7 @@
 
 package org.gradle.play.integtest.continuous
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.play.integtest.fixtures.AbstractMultiVersionPlayContinuousBuildIntegrationTest
 import org.gradle.play.integtest.fixtures.RunningPlayApp
 import org.gradle.play.integtest.fixtures.app.BasicPlayApp
@@ -23,8 +24,9 @@ import org.gradle.play.integtest.fixtures.PlayApp
 
 class PlayContinuousBuildIntegrationTest extends AbstractMultiVersionPlayContinuousBuildIntegrationTest {
     RunningPlayApp runningApp = new RunningPlayApp(testDirectory)
-    PlayApp playApp = new BasicPlayApp()
+    PlayApp playApp = new BasicPlayApp(versionNumber)
 
+    @ToBeFixedForInstantExecution
     def "build does not block when running play app with continuous build" () {
         when: "the build runs until it enters continuous build"
         succeeds("runPlayBinary")
@@ -33,6 +35,7 @@ class PlayContinuousBuildIntegrationTest extends AbstractMultiVersionPlayContinu
         appIsRunningAndDeployed()
     }
 
+    @ToBeFixedForInstantExecution
     def "can run play app multiple times with continuous build" () {
         when:
         succeeds("runPlayBinary")
@@ -59,12 +62,13 @@ class PlayContinuousBuildIntegrationTest extends AbstractMultiVersionPlayContinu
         succeeds()
     }
 
+    @ToBeFixedForInstantExecution
     def "build failure prior to launch does not prevent launch on subsequent build" () {
         executer.withStackTraceChecksDisabled()
         def original = file("app/controllers/Application.scala").text
 
         when: "source file is broken"
-        file("app/controllers/Application.scala").text = "object Application extends Controller {"
+        file("app/controllers/Application.scala").text = "class Application extends Controller {"
 
         then:
         fails("runPlayBinary")
@@ -79,6 +83,7 @@ class PlayContinuousBuildIntegrationTest extends AbstractMultiVersionPlayContinu
         appIsRunningAndDeployed()
     }
 
+    @ToBeFixedForInstantExecution
     def "play application is stopped when build is cancelled" () {
         when:
         succeeds("runPlayBinary")

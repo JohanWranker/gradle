@@ -16,14 +16,16 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.modulecache.artifacts;
 
-import com.google.common.collect.Maps;
+import com.google.common.annotations.VisibleForTesting;
 import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
-import org.gradle.api.internal.artifacts.ivyservice.CacheLockingManager;
+import org.gradle.api.internal.artifacts.ivyservice.ArtifactCacheLockingManager;
 import org.gradle.api.internal.artifacts.metadata.ComponentArtifactIdentifierSerializer;
 import org.gradle.api.internal.artifacts.metadata.ModuleComponentFileArtifactIdentifierSerializer;
 import org.gradle.internal.component.external.model.DefaultModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentFileArtifactIdentifier;
+import org.gradle.internal.hash.HashCode;
 import org.gradle.internal.resource.cached.AbstractCachedIndex;
+import org.gradle.internal.resource.local.FileAccessTracker;
 import org.gradle.internal.serialize.Decoder;
 import org.gradle.internal.serialize.DefaultSerializerRegistry;
 import org.gradle.internal.serialize.Encoder;
@@ -31,19 +33,17 @@ import org.gradle.internal.serialize.Serializer;
 import org.gradle.util.BuildCommencedTimeProvider;
 
 import java.io.File;
-import java.math.BigInteger;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class DefaultModuleArtifactCache extends AbstractCachedIndex<ArtifactAtRepositoryKey, CachedArtifact> implements ModuleArtifactCache {
     private static final ArtifactAtRepositoryKeySerializer KEY_SERIALIZER = keySerializer();
-    private static final CachedArtifactSerializer VALUE_SERIALIZER = new CachedArtifactSerializer();
     private final BuildCommencedTimeProvider timeProvider;
-    private final Map<ArtifactAtRepositoryKey, CachedArtifact> inMemoryCache = Maps.newConcurrentMap();
 
-    public DefaultModuleArtifactCache(String persistentCacheFile, BuildCommencedTimeProvider timeProvider, CacheLockingManager cacheLockingManager) {
-        super(persistentCacheFile, KEY_SERIALIZER, VALUE_SERIALIZER, cacheLockingManager);
+    public DefaultModuleArtifactCache(String persistentCacheFile, BuildCommencedTimeProvider timeProvider, ArtifactCacheLockingManager artifactCacheLockingManager, FileAccessTracker fileAccessTracker, Path commonRootPath) {
+        super(persistentCacheFile, KEY_SERIALIZER, new CachedArtifactSerializer(commonRootPath), artifactCacheLockingManager, fileAccessTracker);
         this.timeProvider = timeProvider;
     }
 
@@ -54,50 +54,31 @@ public class DefaultModuleArtifactCache extends AbstractCachedIndex<ArtifactAtRe
         return new ArtifactAtRepositoryKeySerializer(serializerRegistry.build(ComponentArtifactIdentifier.class));
     }
 
-    public void store(final ArtifactAtRepositoryKey key, final File artifactFile, BigInteger moduleDescriptorHash) {
+    @Override
+    public void store(final ArtifactAtRepositoryKey key, final File artifactFile, HashCode moduleDescriptorHash) {
         assertArtifactFileNotNull(artifactFile);
         assertKeyNotNull(key);
         storeInternal(key, createEntry(artifactFile, moduleDescriptorHash));
     }
 
-    private DefaultCachedArtifact createEntry(File artifactFile, BigInteger moduleDescriptorHash) {
+    private DefaultCachedArtifact createEntry(File artifactFile, HashCode moduleDescriptorHash) {
         return new DefaultCachedArtifact(artifactFile, timeProvider.getCurrentTime(), moduleDescriptorHash);
     }
 
-    public void storeMissing(ArtifactAtRepositoryKey key, List<String> attemptedLocations, BigInteger descriptorHash) {
+    @Override
+    public void storeMissing(ArtifactAtRepositoryKey key, List<String> attemptedLocations, HashCode descriptorHash) {
         storeInternal(key, createMissingEntry(attemptedLocations, descriptorHash));
     }
 
-    private CachedArtifact createMissingEntry(List<String> attemptedLocations, BigInteger descriptorHash) {
+    private CachedArtifact createMissingEntry(List<String> attemptedLocations, HashCode descriptorHash) {
         return new DefaultCachedArtifact(attemptedLocations, timeProvider.getCurrentTime(), descriptorHash);
     }
 
     @Override
-    protected void storeInternal(ArtifactAtRepositoryKey key, CachedArtifact entry) {
-        inMemoryCache.put(key, entry);
-        super.storeInternal(key, entry);
-    }
-
-    @Override
     public CachedArtifact lookup(ArtifactAtRepositoryKey key) {
-        CachedArtifact inMemoryCachedArtifact = inMemoryCache.get(key);
-        if (inMemoryCachedArtifact != null) {
-            return inMemoryCachedArtifact;
-        }
+        assertKeyNotNull(key);
 
-        CachedArtifact cachedArtifact = super.lookup(key);
-        if (cachedArtifact != null) {
-            inMemoryCache.put(key, cachedArtifact);
-            return cachedArtifact;
-        }
-
-        return null;
-    }
-
-    @Override
-    public void clear(ArtifactAtRepositoryKey key) {
-        super.clear(key);
-        inMemoryCache.remove(key);
+        return super.lookup(key);
     }
 
     private static class ArtifactAtRepositoryKeySerializer implements Serializer<ArtifactAtRepositoryKey> {
@@ -107,11 +88,13 @@ public class DefaultModuleArtifactCache extends AbstractCachedIndex<ArtifactAtRe
             this.artifactIdSerializer = artifactIdSerializer;
         }
 
+        @Override
         public void write(Encoder encoder, ArtifactAtRepositoryKey value) throws Exception {
             encoder.writeString(value.getRepositoryId());
             artifactIdSerializer.write(encoder, value.getArtifactId());
         }
 
+        @Override
         public ArtifactAtRepositoryKey read(Decoder decoder) throws Exception {
             String repositoryId = decoder.readString();
             ComponentArtifactIdentifier artifactIdentifier = artifactIdSerializer.read(decoder);
@@ -119,14 +102,40 @@ public class DefaultModuleArtifactCache extends AbstractCachedIndex<ArtifactAtRe
         }
     }
 
-    private static class CachedArtifactSerializer implements Serializer<CachedArtifact> {
+    @VisibleForTesting
+    static class CachedArtifactSerializer implements Serializer<CachedArtifact> {
+
+        private final Path commonRootPath;
+
+        public CachedArtifactSerializer(Path commonRootPath) {
+            this.commonRootPath = commonRootPath;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            CachedArtifactSerializer that = (CachedArtifactSerializer) o;
+            return commonRootPath.equals(that.commonRootPath);
+        }
+
+        @Override
+        public int hashCode() {
+            return commonRootPath.hashCode();
+        }
+
+        @Override
         public void write(Encoder encoder, CachedArtifact value) throws Exception {
             encoder.writeBoolean(value.isMissing());
             encoder.writeLong(value.getCachedAt());
             byte[] hash = value.getDescriptorHash().toByteArray();
             encoder.writeBinary(hash);
             if (!value.isMissing()) {
-                encoder.writeString(value.getCachedFile().getPath());
+                encoder.writeString(relativizeAndNormalizeFilePath(value.getCachedFile()));
             } else {
                 encoder.writeSmallInt(value.attemptedLocations().size());
                 for (String location : value.attemptedLocations()) {
@@ -135,22 +144,39 @@ public class DefaultModuleArtifactCache extends AbstractCachedIndex<ArtifactAtRe
             }
         }
 
+        @Override
         public CachedArtifact read(Decoder decoder) throws Exception {
             boolean isMissing = decoder.readBoolean();
             long createTimestamp = decoder.readLong();
             byte[] encodedHash = decoder.readBinary();
-            BigInteger hash = new BigInteger(encodedHash);
+            HashCode hash = HashCode.fromBytes(encodedHash);
             if (!isMissing) {
-                File file = new File(decoder.readString());
-                return new DefaultCachedArtifact(file, createTimestamp, hash);
+                return new DefaultCachedArtifact(denormalizeAndResolveFilePath(decoder.readString()), createTimestamp, hash);
             } else {
                 int size = decoder.readSmallInt();
-                List<String> attempted = new ArrayList<String>(size);
+                List<String> attempted = new ArrayList<>(size);
                 for (int i = 0; i < size; i++) {
                     attempted.add(decoder.readString());
                 }
                 return new DefaultCachedArtifact(attempted, createTimestamp, hash);
             }
+        }
+
+        private String relativizeAndNormalizeFilePath(File cachedFile) {
+            Path filePath = cachedFile.toPath();
+            assert filePath.startsWith(commonRootPath) : "Attempting to cache file " + filePath + " not in " + commonRootPath;
+            String systemDependentPath = commonRootPath.relativize(filePath).toString();
+            if (!filePath.getFileSystem().getSeparator().equals("/")) {
+                return systemDependentPath.replace(filePath.getFileSystem().getSeparator(), "/");
+            }
+            return systemDependentPath;
+        }
+
+        private File denormalizeAndResolveFilePath(String relativePath) throws IOException {
+            if (!commonRootPath.getFileSystem().getSeparator().equals("/")) {
+                relativePath = relativePath.replace("/", commonRootPath.getFileSystem().getSeparator());
+            }
+            return commonRootPath.resolve(relativePath).toFile();
         }
     }
 

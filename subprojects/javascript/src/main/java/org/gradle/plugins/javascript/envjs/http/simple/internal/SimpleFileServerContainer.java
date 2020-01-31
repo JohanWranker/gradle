@@ -18,6 +18,7 @@ package org.gradle.plugins.javascript.envjs.http.simple.internal;
 
 import org.apache.commons.io.IOUtils;
 import org.gradle.api.UncheckedIOException;
+import org.gradle.internal.IoActions;
 import org.simpleframework.http.Request;
 import org.simpleframework.http.Response;
 import org.simpleframework.http.core.Container;
@@ -41,6 +42,7 @@ public class SimpleFileServerContainer implements Container {
         this.context = context;
     }
 
+    @Override
     public void handle(Request req, Response resp) {
         Index requestIndex = context.getIndex(req.getTarget());
         File targetFile = requestIndex.getFile();
@@ -67,16 +69,16 @@ public class SimpleFileServerContainer implements Container {
                 resp.set("Content-Encoding", Charset.defaultCharset().name());
                 Reader input = new FileReader(requestIndex.getFile());
                 IOUtils.copy(input, output);
-                IOUtils.closeQuietly(input);
+                IoActions.closeQuietly(input);
             } else {
                 InputStream input = new FileInputStream(requestIndex.getFile());
                 IOUtils.copy(input, output);
-                IOUtils.closeQuietly(input);
+                IoActions.closeQuietly(input);
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } finally {
-            IOUtils.closeQuietly(output);
+            IoActions.closeQuietly(output);
         }
     }
 }

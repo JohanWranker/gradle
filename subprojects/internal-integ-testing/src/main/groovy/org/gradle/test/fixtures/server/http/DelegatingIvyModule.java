@@ -16,6 +16,7 @@
 package org.gradle.test.fixtures.server.http;
 
 import groovy.lang.Closure;
+import groovy.lang.DelegatesTo;
 import org.gradle.internal.Cast;
 import org.gradle.test.fixtures.GradleModuleMetadata;
 import org.gradle.test.fixtures.Module;
@@ -23,6 +24,7 @@ import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.test.fixtures.ivy.IvyDescriptor;
 import org.gradle.test.fixtures.ivy.IvyModule;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.Map;
 
@@ -42,10 +44,12 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         return backingModule.getGroup();
     }
 
+    @Override
     public String getOrganisation() {
         return backingModule.getOrganisation();
     }
 
+    @Override
     public String getModule() {
         return backingModule.getModule();
     }
@@ -55,10 +59,12 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         return backingModule.getVersion();
     }
 
+    @Override
     public String getRevision() {
         return backingModule.getRevision();
     }
 
+    @Override
     public IvyDescriptor getParsedIvy() {
         return backingModule.getParsedIvy();
     }
@@ -88,11 +94,13 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         backingModule.assertPublishedAsWebModule();
     }
 
+    @Override
     public T publish() {
         backingModule.publish();
         return t();
     }
 
+    @Override
     public T publishWithChangedContent() {
         backingModule.publishWithChangedContent();
         return t();
@@ -104,6 +112,7 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         return t();
     }
 
+    @Override
     public T withNoMetaData() {
         backingModule.withNoMetaData();
         return t();
@@ -115,8 +124,27 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         return t();
     }
 
+    @Override
     public T withStatus(String status) {
         backingModule.withStatus(status);
+        return t();
+    }
+
+    @Override
+    public IvyModule withoutGradleMetadataRedirection() {
+        backingModule.withoutGradleMetadataRedirection();
+        return t();
+    }
+
+    @Override
+    public IvyModule withoutExtraChecksums() {
+        backingModule.withoutExtraChecksums();
+        return t();
+    }
+
+    @Override
+    public IvyModule withExtraChecksums() {
+        backingModule.withExtraChecksums();
         return t();
     }
 
@@ -126,11 +154,13 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         return t();
     }
 
+    @Override
     public T dependsOn(String organisation, String module, String revision) {
         backingModule.dependsOn(organisation, module, revision);
         return t();
     }
 
+    @Override
     public T dependsOn(Map<String, ?> attributes) {
         backingModule.dependsOn(attributes);
         return t();
@@ -165,6 +195,7 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
      * @param options Can specify any of name, type, ext or classifier
      * @return t();
      */
+    @Override
     public T artifact(Map<String, ?> options) {
         backingModule.artifact(options);
         return t();
@@ -174,6 +205,7 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         return artifact(Collections.<String, Object>emptyMap());
     }
 
+    @Override
     public T undeclaredArtifact(Map<String, ?> options) {
         backingModule.undeclaredArtifact(options);
         return t();
@@ -184,31 +216,37 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         return t();
     }
 
+    @Override
     public T extendsFrom(Map<String, ?> attributes) {
         backingModule.extendsFrom(attributes);
         return t();
     }
 
+    @Override
     public T configuration(Map<String, ?> options, String name) {
         backingModule.configuration(options, name);
         return t();
     }
 
+    @Override
     public T configuration(String name) {
         backingModule.configuration(Collections.<String, Object>emptyMap(), name);
         return t();
     }
 
+    @Override
     public IvyModule variant(String variant, Map<String, String> attributes) {
         backingModule.variant(variant, attributes);
         return t();
     }
 
+    @Override
     public T withXml(Closure action) {
         backingModule.withXml(action);
         return t();
     }
 
+    @Override
     public TestFile getIvyFile() {
         return backingModule.getIvyFile();
     }
@@ -218,10 +256,12 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
         return backingModule.getModuleMetadataFile();
     }
 
+    @Override
     public TestFile getJarFile() {
         return backingModule.getJarFile();
     }
 
+    @Override
     public void assertIvyAndJarFilePublished() {
         backingModule.assertIvyAndJarFilePublished();
     }
@@ -232,12 +272,25 @@ public abstract class DelegatingIvyModule<T extends IvyModule> implements IvyMod
     }
 
     @Override
-    public void withVariant(String name, Closure<?> action) {
+    public IvyModule withVariant(String name, Closure<?> action) {
         backingModule.withVariant(name, action);
+        return this;
     }
 
     @Override
     public Map<String, String> getAttributes() {
         return backingModule.getAttributes();
+    }
+
+    @Override
+    public T withoutDefaultVariants() {
+        backingModule.withoutDefaultVariants();
+        return t();
+    }
+
+    @Override
+    public Module withSignature(@DelegatesTo(value = File.class, strategy = Closure.DELEGATE_FIRST) Closure<?> signer) {
+        backingModule.withSignature(signer);
+        return t();
     }
 }

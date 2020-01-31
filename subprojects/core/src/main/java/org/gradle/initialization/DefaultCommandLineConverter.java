@@ -50,6 +50,7 @@ public class DefaultCommandLineConverter extends AbstractCommandLineConverter<St
         layoutCommandLineConverter = new LayoutCommandLineConverter();
     }
 
+    @Override
     public void configure(CommandLineParser parser) {
         loggingConfigurationCommandLineConverter.configure(parser);
         parallelConfigurationCommandLineConverter.configure(parser);
@@ -63,6 +64,7 @@ public class DefaultCommandLineConverter extends AbstractCommandLineConverter<St
         }
     }
 
+    @Override
     public StartParameterInternal convert(final ParsedCommandLine options, final StartParameterInternal startParameter) throws CommandLineArgumentException {
         loggingConfigurationCommandLineConverter.convert(options, startParameter);
         parallelConfigurationCommandLineConverter.convert(options, startParameter);
@@ -83,7 +85,7 @@ public class DefaultCommandLineConverter extends AbstractCommandLineConverter<St
         if (layout.getProjectDir() != null) {
             startParameter.setProjectDir(layout.getProjectDir());
         }
-        startParameter.setSearchUpwards(layout.getSearchUpwards());
+        startParameter.setSearchUpwardsWithoutDeprecationWarning(layout.getSearchUpwards());
 
         if (!options.getExtraArguments().isEmpty()) {
             startParameter.setTaskNames(options.getExtraArguments());

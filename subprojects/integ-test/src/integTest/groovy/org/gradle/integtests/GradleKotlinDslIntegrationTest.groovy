@@ -17,6 +17,7 @@
 package org.gradle.integtests
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.test.fixtures.file.LeaksFileHandles
 import org.gradle.test.fixtures.server.http.HttpServer
 import org.gradle.util.Requires
@@ -52,7 +53,7 @@ class GradleKotlinDslIntegrationTest extends AbstractIntegrationSpec {
         run 'build'
 
         then:
-        result.output.contains('it works!')
+        outputContains('it works!')
     }
 
     @LeaksFileHandles
@@ -72,7 +73,7 @@ class GradleKotlinDslIntegrationTest extends AbstractIntegrationSpec {
 
         buildFile << """
             apply { 
-                from("http://localhost:${server.port}/script.gradle") 
+                from("${server.uri}/script.gradle") 
             }
         """
 
@@ -82,7 +83,7 @@ class GradleKotlinDslIntegrationTest extends AbstractIntegrationSpec {
         run 'hello'
 
         then:
-        result.output.contains("Hello!")
+        outputContains("Hello!")
 
         when:
         server.stop()
@@ -90,7 +91,7 @@ class GradleKotlinDslIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         succeeds 'hello'
-        result.output.contains("Hello!")
+        outputContains("Hello!")
 
         cleanup: // wait for all daemons to shutdown so the test dir can be deleted
         executer.cleanup()
@@ -105,7 +106,7 @@ class GradleKotlinDslIntegrationTest extends AbstractIntegrationSpec {
 
         def scriptFile = file("script.gradle.kts") << """
             tasks {
-                "hello" {
+                register("hello") {
                     doLast { 
                         println("Hello!") 
                     }
@@ -114,13 +115,13 @@ class GradleKotlinDslIntegrationTest extends AbstractIntegrationSpec {
         """
         server.expectGet('/script.gradle.kts', scriptFile)
 
-        buildFile << """apply { from("http://localhost:${server.port}/script.gradle.kts") }"""
+        buildFile << """apply { from("${server.uri}/script.gradle.kts") }"""
 
         when:
-        run 'hello'
+        succeeds 'hello'
 
         then:
-        result.output.contains("Hello!")
+        outputContains("Hello!")
 
         when:
         server.stop()
@@ -128,7 +129,7 @@ class GradleKotlinDslIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         succeeds 'hello'
-        result.output.contains("Hello!")
+        outputContains("Hello!")
 
         cleanup: // wait for all daemons to shutdown so the test dir can be deleted
         executer.cleanup()
@@ -136,6 +137,9 @@ class GradleKotlinDslIntegrationTest extends AbstractIntegrationSpec {
 
     def 'can query KotlinBuildScriptModel'() {
         given:
+        // TODO Remove this once the Kotlin DSL upgrades 'pattern("layout") {' to 'patternLayout {
+        // Using expectDeprecationWarning did not work as some setup do not trigger one
+        executer.noDeprecationChecks()
         // This test breaks encapsulation a bit in the interest of ensuring Gradle Kotlin DSL use
         // of internal APIs is not broken by refactorings on the Gradle side
         buildFile << """
@@ -157,9 +161,84 @@ task("dumpKotlinBuildScriptModelClassPath") {
         """
 
         when:
-        run 'dumpKotlinBuildScriptModelClassPath'
+        succeeds 'dumpKotlinBuildScriptModelClassPath'
 
         then:
-        result.output.contains("gradle-kotlin-dsl!")
+        outputContains("gradle-kotlin-dsl!")
+    }
+
+    @ToBeFixedForInstantExecution
+    def 'can use Kotlin lambda as path notation'() {
+        given:
+        buildFile << """
+            task("listFiles") {
+                doLast {
+
+                    // via FileResolver
+                    val f = file { "cathedral" }
+                    println(f.name)
+
+                    // on FileCollection
+                    val collection = layout.files(
+                        // single lambda
+                        { "foo" },
+                        // nested deferred
+                        { { "bar" } },
+                        // nested unpacking
+                        { file({ "baz" }) },
+                        // nested both
+                        { { file({ { "bazar" } }) } }
+                    )
+                    println(collection.files.map { it.name })                    
+                }
+            }
+        """
+        when:
+        succeeds 'listFiles'
+        then:
+        outputContains 'cathedral'
+        outputContains '[foo, bar, baz, bazar]'
+    }
+
+    @ToBeFixedForInstantExecution
+    def 'can use Kotlin lambda as input property'() {
+        given:
+        buildFile << """
+            import org.gradle.api.*
+            import org.gradle.api.tasks.*
+            import javax.inject.Inject
+
+            open class PrintInputToFile @Inject constructor(objects: ObjectFactory): DefaultTask() {
+                @get:Input
+                val input = { project.property("inputString") }
+                @get:OutputFile
+                val outputFile: RegularFileProperty = objects.fileProperty() 
+
+                @TaskAction fun run() {
+                    outputFile.get().asFile.writeText(input() as String)
+                }
+            }
+
+            task<PrintInputToFile>("writeInputToFile") {
+                outputFile.set(project.layout.buildDirectory.file("output.txt"))
+            }
+            
+        """
+        def taskName = ":writeInputToFile"
+
+        when:
+        run taskName, '-PinputString=string1'
+        then:
+        executedAndNotSkipped(taskName)
+
+        when:
+        run taskName, '-PinputString=string1'
+        then:
+        skipped(taskName)
+
+        when:
+        run taskName, '-PinputString=string2'
+        then:
+        executedAndNotSkipped(taskName)
     }
 }

@@ -16,15 +16,16 @@
 
 package org.gradle.api.artifacts.result;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.attributes.AttributeContainer;
+import org.gradle.api.capabilities.Capability;
+
+import java.util.List;
 
 /**
  * The result of successfully resolving a component variant.
  *
  * @since 3.5
  */
-@Incubating
 public interface ResolvedVariantResult {
     /**
      * The attributes associated with this variant.
@@ -37,4 +38,11 @@ public interface ResolvedVariantResult {
      * @since 4.6
      */
     String getDisplayName();
+
+    /**
+     * The capabilities provided by this variant
+     *
+     * @since 5.3
+     */
+    List<Capability> getCapabilities();
 }

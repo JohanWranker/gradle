@@ -20,9 +20,9 @@ import org.gradle.api.GradleException
 import org.gradle.api.file.FileCollection
 import org.gradle.api.plugins.quality.Checkstyle
 import org.gradle.api.plugins.quality.CheckstyleReports
+import org.gradle.internal.deprecation.DeprecationLogger
 import org.gradle.internal.logging.ConsoleRenderer
 import org.gradle.util.GFileUtils
-import org.gradle.util.SingleMessageLogger
 
 abstract class CheckstyleInvoker {
     private final static String FAILURE_PROPERTY_NAME = 'org.gradle.checkstyle.violations'
@@ -41,7 +41,7 @@ abstract class CheckstyleInvoker {
         def ignoreFailures = checkstyleTask.ignoreFailures
         def logger = checkstyleTask.logger
         def config = checkstyleTask.config
-        def configDir = checkstyleTask.configDir
+        def configDir = checkstyleTask.configDirectory.getAsFile().getOrNull()
         def xmlDestination = reports.xml.destination
 
         if (isHtmlReportEnabledOnly(reports)) {
@@ -56,7 +56,7 @@ abstract class CheckstyleInvoker {
             }
 
             ant.checkstyle(config: config.asFile(), failOnViolation: false,
-                    maxErrors: maxErrors, maxWarnings: maxWarnings, failureProperty: FAILURE_PROPERTY_NAME) {
+                maxErrors: maxErrors, maxWarnings: maxWarnings, failureProperty: FAILURE_PROPERTY_NAME) {
 
                 source.addToAntBuilder(ant, 'fileset', FileCollection.AntType.FileSet)
                 classpath.addToAntBuilder(ant, 'classpath')
@@ -69,18 +69,21 @@ abstract class CheckstyleInvoker {
                     formatter(type: 'xml', toFile: xmlDestination)
                 }
 
-                // User provided their own config_loc
-                def userProvidedConfigLoc = configProperties[CONFIG_LOC_PROPERTY]
-
-                if (userProvidedConfigLoc) {
-                    SingleMessageLogger.nagUserOfDeprecated("Adding 'config_loc' to checkstyle.configProperties", "Use checkstyle.configDir instead as this will behave better with up-to-date checks")
-                } else if (configDir) {
-                    // Use configDir for config_loc
-                    property(key: CONFIG_LOC_PROPERTY, value: configDir.toString())
-                }
-
                 configProperties.each { key, value ->
                     property(key: key, value: value.toString())
+                }
+
+                if (configDir) {
+                    // User provided their own config_loc
+                    def userProvidedConfigLoc = configProperties[CONFIG_LOC_PROPERTY]
+                    if (userProvidedConfigLoc) {
+                        DeprecationLogger.deprecateIndirectUsage("Adding 'config_loc' to checkstyle.configProperties")
+                            .withAdvice("This property is now ignored and the value of configDirectory is always used for 'config_loc'.")
+                            .withUpgradeGuideSection(5, "user_provided_config_loc_properties_are_ignored_by_checkstyle")
+                            .nagUser()
+                    }
+                    // Use configDir for config_loc
+                    property(key: CONFIG_LOC_PROPERTY, value: configDir.toString())
                 }
             }
 
@@ -98,20 +101,48 @@ abstract class CheckstyleInvoker {
                 GFileUtils.deleteQuietly(xmlDestination)
             }
 
-            if (ant.project.properties[FAILURE_PROPERTY_NAME]) {
-                def message = "Checkstyle rule violations were found."
-                def report = reports.html.enabled ? reports.html : reports.xml.enabled ? reports.xml : null
-                if (report) {
-                    def reportUrl = new ConsoleRenderer().asClickableFileUrl(report.destination)
-                    message += " See the report at: $reportUrl"
-                }
-                if (ignoreFailures) {
-                    logger.warn(message)
-                } else {
-                    throw new GradleException(message)
+            if (ant.project.properties[FAILURE_PROPERTY_NAME] && !ignoreFailures) {
+                throw new GradleException(getMessage(reports, parseCheckstyleXml(reports)))
+            } else {
+                def reportXml = parseCheckstyleXml(reports)
+                if (violationsExist(reportXml)) {
+                    logger.warn(getMessage(reports, reportXml))
                 }
             }
         }
+    }
+
+    private static boolean violationsExist(Node reportXml) {
+        return reportXml != null && getErrorFileCount(reportXml) > 0
+    }
+
+    private static parseCheckstyleXml(CheckstyleReports reports) {
+        return reports.xml.enabled ? new XmlParser().parse(reports.xml.destination) : null
+    }
+
+    private static String getMessage(CheckstyleReports reports, Node reportXml) {
+        return "Checkstyle rule violations were found.${getReportUrlMessage(reports)}${getViolationMessage(reportXml)}"
+    }
+
+    private static int getErrorFileCount(Node reportXml) {
+        return reportXml.file.error.groupBy { it.parent().@name }.keySet().size()
+    }
+
+    private static String getReportUrlMessage(CheckstyleReports reports) {
+        def report = reports.html.enabled ? reports.html : reports.xml.enabled ? reports.xml : null
+        return report ? " See the report at: ${new ConsoleRenderer().asClickableFileUrl(report.destination)}" : "\n"
+    }
+
+    private static String getViolationMessage(Node reportXml) {
+        if (violationsExist(reportXml)) {
+            def errorFileCount = getErrorFileCount(reportXml)
+            def violations = reportXml.file.error.countBy { it.@severity }
+            return """
+                    Checkstyle files with violations: $errorFileCount
+                    Checkstyle violations by severity: ${violations}
+                    """.stripIndent()
+        }
+        return "\n"
     }
 
     private static boolean isHtmlReportEnabledOnly(CheckstyleReports reports) {

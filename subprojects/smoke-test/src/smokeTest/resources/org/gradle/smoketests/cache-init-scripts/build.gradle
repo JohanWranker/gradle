@@ -1,3 +1,0 @@
-apply from: "overlappingTaskOutputsStatsInit.gradle"
-
-apply plugin: 'groovy'

@@ -18,8 +18,7 @@ package org.gradle.internal.scan.config
 
 import org.gradle.StartParameter
 import org.gradle.internal.event.ListenerManager
-import org.gradle.testing.internal.util.Specification
-import spock.lang.Unroll
+import spock.lang.Specification
 import spock.util.environment.RestoreSystemProperties
 
 class BuildScanConfigManagerTest extends Specification {
@@ -64,59 +63,13 @@ class BuildScanConfigManagerTest extends Specification {
         }
     }
 
-    def "throws if plugin version is too old"() {
-        when:
-        config("1.7")
-
-        then:
-        thrown UnsupportedBuildScanPluginVersionException
-
-        when:
-        config("1.9")
-
-        then:
-        notThrown UnsupportedBuildScanPluginVersionException
-
-        when:
-        config("1.8-TIMESTAMP")
-
-        then:
-        notThrown UnsupportedBuildScanPluginVersionException
-    }
-
-    def "throws if has vcs mappings and plugin version is too old"() {
-        given:
-        attributes.isRootProjectHasVcsMappings() >> true
-
-        when:
-        config("1.9")
-
-        then:
-        thrown UnsupportedBuildScanPluginVersionException
-    }
-
-    @Unroll
-    def "does not throw if has vcs mappings and plugin version #version"() {
-        given:
-        attributes.isRootProjectHasVcsMappings() >> true
-
-        when:
-        config(version)
-
-        then:
-        notThrown UnsupportedBuildScanPluginVersionException
-
-        where:
-        version << ["1.11", "1.12"]
-    }
-
     @RestoreSystemProperties
     def "can convey unsupported"() {
         when:
         System.setProperty(BuildScanPluginCompatibility.UNSUPPORTED_TOGGLE, "true")
 
         then:
-        with(config(BuildScanConfigManager.FIRST_VERSION_AWARE_OF_UNSUPPORTED.toString())) {
+        with(config()) {
             !enabled
             !disabled
             unsupportedMessage == BuildScanPluginCompatibility.UNSUPPORTED_TOGGLE_MESSAGE
@@ -126,11 +79,20 @@ class BuildScanConfigManagerTest extends Specification {
         scanEnabled = true
 
         then:
-        with(config(BuildScanConfigManager.FIRST_VERSION_AWARE_OF_UNSUPPORTED.toString())) {
+        with(config()) {
             enabled
             !disabled
             unsupportedMessage == BuildScanPluginCompatibility.UNSUPPORTED_TOGGLE_MESSAGE
         }
+    }
+
+    def "fails if plugin version is not supported"() {
+        when:
+        // 1.16 is older than BuildScanPluginCompatibility.MIN_SUPPORTED_VERSION, hence not supported
+        config("1.16")
+
+        then:
+        thrown(UnsupportedBuildScanPluginVersionException)
     }
 
     BuildScanConfigManager manager() {
@@ -143,7 +105,7 @@ class BuildScanConfigManagerTest extends Specification {
         new BuildScanConfigManager(startParameter, Mock(ListenerManager), new BuildScanPluginCompatibility(), { attributes })
     }
 
-    BuildScanConfig config(String versionNumber = BuildScanPluginCompatibility.MIN_SUPPORTED_VERSION) {
+    BuildScanConfig config(String versionNumber = BuildScanPluginCompatibility.FIRST_GRADLE_ENTERPRISE_PLUGIN_VERSION) {
         def manager = manager()
         manager.init()
         manager.collect(new BuildScanPluginMetadata() {

@@ -17,21 +17,20 @@
 package org.gradle.internal.service.scopes;
 
 import org.gradle.api.Action;
+import org.gradle.api.internal.CollectionCallbackActionDecorator;
 import org.gradle.api.internal.GradleInternal;
-import org.gradle.api.internal.InstantiatorFactory;
 import org.gradle.api.internal.SettingsInternal;
-import org.gradle.api.internal.file.BaseDirFileResolver;
+import org.gradle.api.internal.collections.DomainObjectCollectionFactory;
+import org.gradle.api.internal.file.FileLookup;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.plugins.DefaultPluginManager;
 import org.gradle.api.internal.plugins.ImperativeOnlyPluginTarget;
 import org.gradle.api.internal.plugins.PluginManagerInternal;
 import org.gradle.api.internal.plugins.PluginRegistry;
 import org.gradle.api.internal.plugins.PluginTarget;
-import org.gradle.api.tasks.util.PatternSet;
 import org.gradle.configuration.ConfigurationTargetIdentifier;
-import org.gradle.initialization.DefaultProjectDescriptorRegistry;
-import org.gradle.initialization.ProjectDescriptorRegistry;
-import org.gradle.internal.nativeintegration.filesystem.FileSystem;
+import org.gradle.configuration.internal.UserCodeApplicationContext;
+import org.gradle.internal.instantiation.InstantiatorFactory;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.service.DefaultServiceRegistry;
@@ -45,6 +44,7 @@ public class SettingsScopeServices extends DefaultServiceRegistry {
         super(parent);
         this.settings = settings;
         register(new Action<ServiceRegistration>() {
+            @Override
             public void execute(ServiceRegistration registration) {
                 for (PluginServiceRegistry pluginServiceRegistry : parent.getAll(PluginServiceRegistry.class)) {
                     pluginServiceRegistry.registerSettingsServices(registration);
@@ -53,21 +53,17 @@ public class SettingsScopeServices extends DefaultServiceRegistry {
         });
     }
 
-    protected FileResolver createFileResolver() {
-        return new BaseDirFileResolver(get(FileSystem.class), settings.getSettingsDir(), getFactory(PatternSet.class));
+    protected FileResolver createFileResolver(FileLookup fileLookup) {
+        return fileLookup.getFileResolver(settings.getSettingsDir());
     }
 
     protected PluginRegistry createPluginRegistry(PluginRegistry parentRegistry) {
         return parentRegistry.createChild(settings.getClassLoaderScope());
     }
 
-    protected PluginManagerInternal createPluginManager(Instantiator instantiator, PluginRegistry pluginRegistry, InstantiatorFactory instantiatorFactory, BuildOperationExecutor buildOperationExecutor) {
+    protected PluginManagerInternal createPluginManager(Instantiator instantiator, PluginRegistry pluginRegistry, InstantiatorFactory instantiatorFactory, BuildOperationExecutor buildOperationExecutor, UserCodeApplicationContext userCodeApplicationContext, CollectionCallbackActionDecorator decorator, DomainObjectCollectionFactory domainObjectCollectionFactory) {
         PluginTarget target = new ImperativeOnlyPluginTarget<SettingsInternal>(settings);
-        return instantiator.newInstance(DefaultPluginManager.class, pluginRegistry, instantiatorFactory.inject(this), target, buildOperationExecutor);
-    }
-
-    protected ProjectDescriptorRegistry createProjectDescriptorRegistry() {
-        return new DefaultProjectDescriptorRegistry();
+        return instantiator.newInstance(DefaultPluginManager.class, pluginRegistry, instantiatorFactory.inject(this), target, buildOperationExecutor, userCodeApplicationContext, decorator, domainObjectCollectionFactory);
     }
 
     protected ConfigurationTargetIdentifier createConfigurationTargetIdentifier() {

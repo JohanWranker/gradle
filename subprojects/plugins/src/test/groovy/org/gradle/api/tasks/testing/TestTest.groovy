@@ -16,6 +16,7 @@
 
 package org.gradle.api.tasks.testing
 
+import org.apache.commons.io.FileUtils
 import org.gradle.api.Action
 import org.gradle.api.file.FileCollection
 import org.gradle.api.file.FileTree
@@ -25,7 +26,7 @@ import org.gradle.api.internal.file.TestFiles
 import org.gradle.api.internal.file.collections.DefaultFileCollectionResolveContext
 import org.gradle.api.internal.file.collections.DirectoryFileTree
 import org.gradle.api.internal.file.collections.FileTreeAdapter
-import org.gradle.api.internal.file.collections.SimpleFileCollection
+import org.gradle.api.internal.file.collections.ImmutableFileCollection
 import org.gradle.api.internal.tasks.testing.TestExecuter
 import org.gradle.api.internal.tasks.testing.TestExecutionSpec
 import org.gradle.api.internal.tasks.testing.TestFramework
@@ -37,8 +38,8 @@ import org.gradle.api.internal.tasks.testing.junit.result.TestResultsProvider
 import org.gradle.api.internal.tasks.testing.report.TestReporter
 import org.gradle.api.tasks.AbstractConventionTaskTest
 import org.gradle.internal.work.WorkerLeaseRegistry
+import org.gradle.process.CommandLineArgumentProvider
 import org.gradle.process.internal.worker.WorkerProcessBuilder
-import org.gradle.util.GFileUtils
 
 import java.lang.ref.WeakReference
 
@@ -59,13 +60,13 @@ class TestTest extends AbstractConventionTaskTest {
     def testFrameworkMock = Mock(TestFramework)
 
     private WorkerLeaseRegistry.WorkerLeaseCompletion completion
-    private FileCollection classpathMock = new SimpleFileCollection(new File("classpath"))
+    private FileCollection classpathMock = ImmutableFileCollection.of(new File("classpath"))
     private Test test
 
     def setup() {
         classesDir = temporaryFolder.createDir("classes")
         File classfile = new File(classesDir, "FileTest.class")
-        GFileUtils.touch(classfile)
+        FileUtils.touch(classfile)
         resultsDir = temporaryFolder.createDir("testResults")
         binResultsDir = temporaryFolder.createDir("binResults")
         reportDir = temporaryFolder.createDir("report")
@@ -78,7 +79,7 @@ class TestTest extends AbstractConventionTaskTest {
         completion.leaseFinish()
     }
 
-    public ConventionTask getTask() {
+    ConventionTask getTask() {
         return test
     }
 
@@ -92,6 +93,7 @@ class TestTest extends AbstractConventionTaskTest {
         test.getIncludes().isEmpty()
         test.getExcludes().isEmpty()
         !test.getIgnoreFailures()
+        !test.getFailFast()
     }
 
     def "test execute()"() {
@@ -148,19 +150,19 @@ class TestTest extends AbstractConventionTaskTest {
         configureTask()
         test.useTestFramework(new TestFramework() {
 
-            public TestFrameworkDetector getDetector() {
+            TestFrameworkDetector getDetector() {
                 return null
             }
 
-            public TestFrameworkOptions getOptions() {
+            TestFrameworkOptions getOptions() {
                 return null
             }
 
-            public WorkerTestClassProcessorFactory getProcessorFactory() {
+            WorkerTestClassProcessorFactory getProcessorFactory() {
                 return null
             }
 
-            public Action<WorkerProcessBuilder> getWorkerConfigurationAction() {
+            Action<WorkerProcessBuilder> getWorkerConfigurationAction() {
                 return null
             }
         })
@@ -257,10 +259,25 @@ class TestTest extends AbstractConventionTaskTest {
         test.filter.commandLineIncludePatterns == [ TEST_PATTERN_2] as Set
     }
 
+    def "jvm arg providers are added to java fork options"() {
+        when:
+        test.jvmArgumentProviders << new CommandLineArgumentProvider() {
+            @Override
+            Iterable<String> asArguments() {
+                return ["First", "Second"]
+            }
+        }
+        def javaForkOptions = TestFiles.execFactory().newJavaForkOptions()
+        test.copyTo(javaForkOptions)
+
+        then:
+        javaForkOptions.getJvmArgs() == ['First', 'Second']
+    }
+
     private void assertIsDirectoryTree(FileTree classFiles, Set<String> includes, Set<String> excludes) {
         assert classFiles instanceof CompositeFileTree
         def files = (CompositeFileTree) classFiles
-        def context = new DefaultFileCollectionResolveContext(TestFiles.resolver())
+        def context = new DefaultFileCollectionResolveContext(TestFiles.patternSetFactory)
         files.visitContents(context)
         List<? extends FileTree> contents = context.resolveAsFileTrees()
         FileTreeAdapter adapter = (FileTreeAdapter) contents.get(0)
@@ -276,7 +293,7 @@ class TestTest extends AbstractConventionTaskTest {
         test.useTestFramework(testFrameworkMock)
         test.setTestExecuter(testExecuterMock)
 
-        test.setTestClassesDir(classesDir)
+        test.setTestClassesDirs(ImmutableFileCollection.of(classesDir))
         test.getReports().getJunitXml().setDestination(resultsDir)
         test.setBinResultsDir(binResultsDir)
         test.getReports().getHtml().setDestination(reportDir)

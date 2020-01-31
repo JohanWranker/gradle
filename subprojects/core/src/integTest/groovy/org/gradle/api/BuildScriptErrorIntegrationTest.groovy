@@ -17,9 +17,9 @@
 package org.gradle.api
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 
-import static org.hamcrest.Matchers.containsString
+import static org.hamcrest.CoreMatchers.containsString
 
-public class BuildScriptErrorIntegrationTest extends AbstractIntegrationSpec {
+class BuildScriptErrorIntegrationTest extends AbstractIntegrationSpec {
 
     def "setup"() {
         settingsFile << "rootProject.name = 'ProjectError'"

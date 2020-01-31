@@ -16,12 +16,14 @@
 
 package org.gradle.language.nativeplatform.internal;
 
+import org.gradle.api.Task;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.provider.Property;
 import org.gradle.language.ComponentWithOutputs;
 import org.gradle.language.nativeplatform.ComponentWithObjectFiles;
 import org.gradle.language.nativeplatform.ComponentWithSharedLibrary;
+import org.gradle.nativeplatform.platform.NativePlatform;
 import org.gradle.nativeplatform.tasks.LinkSharedLibrary;
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 
@@ -31,6 +33,8 @@ import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 public interface ConfigurableComponentWithSharedLibrary extends ComponentWithSharedLibrary, ComponentWithObjectFiles, ComponentWithOutputs, ComponentWithNames {
     PlatformToolProvider getPlatformToolProvider();
 
+    NativePlatform getNativePlatform();
+
     @Override
     Property<RegularFile> getLinkFile();
 
@@ -39,6 +43,9 @@ public interface ConfigurableComponentWithSharedLibrary extends ComponentWithSha
 
     @Override
     Property<LinkSharedLibrary> getLinkTask();
+
+    @Override
+    Property<Task> getLinkFileProducer();
 
     @Override
     ConfigurableFileCollection getOutputs();

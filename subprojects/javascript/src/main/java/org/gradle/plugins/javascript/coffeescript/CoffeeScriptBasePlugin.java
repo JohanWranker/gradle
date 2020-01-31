@@ -29,6 +29,7 @@ import org.gradle.api.internal.ConventionMapping;
 import org.gradle.api.internal.IConventionAware;
 import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.plugins.ExtensionContainer;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.plugins.javascript.base.JavaScriptExtension;
 import org.gradle.plugins.javascript.rhino.RhinoExtension;
 import org.gradle.plugins.javascript.rhino.RhinoPlugin;
@@ -36,7 +37,9 @@ import org.gradle.plugins.javascript.rhino.RhinoPlugin;
 import java.util.concurrent.Callable;
 
 public class CoffeeScriptBasePlugin implements Plugin<Project> {
+    @Override
     public void apply(Project project) {
+        DeprecationLogger.deprecatePlugin("org.gradle.coffeescript-base").withUpgradeGuideSection(5, "deprecated_plugins").nagUser();
         project.getPluginManager().apply(RhinoPlugin.class);
 
         JavaScriptExtension jsExtension = project.getExtensions().getByType(JavaScriptExtension.class);
@@ -65,11 +68,13 @@ public class CoffeeScriptBasePlugin implements Plugin<Project> {
             @Override
             public void execute(CoffeeScriptCompile task) {
                 task.getConventionMapping().map("rhinoClasspath", new Callable<FileCollection>() {
+                    @Override
                     public FileCollection call() {
                         return rhinoExtension.getClasspath();
                     }
                 });
                 task.getConventionMapping().map("coffeeScriptJs", new Callable<FileCollection>() {
+                    @Override
                     public FileCollection call() {
                         return csExtension.getJs();
                     }

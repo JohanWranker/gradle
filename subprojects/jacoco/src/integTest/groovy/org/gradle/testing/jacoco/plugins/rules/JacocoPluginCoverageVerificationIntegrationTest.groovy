@@ -16,6 +16,7 @@
 
 package org.gradle.testing.jacoco.plugins.rules
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.testing.jacoco.plugins.JacocoMultiVersionIntegrationTest
 import org.gradle.testing.jacoco.plugins.fixtures.JacocoCoverage
@@ -24,7 +25,7 @@ import spock.lang.Unroll
 import static org.gradle.testing.jacoco.plugins.rules.JacocoViolationRulesLimit.Insufficient
 import static org.gradle.testing.jacoco.plugins.rules.JacocoViolationRulesLimit.Sufficient
 
-@TargetCoverage({ JacocoCoverage.SUPPORTS_JDK_8_OR_HIGHER })
+@TargetCoverage({ JacocoCoverage.DEFAULT_COVERAGE })
 class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersionIntegrationTest {
 
     private final static String[] TEST_TASK_PATH = [':test'] as String[]
@@ -36,6 +37,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         javaProjectUnderTest.writeSourceFiles()
     }
 
+    @ToBeFixedForInstantExecution
     def "can define no rules"() {
         given:
         buildFile << """
@@ -51,6 +53,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
     }
 
+    @ToBeFixedForInstantExecution
     def "can define single rule without limits"() {
         given:
         buildFile << """
@@ -68,6 +71,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
     }
 
+    @ToBeFixedForInstantExecution
     def "Ant task reports error for unknown field value"() {
         given:
         buildFile << """
@@ -85,9 +89,10 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
 
         then:
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
-        errorOutput.contains("'UNKNOWN' is not a permitted value for org.jacoco.core.analysis.ICoverageNode\$ElementType")
+        failure.assertHasCause("'UNKNOWN' is not a permitted value for org.jacoco.core.analysis.ICoverageNode\$ElementType")
     }
 
+    @ToBeFixedForInstantExecution
     def "can define includes for single rule"() {
         given:
         buildFile << """
@@ -107,9 +112,10 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
 
         then:
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
-        errorOutput.contains("Rule violated for class org.gradle.Class1: lines covered ratio is 1.0, but expected maximum is 0.5")
+        failure.assertHasCause("Rule violated for class org.gradle.Class1: lines covered ratio is 1.0, but expected maximum is 0.5")
     }
 
+    @ToBeFixedForInstantExecution
     def "can define excludes for single rule"() {
         given:
         buildFile << """
@@ -131,6 +137,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can define rule with sufficient coverage for #description"() {
         given:
         buildFile << """
@@ -155,10 +162,10 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         [Sufficient.CLASS_METRIC_MISSED_COUNT]               | 'class metric with missed count'
         [Sufficient.LINE_METRIC_COVERED_RATIO,
          Sufficient.CLASS_METRIC_MISSED_COUNT]               | 'line and class metric'
-        [Sufficient.LINE_METRIC_COVERED_RATIO_OUT_OF_BOUNDS] | 'line metric with covered ratio with values out of bounds'
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can define rule with insufficient coverage for #description"() {
         given:
         buildFile << """
@@ -176,7 +183,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
 
         then:
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
-        errorOutput.contains("Rule violated for bundle $testDirectory.name: $errorMessage")
+        failure.assertHasCause("Rule violated for bundle $testDirectory.name: $errorMessage")
 
         where:
         limits                                                      | description                                                              | errorMessage
@@ -190,6 +197,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         [Insufficient.CLASS_METRIC_MISSED_COUNT_MINIMUM_GT_MAXIMUM] | 'class metric with missed count with minimum greater than maximum value' | 'classes missed count is 0.0, but expected minimum is 0.5'
     }
 
+    @ToBeFixedForInstantExecution
     def "can define same rule multiple times"() {
         given:
         buildFile << """
@@ -212,6 +220,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
     }
 
+    @ToBeFixedForInstantExecution
     def "can define multiple, different rules"() {
         given:
         buildFile << """
@@ -232,9 +241,10 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
 
         then:
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
-        errorOutput.contains("Rule violated for bundle $testDirectory.name: classes missed count is 0.0, but expected minimum is 0.5")
+        failure.assertHasCause("Rule violated for bundle $testDirectory.name: classes missed count is 0.0, but expected minimum is 0.5")
     }
 
+    @ToBeFixedForInstantExecution
     def "can disable rules"() {
         given:
         buildFile << """
@@ -258,6 +268,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
     }
 
+    @ToBeFixedForInstantExecution
     def "can ignore failures"() {
         given:
         buildFile << """
@@ -277,10 +288,11 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
 
         then:
         executedAndNotSkipped(TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS)
-        errorOutput.contains("Rule violated for bundle $testDirectory.name: lines covered ratio is 1.0, but expected maximum is 0.5")
+        result.assertHasErrorOutput("Rule violated for bundle $testDirectory.name: lines covered ratio is 1.0, but expected maximum is 0.5")
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can define same rules for multiple report tasks #tasksPaths"() {
         given:
         javaProjectUnderTest.writeIntegrationTestSourceFiles()
@@ -300,13 +312,14 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
 
         then:
         executedAndNotSkipped(tasksPaths)
-        errorOutput.contains("Rule violated for bundle $testDirectory.name: lines covered ratio is 1.0, but expected maximum is 0.5")
+        failure.assertHasCause("Rule violated for bundle $testDirectory.name: lines covered ratio is 1.0, but expected maximum is 0.5")
 
         where:
         tasksPaths << [TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS, INTEG_TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS]
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can define different rules for multiple report tasks #tasksPaths"() {
         given:
         javaProjectUnderTest.writeIntegrationTestSourceFiles()
@@ -326,7 +339,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
 
         then:
         executedAndNotSkipped(tasksPaths)
-        errorOutput.contains("Rule violated for bundle $testDirectory.name: $errorMessage")
+        failure.assertHasCause("Rule violated for bundle $testDirectory.name: $errorMessage")
 
         where:
         tasksPaths                                             | reportTaskName                              | limit                                  | errorMessage
@@ -334,6 +347,7 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         INTEG_TEST_AND_JACOCO_COVERAGE_VERIFICATION_TASK_PATHS | 'jacocoIntegrationTestCoverageVerification' | Insufficient.CLASS_METRIC_MISSED_COUNT | 'classes missed count is 0.0, but expected minimum is 0.5'
     }
 
+    @ToBeFixedForInstantExecution
     def "task is never UP-TO-DATE as it does not define any outputs"() {
         buildFile << """
             jacocoTestCoverageVerification {
@@ -368,6 +382,6 @@ class JacocoPluginCoverageVerificationIntegrationTest extends JacocoMultiVersion
         then:
         executed(JACOCO_COVERAGE_VERIFICATION_TASK_PATH)
         skipped(TEST_TASK_PATH)
-        errorOutput.contains("Rule violated for bundle $testDirectory.name: lines covered ratio is 1.0, but expected maximum is 0.5")
+        failure.assertHasCause("Rule violated for bundle $testDirectory.name: lines covered ratio is 1.0, but expected maximum is 0.5")
     }
 }

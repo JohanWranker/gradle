@@ -19,11 +19,13 @@ package org.gradle.api.tasks;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
-import org.apache.commons.io.IOUtils;
 import org.gradle.api.DefaultTask;
+import org.gradle.internal.IoActions;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.util.PropertiesUtils;
+import org.gradle.util.DeferredUtil;
 
+import javax.annotation.Nullable;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -104,11 +106,11 @@ public class WriteProperties extends DefaultTask {
      */
     public void property(final String name, final Object value) {
         checkForNullValue(name, value);
-        if (value instanceof Callable) {
+        if (DeferredUtil.isDeferred(value)) {
             deferredProperties.put(name, new Callable<String>() {
                 @Override
                 public String call() throws Exception {
-                    Object futureValue = ((Callable) value).call();
+                    Object futureValue = DeferredUtil.unpack(value);
                     checkForNullValue(name, futureValue);
                     return String.valueOf(futureValue);
                 }
@@ -153,8 +155,9 @@ public class WriteProperties extends DefaultTask {
     /**
      * Returns the optional comment to add at the beginning of the properties file.
      */
-    @Input
+    @Nullable
     @Optional
+    @Input
     public String getComment() {
         return comment;
     }
@@ -162,7 +165,7 @@ public class WriteProperties extends DefaultTask {
     /**
      * Sets the optional comment to add at the beginning of the properties file.
      */
-    public void setComment(String comment) {
+    public void setComment(@Nullable String comment) {
         this.comment = comment;
     }
 
@@ -216,7 +219,7 @@ public class WriteProperties extends DefaultTask {
             propertiesToWrite.putAll(getProperties());
             PropertiesUtils.store(propertiesToWrite, out, getComment(), charset, getLineSeparator());
         } finally {
-            IOUtils.closeQuietly(out);
+            IoActions.closeQuietly(out);
         }
     }
 

@@ -42,8 +42,9 @@ class JavaLibraryDistributionIntegrationTest extends WellBehavedPluginTest {
 
         ${mavenCentralRepository()}
         dependencies {
-            compile 'commons-collections:commons-collections:3.2.2'
-            runtime 'commons-lang:commons-lang:2.6'
+            implementation 'commons-collections:commons-collections:3.2.2'
+            api 'commons-cli:commons-cli:1.2'
+            runtimeOnly 'commons-lang:commons-lang:2.6'
         }
         """
 
@@ -55,6 +56,7 @@ class JavaLibraryDistributionIntegrationTest extends WellBehavedPluginTest {
         file('build/distributions/DefaultJavaDistribution.zip').unzipTo(expandDir)
         expandDir.assertHasDescendants(
                 'DefaultJavaDistribution/lib/commons-collections-3.2.2.jar',
+                'DefaultJavaDistribution/lib/commons-cli-1.2.jar',
                 'DefaultJavaDistribution/lib/commons-lang-2.6.jar',
                 'DefaultJavaDistribution/DefaultJavaDistribution.jar')
         expandDir.file('DefaultJavaDistribution/DefaultJavaDistribution.jar').assertIsCopyOf(file('build/libs/DefaultJavaDistribution.jar'))
@@ -92,7 +94,7 @@ class JavaLibraryDistributionIntegrationTest extends WellBehavedPluginTest {
 
         distributions {
             main {
-                baseName 'SuperApp'
+                distributionBaseName = 'SuperApp'
                 contents {
                     from 'others/dist'
                 }
@@ -101,7 +103,7 @@ class JavaLibraryDistributionIntegrationTest extends WellBehavedPluginTest {
 
         ${mavenCentralRepository()}
         dependencies {
-            runtime 'commons-lang:commons-lang:2.6'
+            runtimeOnly 'commons-lang:commons-lang:2.6'
         }
         """
 
@@ -127,7 +129,7 @@ class JavaLibraryDistributionIntegrationTest extends WellBehavedPluginTest {
         buildFile << """
             apply plugin:'java-library-distribution'
 
-            distributions{
+            distributions {
                 main{
                     baseName = null
                 }
@@ -135,8 +137,27 @@ class JavaLibraryDistributionIntegrationTest extends WellBehavedPluginTest {
             """
 
         expect:
+        executer.noDeprecationChecks()
         runAndFail 'distZip'
-        failure.assertHasCause "Distribution baseName must not be null or empty! Check your configuration of the distribution plugin."
+        failure.assertHasCause "Cannot query the value of property 'distributionBaseName' because it has no value available."
+    }
+
+    def "emits deprecation warning when baseName property is used"() {
+        given:
+        buildFile << """
+            apply plugin:'java-library-distribution'
+            distributions {
+                main {
+                    baseName = 'sample'
+                }
+            }
+            """
+
+        expect:
+        executer.expectDocumentedDeprecationWarning("The Distribution.baseName property has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Please use the distributionBaseName property instead. " +
+            "See https://docs.gradle.org/current/dsl/org.gradle.api.distribution.Distribution.html#org.gradle.api.distribution.Distribution:baseName for more details.")
+        succeeds 'distZip'
     }
 
     def "compile only dependencies are not included in distribution"() {
@@ -148,9 +169,9 @@ class JavaLibraryDistributionIntegrationTest extends WellBehavedPluginTest {
         buildFile << """
 apply plugin:'java-library-distribution'
 
-distributions{
-    main{
-        baseName = 'sample'
+distributions {
+    main {
+        distributionBaseName = 'sample'
     }
 }
 
@@ -159,7 +180,7 @@ repositories {
 }
 
 dependencies {
-    compile 'org.gradle.test:compile:1.0'
+    implementation 'org.gradle.test:compile:1.0'
     compileOnly 'org.gradle.test:compileOnly:1.0'
 }
 """

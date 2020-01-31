@@ -18,7 +18,9 @@ package org.gradle.api.java.archives.internal
 
 import org.apache.tools.ant.taskdefs.Manifest
 import org.apache.tools.ant.taskdefs.Manifest.Attribute
+import org.gradle.api.Action
 import org.gradle.api.internal.file.FileResolver
+import org.gradle.api.java.archives.ManifestMergeSpec
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.junit.Rule
@@ -33,7 +35,7 @@ class DefaultManifestTest extends Specification {
     @Rule
     public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
 
-    def testInitWithFileReolver() {
+    def testInitWithFileResolver() {
         expect:
         gradleManifest.attributes == MANIFEST_VERSION_MAP
         !gradleManifest.sections
@@ -118,14 +120,25 @@ class DefaultManifestTest extends Specification {
                 }
             }
         }
-        gradleManifest.from(new DefaultManifest(fileResolver).attributes(key4: 'value4'))
+        gradleManifest.from(new DefaultManifest(fileResolver).attributes(key4: 'value4', key5: 'value5'), new Action<ManifestMergeSpec>() {
+            @Override
+            void execute(ManifestMergeSpec spec) {
+                spec.eachEntry { details ->
+                    if (details.key == 'key5') {
+                        details.exclude()
+                    }
+
+                }
+            }
+        })
+        gradleManifest.from(new DefaultManifest(fileResolver).attributes(key6: 'value6'))
 
         expect:
-        gradleManifest.effectiveManifest.getAttributes() == [key1: 'value1', key2: 'value2', key4: 'value4'] + MANIFEST_VERSION_MAP
+        gradleManifest.effectiveManifest.getAttributes() == [key1: 'value1', key2: 'value2', key4: 'value4', key6: 'value6'] + MANIFEST_VERSION_MAP
     }
 
     def writeWithPath() {
-        TestFile manifestFile = tmpDir.file('someNonexistingDir').file('someFile')
+        TestFile manifestFile = tmpDir.file('someNonexistentDir').file('someFile')
         DefaultManifest manifest = new DefaultManifest(fileResolver).attributes(key1: 'value1')
         fileResolver.resolve('file') >> manifestFile
 
@@ -181,14 +194,14 @@ class DefaultManifestTest extends Specification {
             Some-Main-Attribute: someValue
             Name: someSection
             Some-Section-Attribute: some other value
-        '''.stripIndent().trim() + '\n'
+            '''.stripIndent().trim() + '\n'
         blankLinesManifestFile.text = '''
             Manifest-Version: 1.0
             Some-Main-Attribute: someValue
 
             Name: someSection
             Some-Section-Attribute: some other value
-        '''.stripIndent().trim() + '\n'
+            '''.stripIndent().trim() + '\n'
 
         when:
         def noBlankLinesJavaManifest = readJavaManifest(noBlankLinesManifestFile)
@@ -226,27 +239,6 @@ class DefaultManifestTest extends Specification {
         blankLinesAntManifest.mainSection.getAttributeValue('Some-Main-Attribute') == 'someValue'
         Collections.list(blankLinesAntManifest.getSectionNames()).size() == 1
         blankLinesAntManifest.getSection('someSection').getAttributeValue('Some-Section-Attribute') == 'some other value'
-    }
-
-    def "demonstrate Java vs. Ant Manifest classes behavior wrt. split multi-byte characters"() {
-        given:
-        TestFile manifestFile = tmpDir.file('someManifestFile')
-
-        and:
-        // Means 'long russian text'
-        String attributeValue = 'com.acme.example.pack.**, длинный.текст.на.русском.языке.**'
-        java.util.jar.Manifest manifest = new java.util.jar.Manifest()
-        manifest.mainAttributes.putValue('Manifest-Version', '1.0')
-        manifest.mainAttributes.putValue('Another-Looooooong-Name-Entry', attributeValue)
-        writeJavaManifest(manifest, manifestFile)
-
-        when:
-        def javaManifest = readJavaManifest(manifestFile)
-        def antManifest = readAntManifest(manifestFile)
-
-        then:
-        javaManifest.getMainAttributes().getValue('Another-Looooooong-Name-Entry') == attributeValue
-        antManifest.getMainSection().getAttributeValue('Another-Looooooong-Name-Entry') != attributeValue // Broken!
     }
 
     def "write with split multi-byte character"() {
@@ -341,10 +333,6 @@ class DefaultManifestTest extends Specification {
 
     private static java.util.jar.Manifest readJavaManifest(File file) {
         (java.util.jar.Manifest) file.withInputStream { new java.util.jar.Manifest(it) }
-    }
-
-    private static void writeJavaManifest(java.util.jar.Manifest manifest, File file) {
-        file.withOutputStream { manifest.write(it) }
     }
 
     private static Manifest readAntManifest(File file) {

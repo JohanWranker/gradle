@@ -18,11 +18,10 @@ package org.gradle.tooling.internal.provider.serialization;
 
 import com.google.common.collect.MapMaker;
 import com.google.common.io.ByteStreams;
-import net.jcip.annotations.ThreadSafe;
+import javax.annotation.concurrent.ThreadSafe;
 import org.gradle.api.GradleException;
 import org.gradle.internal.classloader.ClassLoaderUtils;
 import org.gradle.internal.classloader.ClasspathUtil;
-import org.gradle.util.internal.PatchedClassReader;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Type;
 import org.slf4j.Logger;
@@ -103,7 +102,7 @@ public class ClasspathInferer {
             }
             InputStream inputStream = urlConnection.getInputStream();
             try {
-                reader = new PatchedClassReader(ByteStreams.toByteArray(inputStream));
+                reader = new ClassReader(ByteStreams.toByteArray(inputStream));
             } finally {
                 inputStream.close();
             }

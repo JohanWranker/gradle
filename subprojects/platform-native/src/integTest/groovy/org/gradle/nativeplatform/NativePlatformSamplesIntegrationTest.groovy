@@ -15,29 +15,31 @@
  */
 package org.gradle.nativeplatform
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
 import org.gradle.test.fixtures.file.TestDirectoryProvider
-import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
 import org.junit.Rule
 
 import static org.gradle.nativeplatform.fixtures.ToolChainRequirement.GCC_COMPATIBLE
+import static org.gradle.nativeplatform.fixtures.ToolChainRequirement.SUPPORTS_32
+import static org.gradle.nativeplatform.fixtures.ToolChainRequirement.SUPPORTS_32_AND_64
+import static org.junit.Assume.assumeTrue
 
 @Requires(TestPrecondition.CAN_INSTALL_EXECUTABLE)
 class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
-    @Rule final TestNameTestDirectoryProvider testDirProvider = new TestNameTestDirectoryProvider()
-    @Rule public final Sample cppLib = sample(testDirProvider, 'cpp-lib')
-    @Rule public final Sample cppExe = sample(testDirProvider, 'cpp-exe')
-    @Rule public final Sample multiProject = sample(testDirProvider, 'multi-project')
-    @Rule public final Sample flavors = sample(testDirProvider, 'flavors')
-    @Rule public final Sample variants = sample(testDirProvider, 'variants')
-    @Rule public final Sample toolChains = sample(testDirProvider, 'tool-chains')
-    @Rule public final Sample prebuilt = sample(testDirProvider, 'prebuilt')
-    @Rule public final Sample targetPlatforms = sample(testDirProvider, 'target-platforms')
+    @Rule public final Sample cppLib = sample(testDirectoryProvider, 'cpp-lib')
+    @Rule public final Sample cppExe = sample(testDirectoryProvider, 'cpp-exe')
+    @Rule public final Sample multiProject = sample(testDirectoryProvider, 'multi-project')
+    @Rule public final Sample flavors = sample(testDirectoryProvider, 'flavors')
+    @Rule public final Sample variants = sample(testDirectoryProvider, 'variants')
+    @Rule public final Sample toolChains = sample(testDirectoryProvider, 'tool-chains')
+    @Rule public final Sample prebuilt = sample(testDirectoryProvider, 'prebuilt')
+    @Rule public final Sample targetPlatforms = sample(testDirectoryProvider, 'target-platforms')
     @Rule public final Sample sourcesetVariant = sample(testDirectoryProvider, "sourceset-variant")
     @Rule public final Sample customCheck = sample(testDirectoryProvider, "custom-check")
 
@@ -45,6 +47,7 @@ class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainInt
         return new Sample(testDirectoryProvider, "native-binaries/${name}", name)
     }
 
+    @ToBeFixedForInstantExecution
     def "exe"() {
         given:
         // Need to PATH to be set to find the 'strip' executable
@@ -67,6 +70,7 @@ class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainInt
         toolChain.resetEnvironment()
     }
 
+    @ToBeFixedForInstantExecution
     def "lib"() {
         given:
         sample cppLib
@@ -91,6 +95,7 @@ class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainInt
         staticLibrary(cppLib.dir.file("build/libs/main/static/main")).assertExists()
     }
 
+    @ToBeFixedForInstantExecution
     def flavors() {
         given:
         sample flavors
@@ -125,6 +130,8 @@ class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainInt
         installation(flavors.dir.file("build/install/main/french")).exec().out == "Bonjour monde!\n"
     }
 
+    @RequiresInstalledToolChain(SUPPORTS_32_AND_64)
+    @ToBeFixedForInstantExecution
     def variants() {
         given:
         sample variants
@@ -148,20 +155,15 @@ class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainInt
         releaseX86.assertDebugFileDoesNotExist()
         releaseX86.exec().out == "Hello world!\n"
 
-        // x86_64 binaries not supported on MinGW or cygwin
-        if (toolChain.id == "mingw" || toolChain.id == "gcccygwin") {
-            debugX64.assertDoesNotExist()
-            releaseX64.assertDoesNotExist()
-        } else {
-            debugX64.arch.name == "x86_64"
-            releaseX64.arch.name == "x86_64"
-        }
+        debugX64.arch.name == "x86-64"
+        releaseX64.arch.name == "x86-64"
 
         // Itanium not built
         debugIA64.assertDoesNotExist()
         releaseIA64.assertDoesNotExist()
     }
 
+    @ToBeFixedForInstantExecution
     def "tool chains"() {
         given:
         sample toolChains
@@ -173,6 +175,7 @@ class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainInt
         executable(toolChains.dir.file("build/exe/main/main")).exec().out == "Hello from ${toolChain.typeDisplayName}!\n"
     }
 
+    @ToBeFixedForInstantExecution
     def multiProject() {
         given:
         sample multiProject
@@ -181,7 +184,7 @@ class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainInt
         run "installMainExecutable"
 
         then:
-        ":exe:mainExecutable" in executedTasks
+        executed(":exe:mainExecutable")
 
         and:
         sharedLibrary(multiProject.dir.file("lib/build/libs/main/shared/main")).assertExists()
@@ -190,7 +193,10 @@ class NativePlatformSamplesIntegrationTest extends AbstractInstalledToolChainInt
     }
 
     @RequiresInstalledToolChain(GCC_COMPATIBLE)
+    @ToBeFixedForInstantExecution
     def "target platforms"() {
+        assumeTrue(toolchainUnderTest.meets(SUPPORTS_32))
+
         given:
         sample targetPlatforms
 
@@ -223,6 +229,7 @@ model {
         executable(targetPlatforms.dir.file("build/exe/main/sparc/main")).exec().out == "Hello from ${toolChain.typeDisplayName}!\n"
     }
 
+    @ToBeFixedForInstantExecution
     def prebuilt() {
         given:
         inDirectory(prebuilt.dir.file("3rd-party-lib/util"))
@@ -246,6 +253,7 @@ Util build type: RELEASE
 """
     }
 
+    @ToBeFixedForInstantExecution
     def sourcesetvariant() {
         given:
         sample sourcesetVariant

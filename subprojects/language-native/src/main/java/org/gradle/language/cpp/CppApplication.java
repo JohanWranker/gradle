@@ -16,17 +16,15 @@
 
 package org.gradle.language.cpp;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.provider.Provider;
 
 /**
  * Configuration for a C++ application, defining the source files that make up the application plus other settings.
  *
- * <p>An instance of this type is added as a project extension by the C++ executable plugin.</p>
+ * <p>An instance of this type is added as a project extension by the C++ Application Plugin.</p>
  *
  * @since 4.2
  */
-@Incubating
 public interface CppApplication extends ProductionCppComponent {
     /**
      * {@inheritDoc}

@@ -15,8 +15,12 @@
  */
 package org.gradle.process.internal
 
+
+import org.gradle.api.internal.file.FileCollectionFactory
 import org.gradle.api.internal.file.TestFiles
+import org.gradle.initialization.DefaultBuildCancellationToken
 import org.gradle.internal.jvm.Jvm
+import spock.lang.Issue
 import spock.lang.Specification
 import spock.lang.Unroll
 
@@ -26,9 +30,11 @@ import java.util.concurrent.Executor
 import static java.util.Arrays.asList
 
 class JavaExecHandleBuilderTest extends Specification {
-    JavaExecHandleBuilder builder = new JavaExecHandleBuilder(TestFiles.resolver(), Mock(Executor))
+    JavaExecHandleBuilder builder = new JavaExecHandleBuilder(TestFiles.resolver(), TestFiles.fileCollectionFactory(), Mock(Executor), new DefaultBuildCancellationToken(), TestFiles.execFactory().newJavaForkOptions())
 
-    public void cannotSetAllJvmArgs() {
+    FileCollectionFactory fileCollectionFactory = TestFiles.fileCollectionFactory()
+
+    def cannotSetAllJvmArgs() {
         when:
         builder.setAllJvmArgs(asList("arg"))
 
@@ -36,8 +42,8 @@ class JavaExecHandleBuilderTest extends Specification {
         thrown(UnsupportedOperationException)
     }
 
-    @Unroll("buildsCommandLineForJavaProcess - input encoding #inputEncoding")
-    public void buildsCommandLineForJavaProcess() {
+    @Unroll
+    def "builds commandLine for Java process - input encoding #inputEncoding"() {
         File jar1 = new File("file1.jar").canonicalFile
         File jar2 = new File("file2.jar").canonicalFile
 
@@ -54,7 +60,7 @@ class JavaExecHandleBuilderTest extends Specification {
         List jvmArgs = builder.getAllJvmArgs()
 
         then:
-        jvmArgs == ['-Dprop=value', 'jvm1', 'jvm2', '-Xms64m', '-Xmx1g', fileEncodingProperty(expectedEncoding), *localeProperties(), '-cp', "$jar1$File.pathSeparator$jar2"]
+        jvmArgs == ['-Dprop=value', 'jvm1', 'jvm2', '-Xms64m', '-Xmx1g', fileEncodingProperty(expectedEncoding), *localeProperties(), '-cp', "$jar1$File.pathSeparator$jar2", "mainClass"]
 
         when:
         List commandLine = builder.getCommandLine()
@@ -67,6 +73,53 @@ class JavaExecHandleBuilderTest extends Specification {
         inputEncoding | expectedEncoding
         null          | Charset.defaultCharset().name()
         "UTF-16"      | "UTF-16"
+    }
+
+    def "can append to classpath"() {
+        given:
+        File jar1 = new File("file1.jar").canonicalFile
+        File jar2 = new File("file2.jar").canonicalFile
+
+        builder.classpath(jar1)
+
+        when:
+        builder.classpath(jar2)
+
+        then:
+        builder.classpath.contains(jar1)
+        builder.classpath.contains(jar2)
+    }
+
+    def "can replace classpath"() {
+        given:
+        File jar1 = new File("file1.jar").canonicalFile
+        File jar2 = new File("file2.jar").canonicalFile
+
+        builder.classpath(jar1)
+
+        when:
+        builder.setClasspath(fileCollectionFactory.resolving(jar2))
+
+        then:
+        !builder.classpath.contains(jar1)
+        builder.classpath.contains(jar2)
+    }
+
+    @Issue("gradle/gradle#8748")
+    def "can prepend to classpath"() {
+        given:
+        File jar1 = new File("file1.jar").canonicalFile
+        File jar2 = new File("file2.jar").canonicalFile
+
+        builder.main = "main"
+        builder.classpath(jar1)
+
+        when:
+        builder.setClasspath(fileCollectionFactory.resolving(jar2, builder.getClasspath()))
+
+        then:
+        builder.commandLine.contains("$jar2$File.pathSeparator$jar1".toString())
+
     }
 
     def "detects null entries early"() {
@@ -85,5 +138,4 @@ class JavaExecHandleBuilderTest extends Specification {
             it.value ? "-D$it.key=$it.value" : "-D$it.key"
         }
     }
-
 }

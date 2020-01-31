@@ -16,9 +16,6 @@
 
 package org.gradle.internal.deprecation;
 
-import org.gradle.util.DeprecationLogger;
-import org.gradle.util.SingleMessageLogger;
-
 import java.util.HashSet;
 import java.util.Set;
 
@@ -38,9 +35,8 @@ public class LoggingDeprecatable implements Deprecatable {
 
     @Override
     public void checkDeprecation() {
-        String suffix = SingleMessageLogger.getDeprecationMessage();
         for (String deprecation : deprecations) {
-            DeprecationLogger.nagUserWith(String.format("%s %s.", deprecation, suffix));
+            DeprecationLogger.deprecateBuildInvocationFeature(deprecation).undocumented().nagUser();
         }
     }
 
@@ -55,11 +51,11 @@ public class LoggingDeprecatable implements Deprecatable {
 
         LoggingDeprecatable that = (LoggingDeprecatable) o;
 
-        return deprecations != null ? deprecations.equals(that.deprecations) : that.deprecations == null;
+        return deprecations.equals(that.deprecations);
     }
 
     @Override
     public int hashCode() {
-        return deprecations != null ? deprecations.hashCode() : 0;
+        return deprecations.hashCode();
     }
 }

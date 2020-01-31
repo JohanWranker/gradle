@@ -22,6 +22,7 @@ import org.gradle.api.tasks.WorkResults;
 import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.scala.internal.reflect.ScalaMethod;
 
+import javax.inject.Inject;
 import java.io.File;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 public class RoutesCompiler implements Compiler<RoutesCompileSpec>, Serializable {
     private final VersionedRoutesCompilerAdapter adapter;
 
+    @Inject
     public RoutesCompiler(VersionedRoutesCompilerAdapter adapter) {
         this.adapter = adapter;
     }
@@ -67,22 +69,9 @@ public class RoutesCompiler implements Compiler<RoutesCompileSpec>, Serializable
         try {
             ClassLoader cl = getClass().getClassLoader();
             ScalaMethod compile = adapter.getCompileMethod(cl);
-            Object ret = compile.invoke(adapter.createCompileParameters(cl, sourceFile, spec.getDestinationDir(), spec.isJavaProject(), spec.isNamespaceReverseRouter(), spec.isGenerateReverseRoutes(), spec.isInjectedRoutesGenerator(), spec.getAdditionalImports()));
-            if (ret != null && ret instanceof Boolean) {
-                return (Boolean) ret;
-            } else {
-                return true; //assume we did some work
-            }
+            return adapter.interpretResult(compile.invoke(adapter.createCompileParameters(cl, sourceFile, spec.getDestinationDir(), spec.isJavaProject(), spec.isNamespaceReverseRouter(), spec.isGenerateReverseRoutes(), spec.isInjectedRoutesGenerator(), spec.getAdditionalImports())));
         } catch (Exception e) {
             throw new RuntimeException("Error invoking the Play routes compiler.", e);
         }
-    }
-
-    public Object getDependencyNotation() {
-        return adapter.getDependencyNotation();
-    }
-
-    public Iterable<String> getClassLoaderPackages() {
-        return adapter.getClassLoaderPackages();
     }
 }

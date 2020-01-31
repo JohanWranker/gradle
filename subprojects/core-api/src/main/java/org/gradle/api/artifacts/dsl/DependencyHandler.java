@@ -18,12 +18,17 @@ package org.gradle.api.artifacts.dsl;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
-import org.gradle.api.artifacts.type.ArtifactTypeContainer;
 import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.query.ArtifactResolutionQuery;
+import org.gradle.api.artifacts.transform.TransformAction;
+import org.gradle.api.artifacts.transform.TransformParameters;
+import org.gradle.api.artifacts.transform.TransformSpec;
 import org.gradle.api.artifacts.transform.VariantTransform;
+import org.gradle.api.artifacts.type.ArtifactTypeContainer;
 import org.gradle.api.attributes.AttributesSchema;
+import org.gradle.api.plugins.ExtensionAware;
 
+import javax.annotation.Nullable;
 import java.util.Map;
 
 /**
@@ -34,29 +39,29 @@ import java.util.Map;
  *
  * <pre>
  * dependencies {
- *     <i>configurationName</i> <i>dependencyNotation1</i>, <i>dependencyNotation2</i>, ...
+ *     <i>configurationName</i> <i>dependencyNotation</i>
  * }
  * </pre>
  *
  * <p>Example shows a basic way of declaring dependencies.
  * <pre class='autoTested'>
  * apply plugin: 'java'
- * //so that we can use 'compile', 'testCompile' for dependencies
+ * //so that we can use 'implementation', 'testImplementation' for dependencies
  *
  * dependencies {
  *   //for dependencies found in artifact repositories you can use
  *   //the group:name:version notation
- *   compile 'commons-lang:commons-lang:2.6'
- *   testCompile 'org.mockito:mockito:1.9.0-rc1'
+ *   implementation 'commons-lang:commons-lang:2.6'
+ *   testImplementation 'org.mockito:mockito:1.9.0-rc1'
  *
  *   //map-style notation:
- *   compile group: 'com.google.code.guice', name: 'guice', version: '1.0'
+ *   implementation group: 'com.google.code.guice', name: 'guice', version: '1.0'
  *
  *   //declaring arbitrary files as dependencies
- *   compile files('hibernate.jar', 'libs/spring.jar')
+ *   implementation files('hibernate.jar', 'libs/spring.jar')
  *
  *   //putting all jars from 'libs' onto compile classpath
- *   compile fileTree('libs')
+ *   implementation fileTree('libs')
  * }
  * </pre>
  *
@@ -81,11 +86,11 @@ import java.util.Map;
  * <li>Avoiding transitive dependencies for certain dependency.</li>
  * </ul>
  *
- * <pre class='autoTested'>
- * apply plugin: 'java' //so that I can declare 'compile' dependencies
+ * <pre class='autoTestedWithDeprecations'>
+ * apply plugin: 'java' //so that I can declare 'implementation' dependencies
  *
  * dependencies {
- *   compile('org.hibernate:hibernate:3.1') {
+ *   implementation('org.hibernate:hibernate:3.1') {
  *     //in case of versions conflict '3.1' version of hibernate wins:
  *     force = true
  *
@@ -107,14 +112,14 @@ import java.util.Map;
  * </ul>
  *
  * <pre class='autoTested'>
- * apply plugin: 'java' //so that I can declare 'compile' dependencies
+ * apply plugin: 'java' //so that I can declare 'implementation' dependencies
  *
  * dependencies {
  *   //configuring dependency to specific configuration of the module
- *   compile configuration: 'someConf', group: 'org.someOrg', name: 'someModule', version: '1.0'
+ *   implementation configuration: 'someConf', group: 'org.someOrg', name: 'someModule', version: '1.0'
  *
  *   //configuring dependency on 'someLib' module
- *   compile(group: 'org.myorg', name: 'someLib', version:'1.0') {
+ *   implementation(group: 'org.myorg', name: 'someLib', version:'1.0') {
  *     //explicitly adding the dependency artifact:
  *     artifact {
  *       //useful when some artifact properties unconventional
@@ -157,16 +162,16 @@ import java.util.Map;
  *
  * <pre class='autoTested'>
  * apply plugin: 'java'
- * //so that we can use 'compile', 'testCompile' for dependencies
+ * //so that we can use 'implementation', 'testImplementation' for dependencies
  *
  * dependencies {
  *   //for dependencies found in artifact repositories you can use
  *   //the string notation, e.g. group:name:version
- *   compile 'commons-lang:commons-lang:2.6'
- *   testCompile 'org.mockito:mockito:1.9.0-rc1'
+ *   implementation 'commons-lang:commons-lang:2.6'
+ *   testImplementation 'org.mockito:mockito:1.9.0-rc1'
  *
  *   //map notation:
- *   compile group: 'com.google.code.guice', name: 'guice', version: '1.0'
+ *   implementation group: 'com.google.code.guice', name: 'guice', version: '1.0'
  * }
  * </pre>
  *
@@ -191,14 +196,14 @@ import java.util.Map;
  *
  * <pre class='autoTested'>
  * apply plugin: 'java'
- * //so that we can use 'compile', 'testCompile' for dependencies
+ * //so that we can use 'implementation', 'testImplementation' for dependencies
  *
  * dependencies {
  *   //declaring arbitrary files as dependencies
- *   compile files('hibernate.jar', 'libs/spring.jar')
+ *   implementation files('hibernate.jar', 'libs/spring.jar')
  *
  *   //putting all jars from 'libs' onto compile classpath
- *   compile fileTree('libs')
+ *   implementation fileTree('libs')
  * }
  * </pre>
  *
@@ -221,17 +226,17 @@ import java.util.Map;
  * <pre class='autoTested'>
  * //Our Gradle plugin is written in groovy
  * apply plugin: 'groovy'
- * //now we can use the 'compile' configuration for declaring dependencies
+ * //now we can use the 'implementation' configuration for declaring dependencies
  *
  * dependencies {
  *   //we will use the Groovy version that ships with Gradle:
- *   compile localGroovy()
+ *   implementation localGroovy()
  *
  *   //our plugin requires Gradle API interfaces and classes to compile:
- *   compile gradleApi()
+ *   implementation gradleApi()
  *
  *   //we will use the Gradle test-kit to test build logic:
- *   testCompile gradleTestKit()
+ *   testImplementation gradleTestKit()
  * }
  * </pre>
  *
@@ -248,7 +253,7 @@ import java.util.Map;
  * The module notation is the same as the dependency notations described above, except that the classifier property is
  * not available. Client modules are represented using a {@link org.gradle.api.artifacts.ClientModule}.
  */
-public interface DependencyHandler {
+public interface DependencyHandler extends ExtensionAware {
     /**
      * Adds a dependency to the given configuration.
      *
@@ -258,6 +263,7 @@ public interface DependencyHandler {
      * The dependency notation, in one of the notations described above.
      * @return The dependency.
      */
+    @Nullable
     Dependency add(String configurationName, Object dependencyNotation);
 
     /**
@@ -327,7 +333,6 @@ public interface DependencyHandler {
      * @return The dependency.
      * @since 2.6
      */
-    @Incubating
     Dependency gradleTestKit();
 
     /**
@@ -343,7 +348,6 @@ public interface DependencyHandler {
      * @return the dependency constraint handler for this project
      * @since 4.5
      */
-    @Incubating
     DependencyConstraintHandler getConstraints();
 
     /**
@@ -354,7 +358,6 @@ public interface DependencyHandler {
      * @param configureAction the action to use to configure module metadata
      * @since 4.5
      */
-    @Incubating
     void constraints(Action<? super DependencyConstraintHandler> configureAction);
 
     /**
@@ -364,7 +367,6 @@ public interface DependencyHandler {
      * @return the component metadata handler for this project
      * @since 1.8
      */
-    @Incubating
     ComponentMetadataHandler getComponents();
 
     /**
@@ -375,7 +377,6 @@ public interface DependencyHandler {
      * @param configureAction the action to use to configure module metadata
      * @since 1.8
      */
-    @Incubating
     void components(Action<? super ComponentMetadataHandler> configureAction);
 
     /**
@@ -385,7 +386,6 @@ public interface DependencyHandler {
      * @return the component module metadata handler for this project
      * @since 2.2
      */
-    @Incubating
     ComponentModuleMetadataHandler getModules();
 
     /**
@@ -396,7 +396,6 @@ public interface DependencyHandler {
      * @param configureAction the action to use to configure module metadata
      * @since 2.2
      */
-    @Incubating
     void modules(Action<? super ComponentModuleMetadataHandler> configureAction);
 
     /**
@@ -404,7 +403,6 @@ public interface DependencyHandler {
      *
      * @since 2.0
      */
-    @Incubating
     ArtifactResolutionQuery createArtifactResolutionQuery();
 
     /**
@@ -414,7 +412,6 @@ public interface DependencyHandler {
      *
      * @since 3.4
      */
-    @Incubating
     AttributesSchema attributesSchema(Action<? super AttributesSchema> configureAction);
 
     /**
@@ -423,29 +420,139 @@ public interface DependencyHandler {
      *
      * @since 3.4
      */
-    @Incubating
     AttributesSchema getAttributesSchema();
 
     /**
      * Returns the artifact type definitions for this handler.
      * @since 4.0
      */
-    @Incubating
     ArtifactTypeContainer getArtifactTypes();
 
     /**
      * Configures the artifact type definitions for this handler.
      * @since 4.0
      */
-    @Incubating
     void artifactTypes(Action<? super ArtifactTypeContainer> configureAction);
 
     /**
-     * Register an artifact transformation.
+     * Registers an artifact transform.
      *
+     * @deprecated use {@link #registerTransform(Class, Action)} instead.
      * @see org.gradle.api.artifacts.transform.ArtifactTransform
      * @since 3.5
      */
-    @Incubating
+    @Deprecated
     void registerTransform(Action<? super VariantTransform> registrationAction);
+
+    /**
+     * Registers an <a href="https://docs.gradle.org/current/userguide/artifact_transforms.html">artifact transform</a>.
+     *
+     * <p>
+     *     The registration action needs to specify the {@code from} and {@code to} attributes.
+     *     It may also provide parameters for the transform action by using {@link TransformSpec#parameters(Action)}.
+     * </p>
+     *
+     * <p>For example:</p>
+     *
+     * <pre class='autoTested'>
+     * // You have a transform action like this:
+     * abstract class MyTransform implements TransformAction&lt;Parameters&gt; {
+     *     interface Parameters extends TransformParameters {
+     *         {@literal @}Input
+     *         Property&lt;String&gt; getStringParameter();
+     *         {@literal @}InputFiles
+     *         ConfigurableFileCollection getInputFiles();
+     *     }
+     *
+     *     void transform(TransformOutputs outputs) {
+     *         // ...
+     *     }
+     * }
+     *
+     * // Then you can register the action like this:
+     *
+     * def artifactType = Attribute.of('artifactType', String)
+     *
+     * dependencies.registerTransform(MyTransform) {
+     *     from.attribute(artifactType, "jar")
+     *     to.attribute(artifactType, "java-classes-directory")
+     *
+     *     parameters {
+     *         stringParameter.set("Some string")
+     *         inputFiles.from("my-input-file")
+     *     }
+     * }
+     * </pre>
+     *
+     * @see TransformAction
+     * @since 5.3
+     */
+    <T extends TransformParameters> void registerTransform(Class<? extends TransformAction<T>> actionType, Action<? super TransformSpec<T>> registrationAction);
+
+    /**
+     * Declares a dependency on a platform. If the target coordinates represent multiple
+     * potential components, the platform component will be selected, instead of the library.
+     *
+     * @param notation the coordinates of the platform
+     *
+     * @since 5.0
+     */
+    Dependency platform(Object notation);
+
+    /**
+     * Declares a dependency on a platform. If the target coordinates represent multiple
+     * potential components, the platform component will be selected, instead of the library.
+     *
+     * @param notation the coordinates of the platform
+     * @param configureAction the dependency configuration block
+     *
+     * @since 5.0
+     */
+    Dependency platform(Object notation, Action<? super Dependency> configureAction);
+
+    /**
+     * Declares a dependency on an enforced platform. If the target coordinates represent multiple
+     * potential components, the platform component will be selected, instead of the library.
+     * An enforced platform is a platform for which the direct dependencies are forced, meaning
+     * that they would override any other version found in the graph.
+     *
+     * @param notation the coordinates of the platform
+     *
+     * @since 5.0
+     */
+    @Incubating
+    Dependency enforcedPlatform(Object notation);
+
+    /**
+     * Declares a dependency on an enforced platform. If the target coordinates represent multiple
+     * potential components, the platform component will be selected, instead of the library.
+     * An enforced platform is a platform for which the direct dependencies are forced, meaning
+     * that they would override any other version found in the graph.
+     *
+     * @param notation the coordinates of the platform
+     * @param configureAction the dependency configuration block
+     *
+     * @since 5.0
+     */
+    @Incubating
+    Dependency enforcedPlatform(Object notation, Action<? super Dependency> configureAction);
+
+    /**
+     * Declares a dependency on the test fixtures of a component.
+     * @param notation the coordinates of the component to use test fixtures for
+     *
+     * @since 5.6
+     */
+    @Incubating
+    Dependency testFixtures(Object notation);
+
+    /**
+     * Declares a dependency on the test fixtures of a component and allows configuring
+     * the resulting dependency.
+     * @param notation the coordinates of the component to use test fixtures for
+     *
+     * @since 5.6
+     */
+    @Incubating
+    Dependency testFixtures(Object notation, Action<? super Dependency> configureAction);
 }

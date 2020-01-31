@@ -31,8 +31,8 @@ class GradleVsMavenBuildPerformanceResults extends CrossBuildPerformanceResults 
 
             println stats
 
-            def mavenIsFaster = baselineVersion.fasterThan(gradle)
-            if (mavenIsFaster && whatToCheck().speed()) {
+            def mavenIsFaster = baselineVersion.significantlyFasterThan(gradle)
+            if (mavenIsFaster && hasRegressionChecks()) {
                 throw new AssertionError(stats as Object)
             }
         }

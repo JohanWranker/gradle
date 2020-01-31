@@ -15,65 +15,40 @@
  */
 package org.gradle.api.tasks
 
-import com.google.common.collect.ImmutableSortedSet
 import org.gradle.api.internal.file.copy.CopyAction
-import org.gradle.api.internal.tasks.TaskOutputFilePropertySpec
-import org.gradle.api.internal.tasks.execution.TaskProperties
-import org.gradle.internal.Actions
-import org.gradle.internal.Transformers
+import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.WorkspaceTest
+import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.util.TestUtil
-import spock.lang.Unroll
+import org.gradle.util.UsesNativeServices
 
-@SuppressWarnings("GroovyPointlessBoolean")
+@UsesNativeServices
 class AbstractCopyTaskTest extends WorkspaceTest {
 
-    def taskPropertiesWithOutput = Mock(TaskProperties) {
-        getOutputFileProperties() >> ImmutableSortedSet.of(Mock(TaskOutputFilePropertySpec))
-        hasDeclaredOutputs() >> true
-    }
     TestCopyTask task
+    TestFile projectDir
 
     def setup() {
-        task = TestUtil.create(temporaryFolder).task(TestCopyTask)
+        projectDir = file("project").createDir()
+        def project = (ProjectInternal) ProjectBuilder.builder()
+            .withProjectDir(projectDir)
+            .withGradleUserHomeDir(file("userHome").createDir())
+            .build()
+        task = TestUtil.createTask(TestCopyTask, project)
     }
 
     def "copy spec methods delegate to main spec of copy action"() {
         given:
-        file("include") << "bar"
-
-        expect:
-        task.rootSpec.hasSource() == false
+        projectDir.file("include") << "bar"
 
         when:
-        task.from testDirectory.absolutePath
+        task.from projectDir.absolutePath
         task.include "include"
 
         then:
         task.mainSpec.getIncludes() == ["include"].toSet()
-        task.mainSpec.buildRootResolver().source.files == task.project.fileTree(testDirectory).files
-    }
-
-    @Unroll
-    def "task output caching is disabled when #description is used"() {
-        when:
-        method(task)
-        then:
-        task.outputs.getCachingState(taskPropertiesWithOutput).enabled == false
-
-        where:
-        description                 | method
-        "outputs.cacheIf { false }" | { TestCopyTask task -> task.outputs.cacheIf { false } }
-        "eachFile(Closure)"         | { TestCopyTask task -> task.eachFile {} }
-        "eachFile(Action)"          | { TestCopyTask task -> task.eachFile(Actions.doNothing()) }
-        "expand(Map)"               | { TestCopyTask task -> task.expand([:]) }
-        "filter(Closure)"           | { TestCopyTask task -> task.filter {} }
-        "filter(Class)"             | { TestCopyTask task -> task.filter(FilterReader) }
-        "filter(Map, Class)"        | { TestCopyTask task -> task.filter([:], FilterReader) }
-        "filter(Transformer)"       | { TestCopyTask task -> task.filter(Transformers.noOpTransformer()) }
-        "rename(Closure)"           | { TestCopyTask task -> task.rename {} }
-        "rename(Pattern, String)"   | { TestCopyTask task -> task.rename(/(.*)/, '$1') }
-        "rename(Transformer)"       | { TestCopyTask task -> task.rename(Transformers.noOpTransformer()) }
+        task.mainSpec.buildRootResolver().source.files == task.project.fileTree(projectDir).files
     }
 
     static class TestCopyTask extends AbstractCopyTask {

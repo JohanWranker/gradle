@@ -17,8 +17,10 @@
 package org.gradle.api.tasks
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Unroll
 
+@Unroll
 class FailingIncrementalTasksIntegrationTest extends AbstractIntegrationSpec {
 
     def "consecutively failing task has correct up-to-date status and failure"() {
@@ -51,7 +53,7 @@ class FailingIncrementalTasksIntegrationTest extends AbstractIntegrationSpec {
         //this exposes an issue we used to have with in-memory cache.
     }
 
-    @Unroll
+    @ToBeFixedForInstantExecution
     def "incremental task after previous failure #description"() {
         file("src/input.txt") << "input"
         buildFile << """
@@ -104,11 +106,8 @@ class FailingIncrementalTasksIntegrationTest extends AbstractIntegrationSpec {
         where:
         modifyOutputs | incremental | description
         "add"         | false       | "with additional outputs is fully rebuilt"
-        "add"         | false       | "with additional outputs is fully rebuilt"
-        "change"      | false       | "with changed outputs is fully rebuilt"
         "change"      | false       | "with changed outputs is fully rebuilt"
         "remove"      | false       | "with removed outputs is fully rebuilt"
-        "none"        | true        | "with unmodified outputs is executed as incremental"
         "none"        | true        | "with unmodified outputs is executed as incremental"
     }
 }

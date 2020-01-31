@@ -19,33 +19,28 @@ package org.gradle.test.fixtures.maven
 import com.google.common.collect.ArrayListMultimap
 
 class MavenPom {
-    String groupId
-    String artifactId
-    String version
-    String packaging
-    String description
+    private final Node pom;
     final Map<String, MavenScope> scopes = [:]
 
     MavenPom(File pomFile) {
         if (pomFile.exists()){
-            def pom = new XmlParser().parse(pomFile)
+            pom = new XmlParser().parse(pomFile)
 
-            groupId = pom.groupId[0]?.text()
-            artifactId = pom.artifactId[0]?.text()
-            version = pom.version[0]?.text()
-            packaging = pom.packaging[0]?.text()
-            description = pom.description[0]?.text()
             def scopesByDependency = ArrayListMultimap.create()
 
             pom.dependencies.dependency.each { dep ->
-                def scope = createScope(dep.scope)
+                def scope = createScope(dep.scope, 'compile')
                 MavenDependency mavenDependency = createDependency(dep)
-                scope.dependencies[mavenDependency.getKey()] = mavenDependency
+                if (mavenDependency.optional) {
+                    scope.optionalDependencies[mavenDependency.getKey()] = mavenDependency
+                } else {
+                    scope.dependencies[mavenDependency.getKey()] = mavenDependency
+                }
                 scopesByDependency.put(mavenDependency.getKey(), scope.name)
             }
 
             pom.dependencyManagement.dependencies.dependency.each { dep ->
-                def scope = createScope(dep.scope)
+                def scope = createScope(dep.scope, 'no_scope')
                 MavenDependency mavenDependency = createDependency(dep)
                 scope.dependencyManagement[mavenDependency.getKey()] = mavenDependency
             }
@@ -56,8 +51,88 @@ class MavenPom {
         }
     }
 
+    String getGroupId() {
+        pom?.groupId[0]?.text()
+    }
+
+    String getArtifactId() {
+        pom?.artifactId[0]?.text()
+    }
+
+    String getVersion() {
+        pom?.version[0]?.text()
+    }
+
+    String getPackaging() {
+        pom?.packaging[0]?.text()
+    }
+
+    String getName() {
+        pom?.name[0]?.text()
+    }
+
+    String getDescription() {
+        pom?.description[0]?.text()
+    }
+
+    String getUrl() {
+        pom?.url[0]?.text()
+    }
+
+    String getInceptionYear() {
+        pom?.inceptionYear[0]?.text()
+    }
+
+    Node getOrganization() {
+        return pom?.organization[0]
+    }
+
+    NodeList getLicenses() {
+        return pom?.licenses?.license
+    }
+
+    NodeList getDevelopers() {
+        return pom?.developers?.developer
+    }
+
+    NodeList getContributors() {
+        return pom?.contributors?.contributor
+    }
+
+    Node getScm() {
+        return pom?.scm[0]
+    }
+
+    Node getIssueManagement() {
+        return pom?.issueManagement[0]
+    }
+
+    Node getCiManagement() {
+        return pom?.ciManagement[0]
+    }
+
+    Node getDistributionManagement() {
+        return pom?.distributionManagement[0]
+    }
+
+    Node getDependencyManagement() {
+        return pom?.dependencyManagement[0]
+    }
+
+    NodeList getMailingLists() {
+        return pom?.mailingLists?.mailingList
+    }
+
+    Node getProperties() {
+        return pom?.properties[0]
+    }
+
     private MavenDependency createDependency(def dep) {
         def exclusions = []
+        boolean optional = false
+        if (dep.optional) {
+            optional = "true"==dep.optional.text()
+        }
         if (dep.exclusions) {
             dep.exclusions.exclusion.each { excl ->
                 MavenDependencyExclusion exclusion = new MavenDependencyExclusion(
@@ -75,16 +150,32 @@ class MavenPom {
             classifier: dep.classifier ? dep.classifier.text() : null,
             type: dep.type ? dep.type.text() : null,
             exclusions: exclusions,
+            optional: optional
         )
     }
 
-    private MavenScope createScope(def scopeElement) {
-        def scopeName = scopeElement ? scopeElement.text() : 'runtime'
+    private MavenScope createScope(def scopeElement, String defaultScope) {
+        def scopeName = scopeElement ? scopeElement.text() : defaultScope
         def scope = scopes[scopeName]
         if (!scope) {
             scope = new MavenScope(name: scopeName)
             scopes[scopeName] = scope
         }
         scope
+    }
+
+    void scope(String scopeName, @DelegatesTo(value=MavenScope, strategy=Closure.DELEGATE_FIRST) Closure<?> spec) {
+        def scope = scopes[scopeName]
+        if (scope) {
+            spec.delegate = scope
+            spec.resolveStrategy = Closure.DELEGATE_FIRST
+            spec()
+        } else {
+            throw new AssertionError("Expected scope $scopeName but only found ${scopes.keySet()}")
+        }
+    }
+
+    void hasNoScope(String scopeName) {
+        assert scopes[scopeName] == null : "Didn't expect to find scope $scopeName"
     }
 }

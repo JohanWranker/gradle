@@ -19,8 +19,8 @@ import org.gradle.cache.internal.BinaryStore;
 import org.gradle.internal.concurrent.CompositeStoppable;
 import org.gradle.internal.io.RandomAccessFileInputStream;
 import org.gradle.internal.serialize.Decoder;
-import org.gradle.internal.serialize.kryo.KryoBackedDecoder;
-import org.gradle.internal.serialize.kryo.KryoBackedEncoder;
+import org.gradle.internal.serialize.kryo.StringDeduplicatingKryoBackedDecoder;
+import org.gradle.internal.serialize.kryo.StringDeduplicatingKryoBackedEncoder;
 
 import java.io.Closeable;
 import java.io.File;
@@ -32,17 +32,18 @@ import static org.gradle.internal.UncheckedException.throwAsUncheckedException;
 
 class DefaultBinaryStore implements BinaryStore, Closeable {
     private File file;
-    private KryoBackedEncoder encoder;
-    private int offset = -1;
+    private StringDeduplicatingKryoBackedEncoder encoder;
+    private long offset = -1;
 
     public DefaultBinaryStore(File file) {
         this.file = file;
     }
 
+    @Override
     public void write(WriteAction write) {
         if (encoder == null) {
             try {
-                encoder = new KryoBackedEncoder(new FileOutputStream(file));
+                encoder = new StringDeduplicatingKryoBackedEncoder(new FileOutputStream(file));
             } catch (FileNotFoundException e) {
                 throw throwAsUncheckedException(e);
             }
@@ -69,17 +70,20 @@ class DefaultBinaryStore implements BinaryStore, Closeable {
         return "Binary store in " + file;
     }
 
+    @Override
     public BinaryData done() {
         try {
             if (encoder != null) {
+                encoder.done();
                 encoder.flush();
             }
-            return new SimpleBinaryData(file, offset, diagnose());
+            return new SimpleBinaryData(file, offset);
         } finally {
             offset = -1;
         }
     }
 
+    @Override
     public void close() {
         try {
             if (encoder != null) {
@@ -103,40 +107,40 @@ class DefaultBinaryStore implements BinaryStore, Closeable {
     }
 
     private static class SimpleBinaryData implements BinaryStore.BinaryData {
-        private final int offset;
+        private final long offset;
         private final File inputFile;
-        private final String sourceDescription;
 
         private Decoder decoder;
         private CompositeStoppable resources;
 
-        public SimpleBinaryData(File inputFile, int offset, String sourceDescription) {
+        public SimpleBinaryData(File inputFile, long offset) {
             this.inputFile = inputFile;
             this.offset = offset;
-            this.sourceDescription = sourceDescription;
         }
 
+        @Override
         public <T> T read(BinaryStore.ReadAction<T> readAction) {
             try {
                 if (decoder == null) {
                     RandomAccessFile randomAccess = new RandomAccessFile(inputFile, "r");
                     randomAccess.seek(offset);
-                    decoder = new KryoBackedDecoder(new RandomAccessFileInputStream(randomAccess));
+                    decoder = new StringDeduplicatingKryoBackedDecoder(new RandomAccessFileInputStream(randomAccess));
                     resources = new CompositeStoppable().add(randomAccess, decoder);
                 }
                 return readAction.read(decoder);
             } catch (Exception e) {
-                throw new RuntimeException("Problems reading data from " + sourceDescription, e);
+                throw new RuntimeException("Problems reading data from " + toString(), e);
             }
         }
 
+        @Override
         public void close() {
             try {
                 if (resources != null) {
                     resources.stop();
                 }
             } catch (Exception e) {
-                throw new RuntimeException("Problems cleaning resources of " + sourceDescription, e);
+                throw new RuntimeException("Problems cleaning resources of " + toString(), e);
             } finally {
                 decoder = null;
                 resources = null;
@@ -144,7 +148,7 @@ class DefaultBinaryStore implements BinaryStore, Closeable {
         }
 
         public String toString() {
-            return sourceDescription;
+            return "Binary store in " + inputFile + " offset " + offset + " exists? " + inputFile.exists();
         }
     }
 }

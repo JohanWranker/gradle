@@ -23,7 +23,7 @@ class CompositeDomainObjectSetTest extends Specification {
     Class type = String
 
     protected collection(Object... entries) {
-        def collection = new DefaultDomainObjectCollection(type, new LinkedList())
+        def collection = new DefaultDomainObjectSet(type, CollectionCallbackActionDecorator.NOOP)
         entries.each { collection.add(it) }
         collection
     }
@@ -344,10 +344,15 @@ class CompositeDomainObjectSetTest extends Specification {
 
         and:
         component1 << "a" << "c"
+
+        then:
+        calledFor == ["c"]
+
+        when:
         component2 << "a" << "d" << "a"
 
         then:
-        calledFor == ["a", "c", "d"]
+        calledFor == ["c", "d"]
     }
 
     def "all notifications are only fired once for each in composite"() {
@@ -358,7 +363,9 @@ class CompositeDomainObjectSetTest extends Specification {
         def calledFor = []
 
         when:
-        composite.all { calledFor << it }
+        composite.all {
+            calledFor << it
+        }
 
         then:
         calledFor == ["a", "b"]

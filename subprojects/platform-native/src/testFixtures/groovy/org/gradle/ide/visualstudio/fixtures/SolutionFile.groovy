@@ -15,16 +15,19 @@
  */
 
 package org.gradle.ide.visualstudio.fixtures
+
+import org.gradle.plugins.ide.fixtures.IdeProjectFixture
+import org.gradle.plugins.ide.fixtures.IdeWorkspaceFixture
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.TextUtil
 
-class SolutionFile {
+class SolutionFile extends IdeWorkspaceFixture {
     TestFile file
     String content
     Map<String, ProjectReference> projects = [:]
 
     SolutionFile(TestFile solutionFile) {
-        assert solutionFile.exists()
+        solutionFile.assertIsFile()
         this.file = solutionFile
         assert TextUtil.convertLineSeparators(solutionFile.text, TextUtil.windowsLineSeparator) == solutionFile.text : "Solution file contains non-windows line separators"
 
@@ -35,7 +38,19 @@ class SolutionFile {
         })
     }
 
+    @Override
+    void assertContains(IdeProjectFixture project) {
+        assert project instanceof ProjectFile
+        assert projects.keySet().contains(project.name)
+        def ref = projects[project.name]
+        assert ref.file == project.projectFile.absolutePath
+    }
+
     def assertHasProjects(String... names) {
+        return assertHasProjects(names as List)
+    }
+
+    def assertHasProjects(Iterable<String> names) {
         assert projects.keySet() == names as Set
         return true
     }
@@ -73,7 +88,7 @@ class SolutionFile {
 
         Map<String, String> getConfigurations() {
             def configurations = [:]
-            content.eachMatch(~/\{${rawUuid}\}\.(\w+)\|\w+\.ActiveCfg = (\w+)\|\w+/, {
+            content.eachMatch(~/\{${rawUuid}\}\.([\w\\-]+)\|\w+\.ActiveCfg = ([\w\\-]+)\|\w+/, {
                 configurations[it[1]] = it[2]
             })
             return configurations

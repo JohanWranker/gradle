@@ -15,7 +15,9 @@
  */
 package org.gradle.internal.resource.local.ivy;
 
+import com.google.common.collect.ImmutableList;
 import org.gradle.api.internal.artifacts.ivyservice.ArtifactCacheMetadata;
+import org.gradle.api.internal.artifacts.ivyservice.ArtifactCachesProvider;
 import org.gradle.api.internal.artifacts.mvnsettings.CannotLocateLocalMavenRepositoryException;
 import org.gradle.api.internal.artifacts.mvnsettings.LocalMavenRepositoryLocator;
 import org.gradle.api.internal.artifacts.repositories.resolver.IvyResourcePattern;
@@ -24,7 +26,8 @@ import org.gradle.api.internal.artifacts.repositories.resolver.ResourcePattern;
 import org.gradle.internal.Factory;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
-import org.gradle.internal.hash.HashValue;
+import org.gradle.internal.hash.ChecksumService;
+import org.gradle.internal.hash.HashCode;
 import org.gradle.internal.resource.local.CompositeLocallyAvailableResourceFinder;
 import org.gradle.internal.resource.local.FileStoreSearcher;
 import org.gradle.internal.resource.local.LocallyAvailableResource;
@@ -37,34 +40,41 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 
 public class LocallyAvailableResourceFinderFactory implements Factory<LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata>> {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocallyAvailableResourceFinderFactory.class);
 
-    private final File rootCachesDirectory;
+    private final List<File> rootCachesDirectories;
     private final LocalMavenRepositoryLocator localMavenRepositoryLocator;
     private final FileStoreSearcher<ModuleComponentArtifactIdentifier> fileStore;
+    private final ChecksumService checksumService;
 
     public LocallyAvailableResourceFinderFactory(
-        ArtifactCacheMetadata artifactCacheMetadata, LocalMavenRepositoryLocator localMavenRepositoryLocator, FileStoreSearcher<ModuleComponentArtifactIdentifier> fileStore) {
-        this.rootCachesDirectory = artifactCacheMetadata.getCacheDir().getParentFile();
+        ArtifactCachesProvider artifactCaches, LocalMavenRepositoryLocator localMavenRepositoryLocator, FileStoreSearcher<ModuleComponentArtifactIdentifier> fileStore, ChecksumService checksumService) {
+        this.rootCachesDirectories = buildRootCachesDirectories(artifactCaches);
         this.localMavenRepositoryLocator = localMavenRepositoryLocator;
         this.fileStore = fileStore;
+        this.checksumService = checksumService;
     }
 
+    private List<File> buildRootCachesDirectories(ArtifactCachesProvider artifactCaches) {
+        File writableRootDir = buildRootDir(artifactCaches.getWritableCacheMetadata());
+        return artifactCaches.withReadOnlyCache((md, manager) -> ImmutableList.of(buildRootDir(md), writableRootDir))
+            .orElse(ImmutableList.of(writableRootDir));
+    }
+
+    private File buildRootDir(ArtifactCacheMetadata md) {
+        return md.getCacheDir().getParentFile();
+    }
+
+    @Override
     public LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> create() {
         List<LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata>> finders = new LinkedList<LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata>>();
 
         // Order is important here, because they will be searched in that order
 
         // The current filestore
-        finders.add(new LocallyAvailableResourceFinderSearchableFileStoreAdapter<ModuleComponentArtifactMetadata>(new FileStoreSearcher<ModuleComponentArtifactMetadata>() {
-            @Override
-            public Set<? extends LocallyAvailableResource> search(ModuleComponentArtifactMetadata key) {
-                return fileStore.search(key.getId());
-            }
-        }));
+        finders.add(new LocallyAvailableResourceFinderSearchableFileStoreAdapter<ModuleComponentArtifactMetadata>(key -> fileStore.search(key.getId()), checksumService));
 
         // 1.8
         addForPattern(finders, "artifacts-26/filestore/[organisation]/[module](/[branch])/[revision]/[type]/*/[artifact]-[revision](-[classifier])(.[ext])");
@@ -125,16 +135,18 @@ public class LocallyAvailableResourceFinderFactory implements Factory<LocallyAva
         }
         String pathPart = pattern.substring(0, chopAt);
         String patternPart = pattern.substring(chopAt + 1);
-        addForPattern(finders, new File(rootCachesDirectory, pathPart), new IvyResourcePattern(patternPart));
+        for (File rootCachesDirectory : rootCachesDirectories) {
+            addForPattern(finders, new File(rootCachesDirectory, pathPart), new IvyResourcePattern(patternPart));
+        }
     }
 
     private void addForPattern(List<LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata>> finders, File baseDir, ResourcePattern pattern) {
         if (baseDir.exists()) {
-            finders.add(new PatternBasedLocallyAvailableResourceFinder(baseDir, pattern));
+            finders.add(new PatternBasedLocallyAvailableResourceFinder(baseDir, pattern, checksumService));
         }
     }
 
-    private class NoMavenLocalRepositoryResourceFinder implements LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> {
+    private static class NoMavenLocalRepositoryResourceFinder implements LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> {
         private final CannotLocateLocalMavenRepositoryException ex;
         private boolean logged;
 
@@ -142,6 +154,7 @@ public class LocallyAvailableResourceFinderFactory implements Factory<LocallyAva
             this.ex = ex;
         }
 
+        @Override
         public LocallyAvailableResourceCandidates findCandidates(ModuleComponentArtifactMetadata criterion) {
             if(!logged){
                 LOGGER.warn("Unable to locate local Maven repository.");
@@ -149,11 +162,13 @@ public class LocallyAvailableResourceFinderFactory implements Factory<LocallyAva
                 logged = true;
             }
             return new LocallyAvailableResourceCandidates() {
+                @Override
                 public boolean isNone() {
                     return true;
                 }
 
-                public LocallyAvailableResource findByHashValue(HashValue hashValue) {
+                @Override
+                public LocallyAvailableResource findByHashValue(HashCode hashValue) {
                     return null;
                 }
             };

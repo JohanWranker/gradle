@@ -19,8 +19,6 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.internal.ConventionTask
 import org.gradle.api.plugins.quality.Checkstyle
 import org.gradle.api.plugins.quality.CodeNarc
-import org.gradle.api.plugins.quality.FindBugs
-import org.gradle.api.plugins.quality.JDepend
 import org.gradle.api.plugins.quality.Pmd
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceTask
@@ -33,6 +31,7 @@ import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.scala.ScalaCompile
 import org.gradle.api.tasks.testing.Test
 import org.gradle.integtests.fixtures.CrossVersionIntegrationSpec
+import org.gradle.integtests.fixtures.TargetVersions
 import org.gradle.plugins.ear.Ear
 import org.gradle.plugins.ide.eclipse.GenerateEclipseClasspath
 import org.gradle.plugins.ide.eclipse.GenerateEclipseJdt
@@ -45,10 +44,14 @@ import org.gradle.plugins.ide.idea.GenerateIdeaWorkspace
 import org.gradle.plugins.signing.Sign
 import org.gradle.util.GradleVersion
 import org.junit.Assume
+import spock.lang.Issue
+
 /**
  * Tests that task classes compiled against earlier versions of Gradle are still compatible.
  */
+@TargetVersions("3.0+")
 class TaskSubclassingBinaryCompatibilityCrossVersionSpec extends CrossVersionIntegrationSpec {
+    @SuppressWarnings("UnnecessaryQualifiedReference")
     def "can use task subclass compiled using previous Gradle version"() {
         given:
         def taskClasses = [
@@ -68,9 +71,7 @@ class TaskSubclassingBinaryCompatibilityCrossVersionSpec extends CrossVersionInt
             CodeNarc,
             Checkstyle,
             Ear,
-            FindBugs,
             Pmd,
-            JDepend,
             Sign,
             org.gradle.api.tasks.application.CreateStartScripts,
             GenerateEclipseJdt,
@@ -86,10 +87,10 @@ class TaskSubclassingBinaryCompatibilityCrossVersionSpec extends CrossVersionInt
         // Task types added after 1.0
 
         if (previous.version >= GradleVersion.version("2.4")) {
-            taskClasses << org.gradle.jvm.application.tasks.CreateStartScripts
+            taskClasses += org.gradle.jvm.application.tasks.CreateStartScripts
         }
         if (previous.version >= GradleVersion.version("2.3")) {
-            taskClasses << org.gradle.jvm.tasks.Jar
+            taskClasses += org.gradle.jvm.tasks.Jar
         }
 
         // Some breakages that were not detected prior to release. Please do not add any more exceptions
@@ -118,12 +119,11 @@ class TaskSubclassingBinaryCompatibilityCrossVersionSpec extends CrossVersionInt
             import org.gradle.api.Project
 
             class SomePlugin implements Plugin<Project> {
-                void apply(Project p) { """ <<
+                void apply(Project p) { """ << \
             subclasses.collect { "p.tasks.create('${it.key}', ${it.key})" }.join("\n") << """
                 }
             }
-            """ <<
-
+            """ << \
             subclasses.collect {
                 def className = it.key
                 """class ${className} extends ${it.value} {
@@ -150,9 +150,6 @@ apply plugin: SomePlugin
     }
 
     def "task can use all methods declared by Task interface that AbstractTask specialises"() {
-        // Don't run these for RC 3, as stuff did change during the RCs
-        Assume.assumeFalse(previous.version == GradleVersion.version("2.14-rc-3"))
-
         file("someFile").touch()
         file("anotherFile").touch()
         file("yetAnotherFile").touch()
@@ -181,7 +178,9 @@ apply plugin: SomePlugin
                     ${previousVersionLeaksInternal ? "((TaskInputs)getInputs())" : "getInputs()"}.file("someFile");
                     ${previousVersionLeaksInternal ? "((TaskInputs)getInputs())" : "getInputs()"}.files("anotherFile", "yetAnotherFile");
                     ${previousVersionLeaksInternal ? "((TaskInputs)getInputs())" : "getInputs()"}.dir("someDir");
-                    ${previousVersionLeaksInternal ? "((TaskInputs)getInputs())" : "getInputs()"}.property("input", "value");
+                    ${previous.version >= GradleVersion.version("4.3")
+                        ? 'getInputs().property("input", "value");'
+                        : ""}
                     Map<String, Object> mapValues = new HashMap<String, Object>();
                     mapValues.put("mapInput", "mapValue");
                     ${previousVersionLeaksInternal ? "((TaskInputs)getInputs())" : "getInputs()"}.properties(mapValues);
@@ -212,5 +211,71 @@ apply plugin: SomePlugin
         then:
         version previous requireGradleDistribution() withTasks 'assemble' inDirectory(file("producer")) run()
         version current requireGradleDistribution() withTasks 't' run()
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/11330")
+    def "a subclass of JavaCompile with getSources receives the correct incremental changes"() {
+        // There is no use to make the test work pre-5.0, since the regression was introduced in 6.0
+        Assume.assumeTrue(previous.version.baseVersion >= GradleVersion.version("5.0"))
+        given:
+        file("producer/build.gradle") << """
+            apply plugin: 'java'
+            dependencies {
+                compile gradleApi()
+            }
+        """
+
+        file("producer/src/main/java/MyCompileTask.java") << """
+            import org.gradle.api.file.FileTree;
+            import org.gradle.api.tasks.InputFiles;
+            import org.gradle.api.tasks.PathSensitive;
+            import org.gradle.api.tasks.PathSensitivity;
+            import org.gradle.api.tasks.SkipWhenEmpty;
+            import org.gradle.api.tasks.compile.JavaCompile;
+            import java.util.List;
+            import java.util.ArrayList;
+            
+            public class MyCompileTask extends JavaCompile {
+                private List<Object> sources = new ArrayList<>();
+            
+                @PathSensitive(PathSensitivity.RELATIVE)
+                @InputFiles
+                @SkipWhenEmpty
+                public FileTree getSources() {
+                    return getProject().files(sources).getAsFileTree();        
+                }
+                
+                public void addSource(Object source) {
+                    sources.add(source);
+                }
+            }
+        """
+
+        buildFile << """
+            buildscript {
+                dependencies { classpath fileTree(dir: "producer/build/libs", include: '*.jar') }
+            }
+            
+            apply plugin: 'java'
+    
+            task myJavaCompile(type: MyCompileTask) {
+                def sourceSet = sourceSets.main
+                def sourceDirectorySet = sourceSet.java
+                addSource(sourceDirectorySet)
+                classpath = sourceSet.compileClasspath
+                destinationDir = file('build/classes/my-java/main')            
+            }
+        """
+
+        file("src/main/java/MyClass.java") << """
+            public class MyClass {
+            }
+        """
+        version previous requireGradleDistribution() withTasks 'assemble' inDirectory(file("producer")) run()
+
+        when:
+        version current requireGradleDistribution() withTasks 'myJavaCompile' run()
+        then:
+        file('build/classes/my-java/main/MyClass.class').isFile()
     }
 }

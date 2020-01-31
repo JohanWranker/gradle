@@ -17,43 +17,15 @@ package org.gradle.api.artifacts.dsl;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
+import org.gradle.api.ActionConfiguration;
 import org.gradle.api.artifacts.ComponentMetadataDetails;
+import org.gradle.api.artifacts.ComponentMetadataRule;
 
 /**
  * Allows the build to provide rules that modify the metadata of depended-on software components.
  *
- * <p>Possible uses of component metadata rules are:
- * <ul>
- *     <li>Setting the status and status scheme of a component, overriding the value specified in the component descriptor.</li>
- *     <li>Declaring whether or not a component is 'changing', thus impacting the cache behaviour of the component.</li>
- * </ul>
- *
- * <p> Example:
- * <pre class='autoTested'>
- * dependencies {
- *     components {
- *         // Set the status and status scheme for every component belonging to a module in the group "org.foo"
- *         all { ComponentMetadataDetails details -&gt;
- *             if (details.id.group == "org.foo") {
- *                 def version = details.id.version
- *                 // assuming status is last part of version string
- *                 details.status = version.substring(version.lastIndexOf("-") + 1)
- *                 details.statusScheme = ["bronze", "silver", "gold", "platinum"]
- *             }
- *         }
- *
- *         // Treat all components in the module "org.foo:bar" as changing
- *         withModule("org.foo:bar") { ComponentMetadataDetails details -&gt;
- *             details.changing = true
- *         }
- *     }
- * }
- * </pre>
- *
  * @since 1.8
  */
-@Incubating
 public interface ComponentMetadataHandler {
     /**
      * Adds a rule action that may modify the metadata of any resolved software component.
@@ -101,6 +73,28 @@ public interface ComponentMetadataHandler {
     ComponentMetadataHandler all(Object ruleSource);
 
     /**
+     * Adds a class based rule that may modify the metadata of any resolved software component.
+     *
+     * @param rule the rule to be added
+     * @return this
+     *
+     * @since 4.9
+     */
+    ComponentMetadataHandler all(Class<? extends ComponentMetadataRule> rule);
+
+    /**
+     * Adds a class based rule that may modify the metadata of any resolved software component.
+     * The rule itself is configured by the provided configure action.
+     *
+     * @param rule the rule to be added
+     * @param configureAction the rule configuration
+     * @return this
+     *
+     * @since 4.9
+     */
+    ComponentMetadataHandler all(Class<? extends ComponentMetadataRule> rule, Action<? super ActionConfiguration> configureAction);
+
+    /**
      * Adds a rule that may modify the metadata of any resolved software component belonging to the specified module.
      *
      * @param id the module to apply this rule to in "group:module" format or as a {@link org.gradle.api.artifacts.ModuleIdentifier}
@@ -131,4 +125,25 @@ public interface ComponentMetadataHandler {
      */
     ComponentMetadataHandler withModule(Object id, Object ruleSource);
 
+    /**
+     * Adds a class based rule that may modify the metadata of any resolved software component belonging to the specified module.
+     *
+     * @param id the module to apply this rule to in "group:module" format or as a {@link org.gradle.api.artifacts.ModuleIdentifier}
+     * @param rule the rule to be added
+     * @return this
+     *
+     * @since 4.9
+     */
+    ComponentMetadataHandler withModule(Object id, Class<? extends ComponentMetadataRule> rule);
+
+    /**
+     * Adds a class based rule that may modify the metadata of any resolved software component belonging to the specified module.
+     *
+     * @param id the module to apply this rule to in "group:module" format or as a {@link org.gradle.api.artifacts.ModuleIdentifier}
+     * @param rule the rule to be added
+     * @return this
+     *
+     * @since 4.9
+     */
+    ComponentMetadataHandler withModule(Object id, Class<? extends ComponentMetadataRule> rule, Action<? super ActionConfiguration> configureAction);
 }

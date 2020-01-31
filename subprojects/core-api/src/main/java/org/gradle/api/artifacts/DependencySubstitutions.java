@@ -17,7 +17,6 @@
 package org.gradle.api.artifacts;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.internal.HasInternalProtocol;
 
@@ -26,7 +25,6 @@ import org.gradle.internal.HasInternalProtocol;
  * @since 2.5
  */
 @HasInternalProtocol
-@Incubating
 public interface DependencySubstitutions {
     /**
      * Adds a dependency substitution rule that is triggered for every dependency (including transitive)
@@ -95,14 +93,13 @@ public interface DependencySubstitutions {
      */
     interface Substitution {
         /**
-         * Specify a reason for the substition. This is optional
+         * Specify a reason for the substitution. This is optional
          * @param reason the reason for the selection
          *
          * @since 4.5
          *
          * @return the substitution
          */
-        @Incubating
         Substitution because(String reason);
 
         /**

@@ -16,15 +16,16 @@
 
 package org.gradle.performance.regression.corefeature
 
-import org.gradle.performance.AbstractCrossVersionPerformanceTest
+import org.gradle.performance.AbstractCrossVersionGradleProfilerPerformanceTest
 import org.gradle.performance.WithExternalRepository
 
-class ExcludeRuleMergingPerformanceTest extends AbstractCrossVersionPerformanceTest implements WithExternalRepository {
+class ExcludeRuleMergingPerformanceTest extends AbstractCrossVersionGradleProfilerPerformanceTest implements WithExternalRepository {
 
     private final static TEST_PROJECT_NAME = 'excludeRuleMergingBuild'
 
     def setup() {
-        runner.minimumVersion = '4.0'
+        runner.minimumBaseVersion = '4.9'
+        runner.targetVersions = ["6.2-20200108160029+0000"]
     }
 
     def "merge exclude rules"() {
@@ -33,8 +34,7 @@ class ExcludeRuleMergingPerformanceTest extends AbstractCrossVersionPerformanceT
 
         given:
         runner.tasksToRun = ['resolveDependencies']
-        runner.gradleOpts = ["-Xms256m", "-Xmx256m"]
-        runner.targetVersions = ["4.6-20180125002142+0000"]
+        runner.gradleOpts = ["-Xms512m", "-Xmx512m"]
         runner.args = ['-PuseHttp', "-PhttpPort=${serverPort}"]
 
         when:
@@ -53,9 +53,8 @@ class ExcludeRuleMergingPerformanceTest extends AbstractCrossVersionPerformanceT
 
         given:
         runner.tasksToRun = ['resolveDependencies']
-        runner.gradleOpts = ["-Xms512m", "-Xmx512m"]
+        runner.gradleOpts = ["-Xms800m", "-Xmx800m"]
         runner.args = ['-PuseHttp', "-PhttpPort=${serverPort}", "--parallel"]
-        runner.targetVersions = ["4.6-20180125002142+0000"]
         when:
         def result = runner.run()
 

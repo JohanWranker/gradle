@@ -18,6 +18,7 @@ package org.gradle.nativeplatform.sourceset
 import org.apache.commons.io.FileUtils
 import org.gradle.ide.visualstudio.fixtures.ProjectFile
 import org.gradle.ide.visualstudio.fixtures.SolutionFile
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
 import org.gradle.nativeplatform.fixtures.app.CHelloWorldApp
@@ -25,6 +26,7 @@ import org.gradle.nativeplatform.fixtures.app.CppHelloWorldApp
 import org.gradle.nativeplatform.fixtures.app.MixedLanguageHelloWorldApp
 import org.gradle.nativeplatform.fixtures.app.WindowsResourceHelloWorldApp
 
+import static org.gradle.nativeplatform.fixtures.ToolChainRequirement.SUPPORTS_32
 import static org.gradle.nativeplatform.fixtures.ToolChainRequirement.VISUALCPP
 // TODO: Test incremental
 class GeneratedSourcesIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
@@ -62,6 +64,7 @@ task generateCSources(type: GenerateSources) {
         }
     }
 
+    @ToBeFixedForInstantExecution
     def "generator task produces c sources and headers"() {
         given:
         def app = new CHelloWorldApp()
@@ -87,6 +90,7 @@ model {
         executableBuilt(app)
     }
 
+    @ToBeFixedForInstantExecution
     def "generator task produces sources for dependent source set with headers only"() {
         given:
         // Write sources to src/main, headers to src/input
@@ -120,6 +124,7 @@ model {
         executableBuilt(app)
     }
 
+    @ToBeFixedForInstantExecution
     def "generator task produces sources for dependent source set"() {
         given:
         def app = new CHelloWorldApp()
@@ -149,6 +154,7 @@ model {
         executableBuilt(app)
     }
 
+    @ToBeFixedForInstantExecution
     def "can have library composed of generated sources"() {
         given:
         def app = new CHelloWorldApp()
@@ -182,6 +188,7 @@ model {
         executableBuilt(app)
     }
 
+    @ToBeFixedForInstantExecution
     def "can depend on header-only library composed of generated sources"() {
         given:
         // Write sources to src/main, headers to src/hello
@@ -219,6 +226,7 @@ model {
         executableBuilt(app)
     }
 
+    @ToBeFixedForInstantExecution
     def "generator task produces cpp sources"() {
         given:
         def app = new CppHelloWorldApp()
@@ -250,6 +258,8 @@ model {
         executableBuilt(app)
     }
 
+    @RequiresInstalledToolChain(SUPPORTS_32)
+    @ToBeFixedForInstantExecution
     def "generator task produces assembler sources"() {
         given:
         def app = new MixedLanguageHelloWorldApp(AbstractInstalledToolChainIntegrationSpec.toolChain)
@@ -285,6 +295,7 @@ model {
     }
 
     @RequiresInstalledToolChain(VISUALCPP)
+    @ToBeFixedForInstantExecution
     def "generator task produces windows resources"() {
         given:
         def app = new WindowsResourceHelloWorldApp()
@@ -345,6 +356,7 @@ model {
         failure.assertHasCause "Could not get unknown property 'sourceDir' for task ':generateSources' of type org.gradle.api.DefaultTask."
     }
 
+    @ToBeFixedForInstantExecution
     def "can explicitly configure source and header directories from generator task"() {
         given:
         def app = new CHelloWorldApp()
@@ -378,6 +390,7 @@ model {
         executableBuilt(app)
     }
 
+    @ToBeFixedForInstantExecution
     def "can configure generator task properties after wiring"() {
         given:
         def app = new CHelloWorldApp()
@@ -411,6 +424,7 @@ lateConfiguredGenerator {
         executableBuilt(app)
     }
 
+    @ToBeFixedForInstantExecution
     def "creates visual studio project including generated sources"() {
         given:
         def app = new CHelloWorldApp()

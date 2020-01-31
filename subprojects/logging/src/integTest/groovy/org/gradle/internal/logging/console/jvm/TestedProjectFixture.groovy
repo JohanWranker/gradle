@@ -17,12 +17,11 @@
 package org.gradle.internal.logging.console.jvm
 
 import org.gradle.integtests.fixtures.RepoScriptBlockUtil
+import org.gradle.integtests.fixtures.RichConsoleStyling
 import org.gradle.integtests.fixtures.executer.GradleHandle
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
 
-import static org.gradle.integtests.fixtures.AbstractConsoleFunctionalSpec.workInProgressLine
-
-class TestedProjectFixture {
+class TestedProjectFixture implements RichConsoleStyling {
 
     static String testClass(String testAnnotationClassName, String testClassName, String serverResource, BlockingHttpServer server) {
         """
@@ -46,7 +45,7 @@ class TestedProjectFixture {
             ${RepoScriptBlockUtil.jcenterRepository()}
             
             dependencies {
-                testCompile '${testDependency}'
+                testImplementation '${testDependency}'
             }
             
             tasks.withType(Test) {
@@ -63,8 +62,8 @@ class TestedProjectFixture {
         """
     }
 
-    static boolean containsTestExecutionWorkInProgressLine(GradleHandle gradleHandle, String taskPath, String testName) {
-        gradleHandle.standardOutput.contains(workInProgressLine("> $taskPath > Executing test $testName"))
+    static void containsTestExecutionWorkInProgressLine(GradleHandle gradleHandle, String taskPath, String testName) {
+        assertHasWorkInProgress(gradleHandle, "> $taskPath > Executing test $testName")
     }
 
     static class JavaTestClass {

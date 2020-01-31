@@ -20,13 +20,12 @@ import org.gradle.api.artifacts.ArtifactIdentifier;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.ResolvedModuleVersion;
-import org.gradle.api.artifacts.cache.ArtifactResolutionControl;
-import org.gradle.api.artifacts.cache.DependencyResolutionControl;
-import org.gradle.api.artifacts.cache.ModuleResolutionControl;
-import org.gradle.api.artifacts.cache.ResolutionControl;
-import org.gradle.api.artifacts.cache.ResolutionRules;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
-import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
+import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier;
+import org.gradle.api.internal.artifacts.cache.ArtifactResolutionControl;
+import org.gradle.api.internal.artifacts.cache.DependencyResolutionControl;
+import org.gradle.api.internal.artifacts.cache.ModuleResolutionControl;
+import org.gradle.api.internal.artifacts.cache.ResolutionControl;
 import org.gradle.api.internal.artifacts.configurations.MutationValidator;
 import org.gradle.api.internal.artifacts.configurations.dynamicversion.CachePolicy;
 import org.gradle.api.internal.artifacts.ivyservice.modulecache.dynamicversions.DefaultResolvedModuleVersion;
@@ -39,17 +38,15 @@ import java.util.concurrent.TimeUnit;
 
 import static org.gradle.api.internal.artifacts.configurations.MutationValidator.MutationType.STRATEGY;
 
-public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
+public class DefaultCachePolicy implements CachePolicy {
     private static final int SECONDS_IN_DAY = 24 * 60 * 60;
 
     final List<Action<? super DependencyResolutionControl>> dependencyCacheRules;
     final List<Action<? super ModuleResolutionControl>> moduleCacheRules;
     final List<Action<? super ArtifactResolutionControl>> artifactCacheRules;
-    private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
     private MutationValidator mutationValidator = MutationValidator.IGNORE;
 
-    public DefaultCachePolicy(ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
-        this.moduleIdentifierFactory = moduleIdentifierFactory;
+    public DefaultCachePolicy() {
         this.dependencyCacheRules = new ArrayList<Action<? super DependencyResolutionControl>>();
         this.moduleCacheRules = new ArrayList<Action<? super ModuleResolutionControl>>();
         this.artifactCacheRules = new ArrayList<Action<? super ArtifactResolutionControl>>();
@@ -60,7 +57,6 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
     }
 
     DefaultCachePolicy(DefaultCachePolicy policy) {
-        this.moduleIdentifierFactory = policy.moduleIdentifierFactory;
         this.dependencyCacheRules = new ArrayList<Action<? super DependencyResolutionControl>>(policy.dependencyCacheRules);
         this.moduleCacheRules = new ArrayList<Action<? super ModuleResolutionControl>>(policy.moduleCacheRules);
         this.artifactCacheRules = new ArrayList<Action<? super ArtifactResolutionControl>>(policy.artifactCacheRules);
@@ -73,56 +69,77 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
         this.mutationValidator = validator;
     }
 
-    public void eachDependency(Action<? super DependencyResolutionControl> rule) {
-        mutationValidator.validateMutation(STRATEGY);
-        dependencyCacheRules.add(0, rule);
+    @Override
+    public void setOffline() {
+        eachDependency(ResolutionControl::useCachedResult);
+        eachModule(ResolutionControl::useCachedResult);
+        eachArtifact(ResolutionControl::useCachedResult);
     }
 
-    public void eachModule(Action<? super ModuleResolutionControl> rule) {
-        mutationValidator.validateMutation(STRATEGY);
-        moduleCacheRules.add(0, rule);
-    }
-
-    public void eachArtifact(Action<? super ArtifactResolutionControl> rule) {
-        mutationValidator.validateMutation(STRATEGY);
-        artifactCacheRules.add(0, rule);
+    @Override
+    public void setRefreshDependencies() {
+        eachDependency(dependencyResolutionControl -> dependencyResolutionControl.cacheFor(0, TimeUnit.SECONDS));
+        eachModule(moduleResolutionControl -> moduleResolutionControl.cacheFor(0, TimeUnit.SECONDS));
+        eachArtifact(artifactResolutionControl -> artifactResolutionControl.cacheFor(0, TimeUnit.SECONDS));
     }
 
     public void cacheDynamicVersionsFor(final int value, final TimeUnit unit) {
-        eachDependency(new Action<DependencyResolutionControl>() {
-            public void execute(DependencyResolutionControl dependencyResolutionControl) {
+        eachDependency(dependencyResolutionControl -> {
+            if (!dependencyResolutionControl.getCachedResult().isEmpty()) {
                 dependencyResolutionControl.cacheFor(value, unit);
             }
         });
     }
 
     public void cacheChangingModulesFor(final int value, final TimeUnit units) {
-        eachModule(new Action<ModuleResolutionControl>() {
-            public void execute(ModuleResolutionControl moduleResolutionControl) {
-                if (moduleResolutionControl.isChanging()) {
-                    moduleResolutionControl.cacheFor(value, units);
-                }
+        eachModule(moduleResolutionControl -> {
+            if (moduleResolutionControl.isChanging()) {
+                moduleResolutionControl.cacheFor(value, units);
             }
         });
-        eachArtifact(new Action<ArtifactResolutionControl>() {
-            public void execute(ArtifactResolutionControl artifactResolutionControl) {
-                if (artifactResolutionControl.belongsToChangingModule()) {
-                    artifactResolutionControl.cacheFor(value, units);
-                }
+        eachArtifact(artifactResolutionControl -> {
+            if (artifactResolutionControl.belongsToChangingModule()) {
+                artifactResolutionControl.cacheFor(value, units);
             }
         });
     }
 
     private void cacheMissingArtifactsFor(final int value, final TimeUnit units) {
-        eachArtifact(new Action<ArtifactResolutionControl>() {
-            public void execute(ArtifactResolutionControl artifactResolutionControl) {
-                if (artifactResolutionControl.getCachedResult() == null) {
-                    artifactResolutionControl.cacheFor(value, units);
-                }
+        eachArtifact(artifactResolutionControl -> {
+            if (artifactResolutionControl.getCachedResult() == null) {
+                artifactResolutionControl.cacheFor(value, units);
             }
         });
     }
 
+    /**
+     * Apply a rule to control resolution of dependencies.
+     * @param rule the rule to apply
+     */
+    private void eachDependency(Action<? super DependencyResolutionControl> rule) {
+        mutationValidator.validateMutation(STRATEGY);
+        dependencyCacheRules.add(0, rule);
+    }
+
+    /**
+     * Apply a rule to control resolution of modules.
+     * @param rule the rule to apply
+     */
+    private void eachModule(Action<? super ModuleResolutionControl> rule) {
+        mutationValidator.validateMutation(STRATEGY);
+        moduleCacheRules.add(0, rule);
+    }
+
+    /**
+     * Apply a rule to control resolution of artifacts.
+     * @param rule the rule to apply
+     */
+    private void eachArtifact(Action<? super ArtifactResolutionControl> rule) {
+        mutationValidator.validateMutation(STRATEGY);
+        artifactCacheRules.add(0, rule);
+    }
+
+    @Override
     public boolean mustRefreshVersionList(final ModuleIdentifier moduleIdentifier, Set<ModuleVersionIdentifier> matchingVersions, long ageMillis) {
         CachedDependencyResolutionControl dependencyResolutionControl = new CachedDependencyResolutionControl(moduleIdentifier, matchingVersions, ageMillis);
 
@@ -136,20 +153,28 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
         return false;
     }
 
+    @Override
     public boolean mustRefreshMissingModule(ModuleComponentIdentifier component, long ageMillis) {
         return mustRefreshModule(component, null, ageMillis, false);
     }
 
+    @Override
     public boolean mustRefreshModule(ModuleComponentIdentifier component, ResolvedModuleVersion resolvedModuleVersion, long ageMillis) {
         return mustRefreshModule(component, resolvedModuleVersion, ageMillis, false);
     }
 
+    @Override
+    public boolean mustRefreshModule(ResolvedModuleVersion resolvedModuleVersion, long ageMillis, boolean changing) {
+        return mustRefreshModule(resolvedModuleVersion.getId(), resolvedModuleVersion, ageMillis, changing);
+    }
+
+    @Override
     public boolean mustRefreshChangingModule(ModuleComponentIdentifier component, ResolvedModuleVersion resolvedModuleVersion, long ageMillis) {
         return mustRefreshModule(component, resolvedModuleVersion, ageMillis, true);
     }
 
     private boolean mustRefreshModule(ModuleComponentIdentifier component, ResolvedModuleVersion version, long ageMillis, boolean changingModule) {
-        return mustRefreshModule(moduleIdentifierFactory.moduleWithVersion(component.getGroup(), component.getModule(), component.getVersion()), version, ageMillis, changingModule);
+        return mustRefreshModule(DefaultModuleVersionIdentifier.newId(component.getModuleIdentifier(), component.getVersion()), version, ageMillis, changingModule);
     }
 
     private boolean mustRefreshModule(ModuleVersionIdentifier moduleVersionId, ResolvedModuleVersion version, long ageMillis, boolean changingModule) {
@@ -165,6 +190,7 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
         return false;
     }
 
+    @Override
     public boolean mustRefreshModuleArtifacts(ModuleVersionIdentifier moduleVersionId, Set<ArtifactIdentifier> artifacts,
                                               long ageMillis, boolean belongsToChangingModule, boolean moduleDescriptorInSync) {
         if (belongsToChangingModule && !moduleDescriptorInSync) {
@@ -173,6 +199,7 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
         return mustRefreshModule(moduleVersionId, new DefaultResolvedModuleVersion(moduleVersionId), ageMillis, belongsToChangingModule);
     }
 
+    @Override
     public boolean mustRefreshArtifact(ArtifactIdentifier artifactIdentifier, File cachedArtifactFile, long ageMillis, boolean belongsToChangingModule, boolean moduleDescriptorInSync) {
         CachedArtifactResolutionControl artifactResolutionControl = new CachedArtifactResolutionControl(artifactIdentifier, cachedArtifactFile, ageMillis, belongsToChangingModule);
         if(belongsToChangingModule && !moduleDescriptorInSync){
@@ -215,14 +242,17 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
         }
 
 
+        @Override
         public A getRequest() {
             return request;
         }
 
+        @Override
         public B getCachedResult() {
             return cachedResult;
         }
 
+        @Override
         public void cacheFor(int value, TimeUnit units) {
             long expiryMillis = TimeUnit.MILLISECONDS.convert(value, units);
             if (ageMillis > expiryMillis) {
@@ -232,10 +262,12 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
             }
         }
 
+        @Override
         public void useCachedResult() {
             setMustCheck(false);
         }
 
+        @Override
         public void refresh() {
             setMustCheck(true);
         }
@@ -268,6 +300,7 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
             this.changing = changing;
         }
 
+        @Override
         public boolean isChanging() {
             return changing;
         }
@@ -281,6 +314,7 @@ public class DefaultCachePolicy implements CachePolicy, ResolutionRules {
             this.belongsToChangingModule = belongsToChangingModule;
         }
 
+        @Override
         public boolean belongsToChangingModule() {
             return belongsToChangingModule;
         }

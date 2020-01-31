@@ -17,6 +17,7 @@
 package org.gradle.nativeplatform.toolchain.internal.gcc;
 
 import com.google.common.collect.Lists;
+import org.gradle.nativeplatform.platform.NativePlatform;
 import org.gradle.nativeplatform.toolchain.internal.ArgsTransformer;
 import org.gradle.nativeplatform.toolchain.internal.MacroArgsConverter;
 import org.gradle.nativeplatform.toolchain.internal.NativeCompileSpec;
@@ -56,8 +57,17 @@ abstract class GccCompilerArgsTransformer<T extends NativeCompileSpec> implement
     }
 
     protected void addIncludeArgs(T spec, List<String> args) {
+        if (!needsStandardIncludes(spec.getTargetPlatform())) {
+            args.add("-nostdinc");
+        }
+
         for (File file : spec.getIncludeRoots()) {
             args.add("-I");
+            args.add(file.getAbsolutePath());
+        }
+
+        for (File file : spec.getSystemIncludeRoots()) {
+            args.add("-isystem");
             args.add(file.getAbsolutePath());
         }
     }
@@ -70,6 +80,10 @@ abstract class GccCompilerArgsTransformer<T extends NativeCompileSpec> implement
 
     protected void addUserArgs(T spec, List<String> args) {
         args.addAll(spec.getAllArgs());
+    }
+
+    protected boolean needsStandardIncludes(NativePlatform targetPlatform) {
+        return targetPlatform.getOperatingSystem().isMacOsX();
     }
 
     protected abstract String getLanguage();

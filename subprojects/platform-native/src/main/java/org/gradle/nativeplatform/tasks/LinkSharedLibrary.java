@@ -15,9 +15,9 @@
  */
 package org.gradle.nativeplatform.tasks;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
@@ -34,21 +34,20 @@ import java.util.concurrent.Callable;
 /**
  * Links a binary shared library from object files and imported libraries.
  */
-@Incubating
 public class LinkSharedLibrary extends AbstractLinkTask {
-    private String installName;
-    private final RegularFileProperty importLibrary = newOutputFile();
+    private final Property<String> installName = getProject().getObjects().property(String.class);
+    private final RegularFileProperty importLibrary = getProject().getObjects().fileProperty();
 
     public LinkSharedLibrary() {
         importLibrary.set(getProject().getLayout().getProjectDirectory().file(getProject().getProviders().provider(new Callable<String>() {
             @Override
             public String call() throws Exception {
-                RegularFile binaryFile = getBinaryFile().getOrNull();
+                RegularFile binaryFile = getLinkedFile().getOrNull();
                 if (binaryFile == null) {
                     return null;
                 }
-                NativeToolChainInternal toolChain = (NativeToolChainInternal) getToolChain();
-                NativePlatformInternal targetPlatform = (NativePlatformInternal) getTargetPlatform();
+                NativeToolChainInternal toolChain = (NativeToolChainInternal) getToolChain().getOrNull();
+                NativePlatformInternal targetPlatform = (NativePlatformInternal) getTargetPlatform().getOrNull();
                 if (toolChain == null || targetPlatform == null) {
                     return null;
                 }
@@ -71,20 +70,21 @@ public class LinkSharedLibrary extends AbstractLinkTask {
         return importLibrary;
     }
 
-    @Input
+    /**
+     * Returns the install name to use by this task. Defaults to no install name specified for the binary produced.
+     *
+     * @since 5.1
+     */
     @Optional
-    public String getInstallName() {
+    @Input
+    public Property<String> getInstallName() {
         return installName;
-    }
-
-    public void setInstallName(String installName) {
-        this.installName = installName;
     }
 
     @Override
     protected LinkerSpec createLinkerSpec() {
         Spec spec = new Spec();
-        spec.setInstallName(getInstallName());
+        spec.setInstallName(getInstallName().getOrNull());
         spec.setImportLibrary(importLibrary.getAsFile().getOrNull());
         return spec;
     }

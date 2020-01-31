@@ -15,19 +15,25 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice
 
-import org.gradle.util.VersionNumber
+import org.gradle.cache.internal.CacheVersion
+import org.gradle.util.GradleVersion
 import spock.lang.Specification
 
 class CacheLayoutTest extends Specification {
+
     def "use root layout"() {
         when:
         CacheLayout cacheLayout = CacheLayout.ROOT
 
         then:
+        cacheLayout.name == 'modules'
         cacheLayout.key == 'modules-2'
-        cacheLayout.version == VersionNumber.parse("2.0.0")
-        cacheLayout.formattedVersion == '2'
+        cacheLayout.version == CacheVersion.of(2)
+        cacheLayout.version.toString() == '2'
         cacheLayout.getPath(new File('some/dir')) == new File('some/dir/modules-2')
+        !cacheLayout.versionMapping.getVersionUsedBy(GradleVersion.version("1.8")).present
+        cacheLayout.versionMapping.getVersionUsedBy(GradleVersion.version("1.9-rc-1")).get() == CacheVersion.of(1)
+        cacheLayout.versionMapping.getVersionUsedBy(GradleVersion.version("1.9-rc-2")).get() == CacheVersion.of(2)
     }
 
     def "use file store layout"() {
@@ -35,9 +41,10 @@ class CacheLayoutTest extends Specification {
         CacheLayout cacheLayout = CacheLayout.FILE_STORE
 
         then:
+        cacheLayout.name == 'files'
         cacheLayout.key == 'files-2.1'
-        cacheLayout.version == VersionNumber.parse("2.1.0")
-        cacheLayout.formattedVersion == '2.1'
+        cacheLayout.version == CacheVersion.parse("2.1")
+        cacheLayout.version.toString() == '2.1'
         cacheLayout.getPath(new File('some/dir')) == new File('some/dir/files-2.1')
     }
 
@@ -46,10 +53,16 @@ class CacheLayoutTest extends Specification {
         CacheLayout cacheLayout = CacheLayout.META_DATA
 
         then:
-        cacheLayout.key == 'metadata-2.53'
-        cacheLayout.version == VersionNumber.parse("2.53.0")
-        cacheLayout.formattedVersion == '2.53'
-        cacheLayout.getPath(new File('some/dir')) == new File('some/dir/metadata-2.53')
+        cacheLayout.name == 'metadata'
+        cacheLayout.key == "metadata-2.${expectedVersion}"
+        cacheLayout.version == CacheVersion.parse("2.${expectedVersion}")
+        cacheLayout.version.toString() == "2.${expectedVersion}"
+        cacheLayout.getPath(new File('some/dir')) == new File("some/dir/metadata-2.${expectedVersion}")
+        !cacheLayout.versionMapping.getVersionUsedBy(GradleVersion.version("1.9-rc-1")).present
+        cacheLayout.versionMapping.getVersionUsedBy(GradleVersion.version("1.9-rc-2")).get() == CacheVersion.of(2, 1)
+
+        where:
+        expectedVersion = 95
     }
 
     def "use transforms layout"() {
@@ -57,21 +70,11 @@ class CacheLayoutTest extends Specification {
         CacheLayout cacheLayout = CacheLayout.TRANSFORMS
 
         then:
-        cacheLayout.key == 'transforms-1'
-        cacheLayout.version == VersionNumber.parse("1.0.0")
-        cacheLayout.formattedVersion == '1'
-        cacheLayout.getPath(new File('some/dir')) == new File('some/dir/transforms-1')
-    }
-
-    def "use transforms metadata layout"() {
-        when:
-        CacheLayout cacheLayout = CacheLayout.TRANSFORMS_META_DATA
-
-        then:
-        cacheLayout.key == 'metadata-1.1'
-        cacheLayout.version == VersionNumber.parse("1.1.0")
-        cacheLayout.formattedVersion == '1.1'
-        cacheLayout.getPath(new File('some/dir')) == new File('some/dir/metadata-1.1')
+        cacheLayout.name == 'transforms'
+        cacheLayout.key == 'transforms-2'
+        cacheLayout.version == CacheVersion.parse("2")
+        cacheLayout.version.toString() == '2'
+        cacheLayout.getPath(new File('some/dir')) == new File('some/dir/transforms-2')
     }
 
     def "use transforms store layout"() {
@@ -79,10 +82,11 @@ class CacheLayoutTest extends Specification {
         CacheLayout cacheLayout = CacheLayout.TRANSFORMS_STORE
 
         then:
-        cacheLayout.key == 'files-1.1'
-        cacheLayout.version == VersionNumber.parse("1.1.0")
-        cacheLayout.formattedVersion == '1.1'
-        cacheLayout.getPath(new File('some/dir')) == new File('some/dir/files-1.1')
+        cacheLayout.name == 'files'
+        cacheLayout.key == 'files-2.1'
+        cacheLayout.version == CacheVersion.parse("2.1")
+        cacheLayout.version.toString() == '2.1'
+        cacheLayout.getPath(new File('some/dir')) == new File('some/dir/files-2.1')
     }
 
 }

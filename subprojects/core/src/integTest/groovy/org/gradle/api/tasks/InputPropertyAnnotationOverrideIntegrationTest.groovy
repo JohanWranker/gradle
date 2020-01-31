@@ -17,6 +17,7 @@
 package org.gradle.api.tasks
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Unroll
 
 class InputPropertyAnnotationOverrideIntegrationTest extends AbstractIntegrationSpec {
@@ -37,6 +38,7 @@ class InputPropertyAnnotationOverrideIntegrationTest extends AbstractIntegration
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can override @Internal with @#inputType.simpleName"() {
         buildFile << """
             class InternalBaseTask extends BaseTask {
@@ -87,6 +89,7 @@ class InputPropertyAnnotationOverrideIntegrationTest extends AbstractIntegration
         then:
         file("build/output").text == "done"
         result.assertTasksExecuted(":custom")
+
         when:
         file("inputs/input").text = "new"
         succeeds("custom")

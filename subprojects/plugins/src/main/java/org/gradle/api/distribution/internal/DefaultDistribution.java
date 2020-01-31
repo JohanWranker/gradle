@@ -18,36 +18,47 @@ package org.gradle.api.distribution.internal;
 import org.gradle.api.Action;
 import org.gradle.api.distribution.Distribution;
 import org.gradle.api.file.CopySpec;
+import org.gradle.internal.deprecation.DeprecationLogger;
+
+import javax.inject.Inject;
 
 /**
  * Allow user to declare a distribution.
  */
-public class DefaultDistribution implements Distribution {
+public abstract class DefaultDistribution implements Distribution {
     private final String name;
-    private String baseName;
     private final CopySpec contents;
 
+    @Inject
     public DefaultDistribution(String name, CopySpec contents) {
         this.name = name;
         this.contents = contents;
     }
 
+    @Override
     public String getName() {
         return name;
     }
 
+    @Override
     public String getBaseName() {
-        return baseName;
+        DeprecationLogger.deprecateProperty(Distribution.class, "baseName").replaceWith("distributionBaseName").withDslReference().nagUser();
+        return getDistributionBaseName().getOrNull();
     }
 
+    @Override
     public void setBaseName(String baseName) {
-        this.baseName = baseName;
+        DeprecationLogger.deprecateProperty(Distribution.class, "baseName").replaceWith("distributionBaseName").withDslReference().nagUser();
+        getDistributionBaseName().set(baseName);
+        getDistributionBaseName().convention(baseName);
     }
 
+    @Override
     public CopySpec getContents() {
         return contents;
     }
 
+    @Override
     public CopySpec contents(Action<? super CopySpec> action) {
         action.execute(contents);
         return contents;

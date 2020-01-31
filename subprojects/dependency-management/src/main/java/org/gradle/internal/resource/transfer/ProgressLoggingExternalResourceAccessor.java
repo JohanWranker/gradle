@@ -16,6 +16,7 @@
 
 package org.gradle.internal.resource.transfer;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.gradle.internal.logging.progress.ProgressLoggerFactory;
 import org.gradle.internal.resource.metadata.ExternalResourceMetaData;
 
@@ -32,6 +33,7 @@ public class ProgressLoggingExternalResourceAccessor extends AbstractProgressLog
         this.delegate = delegate;
     }
 
+    @Override
     public ExternalResourceReadResponse openResource(URI location, boolean revalidate) {
         ExternalResourceReadResponse resource = delegate.openResource(location, revalidate);
         if (resource != null) {
@@ -41,12 +43,14 @@ public class ProgressLoggingExternalResourceAccessor extends AbstractProgressLog
         }
     }
 
+    @Override
     @Nullable
     public ExternalResourceMetaData getMetaData(URI location, boolean revalidate) {
         return delegate.getMetaData(location, revalidate);
     }
 
-    private class ProgressLoggingExternalResource implements ExternalResourceReadResponse {
+    @VisibleForTesting
+    public class ProgressLoggingExternalResource implements ExternalResourceReadResponse {
         private final ExternalResourceReadResponse resource;
         private final ResourceOperation downloadOperation;
 
@@ -74,7 +78,7 @@ public class ProgressLoggingExternalResourceAccessor extends AbstractProgressLog
             return resource.getMetaData();
         }
 
-        public String toString(){
+        public String toString() {
             return resource.toString();
         }
     }

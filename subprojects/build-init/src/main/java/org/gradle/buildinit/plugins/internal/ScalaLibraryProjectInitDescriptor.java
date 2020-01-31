@@ -17,52 +17,81 @@
 package org.gradle.buildinit.plugins.internal;
 
 import org.gradle.api.internal.DocumentationRegistry;
-import org.gradle.api.internal.file.FileResolver;
-import org.gradle.buildinit.plugins.internal.modifiers.BuildInitDsl;
 import org.gradle.buildinit.plugins.internal.modifiers.BuildInitTestFramework;
+import org.gradle.buildinit.plugins.internal.modifiers.ComponentType;
+import org.gradle.buildinit.plugins.internal.modifiers.Language;
 
-public class ScalaLibraryProjectInitDescriptor extends LanguageLibraryProjectInitDescriptor {
+import java.util.Collections;
+import java.util.Optional;
+import java.util.Set;
 
+public class ScalaLibraryProjectInitDescriptor extends JvmProjectInitDescriptor {
+    private final TemplateLibraryVersionProvider libraryVersionProvider;
     private final DocumentationRegistry documentationRegistry;
 
-    public ScalaLibraryProjectInitDescriptor(TemplateOperationFactory templateOperationFactory, FileResolver fileResolver,
-                                             TemplateLibraryVersionProvider libraryVersionProvider, ProjectInitDescriptor globalSettingsDescriptor, DocumentationRegistry documentationRegistry) {
-        super("scala", templateOperationFactory, fileResolver, libraryVersionProvider, globalSettingsDescriptor);
+    public ScalaLibraryProjectInitDescriptor(TemplateLibraryVersionProvider libraryVersionProvider, DocumentationRegistry documentationRegistry) {
+        this.libraryVersionProvider = libraryVersionProvider;
         this.documentationRegistry = documentationRegistry;
     }
 
     @Override
-    public void generate(BuildInitDsl dsl, BuildInitTestFramework testFramework) {
-        globalSettingsDescriptor.generate(dsl, testFramework);
+    public String getId() {
+        return "scala-library";
+    }
+
+    @Override
+    public ComponentType getComponentType() {
+        return ComponentType.LIBRARY;
+    }
+
+    @Override
+    public Language getLanguage() {
+        return Language.SCALA;
+    }
+
+    @Override
+    public void generate(InitSettings settings, BuildScriptBuilder buildScriptBuilder, TemplateFactory templateFactory) {
+        super.generate(settings, buildScriptBuilder, templateFactory);
 
         String scalaVersion = libraryVersionProvider.getVersion("scala");
         String scalaLibraryVersion = libraryVersionProvider.getVersion("scala-library");
         String scalaTestVersion = libraryVersionProvider.getVersion("scalatest");
+        String scalaTestPlusJunitVersion = libraryVersionProvider.getVersion("scalatestplus-junit");
         String junitVersion = libraryVersionProvider.getVersion("junit");
         String scalaXmlVersion = libraryVersionProvider.getVersion("scala-xml");
 
-        BuildScriptBuilder buildScriptBuilder = new BuildScriptBuilder(dsl, fileResolver, "build")
+        buildScriptBuilder
             .fileComment("This generated file contains a sample Scala library project to get you started.")
             .fileComment("For more details take a look at the Scala plugin chapter in the Gradle")
-            .fileComment("user guide available at " + documentationRegistry.getDocumentationFor("scala_plugin"))
+            .fileComment("User Manual available at " + documentationRegistry.getDocumentationFor("scala_plugin"))
             .plugin("Apply the scala plugin to add support for Scala", "scala")
-            .compileDependency("Use Scala " + scalaVersion + " in our library project",
+            .plugin("Apply the java-library plugin for API and implementation separation.", "java-library")
+            .implementationDependency("Use Scala " + scalaVersion + " in our library project",
                 "org.scala-lang:scala-library:" + scalaLibraryVersion)
-            .testCompileDependency("Use Scalatest for testing our library",
-                "junit:junit:" + junitVersion,
-                "org.scalatest:scalatest_" + scalaVersion + ":" + scalaTestVersion)
-            .testRuntimeDependency("Need scala-xml at test runtime",
+            .testImplementationDependency("Use Scalatest for testing our library",
+                    "junit:junit:" + junitVersion,
+                    "org.scalatest:scalatest_" + scalaVersion + ":" + scalaTestVersion,
+                    "org.scalatestplus:junit-" + junitVersion.replace('.', '-') + "_" + scalaVersion + ":" + scalaTestPlusJunitVersion)
+            .testRuntimeOnlyDependency("Need scala-xml at test runtime",
                 "org.scala-lang.modules:scala-xml_" + scalaVersion + ":" + scalaXmlVersion);
 
-        buildScriptBuilder.create().generate();
-
-        TemplateOperation scalaLibTemplateOperation = fromClazzTemplate("scalalibrary/Library.scala.template", "main");
-        TemplateOperation scalaTestTemplateOperation = fromClazzTemplate("scalalibrary/LibrarySuite.scala.template", "test");
-        whenNoSourcesAvailable(scalaLibTemplateOperation, scalaTestTemplateOperation).generate();
+        TemplateOperation scalaLibTemplateOperation = templateFactory.fromSourceTemplate("scalalibrary/Library.scala.template", "main");
+        TemplateOperation scalaTestTemplateOperation = templateFactory.fromSourceTemplate("scalalibrary/LibrarySuite.scala.template", "test");
+        templateFactory.whenNoSourcesAvailable(scalaLibTemplateOperation, scalaTestTemplateOperation).generate();
     }
 
     @Override
-    public boolean supports(BuildInitTestFramework testFramework) {
-        return false;
+    public Optional<String> getFurtherReading() {
+        return Optional.of(documentationRegistry.getDocumentationFor("scala_plugin"));
+    }
+
+    @Override
+    public BuildInitTestFramework getDefaultTestFramework() {
+        return BuildInitTestFramework.SCALATEST;
+    }
+
+    @Override
+    public Set<BuildInitTestFramework> getTestFrameworks() {
+        return Collections.singleton(BuildInitTestFramework.SCALATEST);
     }
 }

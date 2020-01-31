@@ -18,18 +18,29 @@ package org.gradle.api.internal.artifacts.transform;
 
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 
 public class DefaultArtifactTransforms implements ArtifactTransforms {
     private final ConsumerProvidedVariantFinder consumerProvidedVariantFinder;
     private final AttributesSchemaInternal schema;
+    private final ImmutableAttributesFactory attributesFactory;
+    private final TransformationNodeRegistry transformationNodeRegistry;
 
-    public DefaultArtifactTransforms(ConsumerProvidedVariantFinder consumerProvidedVariantFinder, AttributesSchemaInternal schema) {
+    public DefaultArtifactTransforms(
+        ConsumerProvidedVariantFinder consumerProvidedVariantFinder,
+        AttributesSchemaInternal schema,
+        ImmutableAttributesFactory attributesFactory,
+        TransformationNodeRegistry transformationNodeRegistry
+    ) {
         this.consumerProvidedVariantFinder = consumerProvidedVariantFinder;
         this.schema = schema;
+        this.attributesFactory = attributesFactory;
+        this.transformationNodeRegistry = transformationNodeRegistry;
     }
 
-    public VariantSelector variantSelector(AttributeContainerInternal consumerAttributes, boolean allowNoMatchingVariants) {
-        return new AttributeMatchingVariantSelector(consumerProvidedVariantFinder, schema, consumerAttributes.asImmutable(), allowNoMatchingVariants);
+    @Override
+    public VariantSelector variantSelector(AttributeContainerInternal consumerAttributes, boolean allowNoMatchingVariants, ExtraExecutionGraphDependenciesResolverFactory dependenciesResolver) {
+        return new AttributeMatchingVariantSelector(consumerProvidedVariantFinder, schema, attributesFactory, transformationNodeRegistry, consumerAttributes.asImmutable(), allowNoMatchingVariants, dependenciesResolver);
     }
 
 }

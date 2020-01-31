@@ -16,9 +16,10 @@
 package org.gradle.internal.nativeintegration.filesystem;
 
 import com.google.common.collect.ImmutableMap;
-import net.rubygrapefruit.platform.Files;
+import net.rubygrapefruit.platform.file.Files;
 import org.gradle.internal.file.FileMetadataSnapshot;
 import org.gradle.internal.file.FileType;
+import org.gradle.internal.file.impl.DefaultFileMetadata;
 import org.gradle.internal.nativeintegration.filesystem.jdk7.Jdk7FileMetadataAccessor;
 import org.gradle.internal.nativeintegration.filesystem.services.FallbackFileMetadataAccessor;
 import org.gradle.internal.nativeintegration.filesystem.services.NativePlatformBackedFileMetadataAccessor;
@@ -41,7 +42,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Map;
 import java.util.UUID;
 
-@SuppressWarnings("Since15")
 @Threads(2)
 @Warmup(iterations = 5)
 @Measurement(iterations = 5)
@@ -113,7 +113,6 @@ public class FileMetadataAccessorBenchmark {
         bh.consume(getAccessor(accessorClassName).stat(realFilePath));
     }
 
-    @SuppressWarnings("Since15")
     private static class NioFileMetadataAccessor implements FileMetadataAccessor {
 
         @Override

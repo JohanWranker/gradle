@@ -16,8 +16,11 @@
 package org.gradle.api.plugins
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
+
+import static org.hamcrest.CoreMatchers.containsString
 
 class BasePluginIntegrationTest extends AbstractIntegrationSpec {
 
@@ -37,7 +40,9 @@ class BasePluginIntegrationTest extends AbstractIntegrationSpec {
         fails "clean"
 
         then:
-        failure.assertHasCause("Unable to delete file")
+        failure.assertThatCause(containsString("Unable to delete directory '${file('build')}'"))
+        failure.assertThatCause(containsString("Failed to delete some children. This might happen because a process has files open or has its working directory set in the target directory."))
+        failure.assertThatCause(containsString(file("build/newFile").absolutePath))
 
         cleanup:
         lock?.release()
@@ -48,16 +53,9 @@ class BasePluginIntegrationTest extends AbstractIntegrationSpec {
         buildFile << """
             apply plugin: 'base'
 
-            task build {
-                dependsOn 'check'
+            task $taskName {
                 doLast {
-                    println "CUSTOM BUILD"
-                }
-            }
-
-            task check {
-                doLast {
-                    println "CUSTOM CHECK"
+                    println "CUSTOM"
                 }
             }
 """
@@ -65,10 +63,12 @@ class BasePluginIntegrationTest extends AbstractIntegrationSpec {
         fails "build"
 
         then:
-        failure.assertHasCause "Declaring custom 'build' task when using the standard Gradle lifecycle plugins is not allowed"
+        failure.assertHasCause "Cannot add task '$taskName' as a task with that name already exists."
+        where:
+        taskName << ['build', 'check']
     }
 
-
+    @ToBeFixedForInstantExecution
     def "can define 'default' and 'archives' configurations prior to applying plugin"() {
         buildFile << """
             configurations {
@@ -79,5 +79,25 @@ class BasePluginIntegrationTest extends AbstractIntegrationSpec {
 """
         expect:
         succeeds "tasks"
+    }
+
+    def "can override archiveBaseName in custom Jar task"() {
+        buildFile << """
+            apply plugin: 'base'
+            class MyJar extends Jar {
+                MyJar() {
+                    super()
+                    archiveBaseName.set("myjar")
+                }
+            }
+            task myJar(type: MyJar)
+            task assertCheck {
+                doLast {
+                    assert tasks.myJar.archiveBaseName.get() == "myjar"
+                }
+            }
+        """
+        expect:
+        succeeds("assertCheck")
     }
 }

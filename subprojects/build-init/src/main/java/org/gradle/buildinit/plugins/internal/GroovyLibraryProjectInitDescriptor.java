@@ -17,22 +17,37 @@
 package org.gradle.buildinit.plugins.internal;
 
 import org.gradle.api.internal.DocumentationRegistry;
-import org.gradle.api.internal.file.FileResolver;
-import org.gradle.buildinit.plugins.internal.modifiers.BuildInitTestFramework;
+import org.gradle.buildinit.plugins.internal.modifiers.ComponentType;
 
 public class GroovyLibraryProjectInitDescriptor extends GroovyProjectInitDescriptor {
 
-    public GroovyLibraryProjectInitDescriptor(TemplateOperationFactory templateOperationFactory, FileResolver fileResolver, TemplateLibraryVersionProvider libraryVersionProvider, ProjectInitDescriptor projectInitDescriptor, DocumentationRegistry documentationRegistry) {
-        super(templateOperationFactory, fileResolver, libraryVersionProvider, projectInitDescriptor, documentationRegistry);
+    public GroovyLibraryProjectInitDescriptor(TemplateLibraryVersionProvider libraryVersionProvider, DocumentationRegistry documentationRegistry) {
+        super(libraryVersionProvider, documentationRegistry);
     }
 
     @Override
-    protected TemplateOperation sourceTemplateOperation() {
-        return fromClazzTemplate("groovylibrary/Library.groovy.template", "main");
+    public String getId() {
+        return "groovy-library";
     }
 
     @Override
-    protected TemplateOperation testTemplateOperation(BuildInitTestFramework testFramework) {
-        return fromClazzTemplate("groovylibrary/LibraryTest.groovy.template", "test");
+    public ComponentType getComponentType() {
+        return ComponentType.LIBRARY;
+    }
+
+    @Override
+    protected void configureBuildScript(InitSettings settings, BuildScriptBuilder buildScriptBuilder) {
+        buildScriptBuilder
+            .plugin("Apply the java-library plugin for API and implementation separation.", "java-library");
+    }
+
+    @Override
+    protected TemplateOperation sourceTemplateOperation(TemplateFactory templateFactory) {
+        return templateFactory.fromSourceTemplate("groovylibrary/Library.groovy.template", "main");
+    }
+
+    @Override
+    protected TemplateOperation testTemplateOperation(TemplateFactory templateFactory) {
+        return templateFactory.fromSourceTemplate("groovylibrary/LibraryTest.groovy.template", "test");
     }
 }

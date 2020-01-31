@@ -9,10 +9,6 @@
                 </tr>
             </thead>
             <tr>
-                <td>testClassesDir</td>
-                <td></td>
-            </tr>
-            <tr>
                 <td>testClassesDirs</td>
                 <td><literal>project.sourceSets.test.output.classesDirs</literal></td>
             </tr>
@@ -61,6 +57,10 @@
                 <td><literal>[]</literal></td>
             </tr>
             <tr>
+                <td>jvmArgumentProviders</td>
+                <td><literal>[]</literal></td>
+            </tr>
+            <tr>
                 <td>enableAssertions</td>
                 <td><literal><literal>true</literal></literal></td>
             </tr>
@@ -95,6 +95,10 @@
             <tr>
                 <td>testLogging</td>
                 <td/>
+            </tr>
+            <tr>
+                <td>failFast</td>
+                <td><literal>false</literal></td>
             </tr>
         </table>
     </section>

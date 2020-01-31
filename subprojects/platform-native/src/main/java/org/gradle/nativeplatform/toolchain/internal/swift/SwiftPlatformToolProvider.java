@@ -32,17 +32,20 @@ import org.gradle.nativeplatform.toolchain.internal.CommandLineToolContext;
 import org.gradle.nativeplatform.toolchain.internal.CommandLineToolInvocationWorker;
 import org.gradle.nativeplatform.toolchain.internal.DefaultCommandLineToolInvocationWorker;
 import org.gradle.nativeplatform.toolchain.internal.DefaultMutableCommandLineToolContext;
+import org.gradle.nativeplatform.toolchain.internal.EmptySystemLibraries;
 import org.gradle.nativeplatform.toolchain.internal.MutableCommandLineToolContext;
 import org.gradle.nativeplatform.toolchain.internal.Stripper;
 import org.gradle.nativeplatform.toolchain.internal.SymbolExtractor;
 import org.gradle.nativeplatform.toolchain.internal.SymbolExtractorOsConfig;
+import org.gradle.nativeplatform.toolchain.internal.SystemLibraries;
 import org.gradle.nativeplatform.toolchain.internal.ToolType;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.SwiftCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.gcc.ArStaticLibraryArchiver;
+import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetadata;
 import org.gradle.nativeplatform.toolchain.internal.swift.metadata.SwiftcMetadata;
 import org.gradle.nativeplatform.toolchain.internal.tools.CommandLineToolConfigurationInternal;
+import org.gradle.nativeplatform.toolchain.internal.tools.CommandLineToolSearchResult;
 import org.gradle.nativeplatform.toolchain.internal.tools.ToolSearchPath;
-import org.gradle.platform.base.internal.toolchain.ToolSearchResult;
 import org.gradle.process.internal.ExecActionFactory;
 
 class SwiftPlatformToolProvider extends AbstractPlatformToolProvider {
@@ -64,18 +67,18 @@ class SwiftPlatformToolProvider extends AbstractPlatformToolProvider {
     }
 
     @Override
-    public ToolSearchResult isToolAvailable(ToolType toolType) {
-        if (toolType == ToolType.SWIFT_COMPILER || toolType == ToolType.LINKER) {
-            return toolSearchPath.locate(toolType, "swiftc");
+    public CommandLineToolSearchResult locateTool(ToolType compilerType) {
+        if (compilerType == ToolType.SWIFT_COMPILER || compilerType == ToolType.LINKER) {
+            return toolSearchPath.locate(compilerType, "swiftc");
         }
-        if (toolType == ToolType.STATIC_LIB_ARCHIVER) {
-            return toolSearchPath.locate(toolType, "ar");
+        if (compilerType == ToolType.STATIC_LIB_ARCHIVER) {
+            return toolSearchPath.locate(compilerType, "ar");
         }
-        if (toolType == ToolType.SYMBOL_EXTRACTOR) {
-            return toolSearchPath.locate(toolType, SymbolExtractorOsConfig.current().getExecutableName());
+        if (compilerType == ToolType.SYMBOL_EXTRACTOR) {
+            return toolSearchPath.locate(compilerType, SymbolExtractorOsConfig.current().getExecutableName());
         }
-        if (toolType == ToolType.STRIPPER) {
-            return toolSearchPath.locate(toolType, "strip");
+        if (compilerType == ToolType.STRIPPER) {
+            return toolSearchPath.locate(compilerType, "strip");
         }
         throw new IllegalArgumentException();
     }
@@ -91,7 +94,8 @@ class SwiftPlatformToolProvider extends AbstractPlatformToolProvider {
     @Override
     protected Compiler<LinkerSpec> createLinker() {
         CommandLineToolConfigurationInternal linkerTool = (CommandLineToolConfigurationInternal) toolRegistry.getLinker();
-        return new SwiftLinker(buildOperationExecutor, commandLineTool(ToolType.LINKER, "swiftc"), context(linkerTool), workerLeaseService);
+        SwiftLinker swiftLinker = new SwiftLinker(buildOperationExecutor, commandLineTool(ToolType.LINKER, "swiftc"), context(linkerTool), workerLeaseService);
+        return new VersionAwareCompiler<LinkerSpec>(swiftLinker, new DefaultCompilerVersion("swiftc", swiftcMetaData.getVendor(), swiftcMetaData.getVersion()));
     }
 
     protected Compiler<SwiftCompileSpec> createSwiftCompiler() {
@@ -125,11 +129,21 @@ class SwiftPlatformToolProvider extends AbstractPlatformToolProvider {
     private CommandLineToolContext context(CommandLineToolConfigurationInternal toolConfiguration) {
         MutableCommandLineToolContext baseInvocation = new DefaultMutableCommandLineToolContext();
         baseInvocation.setArgAction(toolConfiguration.getArgAction());
+
+        String developerDir = System.getenv("DEVELOPER_DIR");
+        if (developerDir != null) {
+            baseInvocation.addEnvironmentVar("DEVELOPER_DIR", developerDir);
+        }
         return baseInvocation;
     }
 
     @Override
-    public SwiftcMetadata getCompilerMetadata() {
+    public SystemLibraries getSystemLibraries(ToolType compilerType) {
+        return new EmptySystemLibraries();
+    }
+
+    @Override
+    public CompilerMetadata getCompilerMetadata(ToolType compilerType) {
         return swiftcMetaData;
     }
 }

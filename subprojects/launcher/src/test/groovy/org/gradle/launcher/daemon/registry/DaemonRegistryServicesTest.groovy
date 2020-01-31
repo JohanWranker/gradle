@@ -19,10 +19,10 @@ import org.gradle.cache.FileLockManager
 import org.gradle.cache.internal.DefaultFileLockManager
 import org.gradle.cache.internal.ProcessMetaDataProvider
 import org.gradle.cache.internal.locklistener.FileLockContentionHandler
-import org.gradle.internal.nativeintegration.filesystem.Chmod
+import org.gradle.internal.file.Chmod
 import org.gradle.internal.remote.internal.inet.SocketInetAddress
 import org.gradle.internal.service.DefaultServiceRegistry
-import org.gradle.internal.service.ServiceRegistry
+import org.gradle.launcher.daemon.configuration.DaemonParameters
 import org.gradle.launcher.daemon.context.DefaultDaemonContext
 import org.gradle.test.fixtures.ConcurrentTestUtil
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
@@ -32,12 +32,13 @@ import spock.lang.Specification
 import static org.gradle.launcher.daemon.server.api.DaemonStateControl.State.Idle
 
 class DaemonRegistryServicesTest extends Specification {
+    def lockManager = new DefaultFileLockManager(Stub(ProcessMetaDataProvider), Stub(FileLockContentionHandler))
+    def chmod = Stub(Chmod)
     @Rule TestNameTestDirectoryProvider tmp = new TestNameTestDirectoryProvider()
-    def parent = Mock(ServiceRegistry) {
-        get(FileLockManager) >> new DefaultFileLockManager(Stub(ProcessMetaDataProvider), Stub(FileLockContentionHandler))
-        get(Chmod) >> Stub(Chmod)
-        hasService(_) >> true
-    }
+    def parent = new DefaultServiceRegistry() {{
+        add(FileLockManager, lockManager)
+        add(Chmod, chmod)
+    }}
 
     def registry(baseDir) {
         new DefaultServiceRegistry(parent).addProvider(new DaemonRegistryServices(tmp.createDir(baseDir)))
@@ -56,7 +57,7 @@ class DaemonRegistryServicesTest extends Specification {
         def registry = registry("someDir").get(DaemonRegistry)
         5.times { idx ->
             concurrent.start {
-                def context = new DefaultDaemonContext("$idx", new File("$idx"), new File("$idx"), idx, 5000, [])
+                def context = new DefaultDaemonContext("$idx", new File("$idx"), new File("$idx"), idx, 5000, [], DaemonParameters.Priority.NORMAL)
                 registry.store(new DaemonInfo(
                     new SocketInetAddress(new Inet6Address(), 8888 + idx), context, "foo-$idx".bytes, Idle))
             }

@@ -30,7 +30,7 @@ import spock.lang.Unroll
 @Requires(TestPrecondition.SYMLINKS)
 @UsesNativeServices
 class FileCollectionSymlinkTest extends Specification {
-    @Shared Project project = new ProjectBuilder().build()
+    @Shared Project project = ProjectBuilder.builder().build()
     @Shared @ClassRule TestNameTestDirectoryProvider temporaryFolder = TestNameTestDirectoryProvider.newInstance()
     @Shared TestFile baseDir = temporaryFolder.createDir('baseDir')
     @Shared TestFile file = baseDir.file("file")
@@ -51,11 +51,13 @@ class FileCollectionSymlinkTest extends Specification {
         fileCollection.contains(symlinked)
         fileCollection.files == [file, symlink, symlinked] as Set
 
-        (fileCollection - project.files(symlink)).files == [file, symlinked] as Set
+        (fileCollection - project.getLayout().files(symlink)).files == [file, symlinked] as Set
 
         where:
-        desc                 | fileCollection
-        "project.files()"    | project.files(file, symlink, symlinked)
-        "project.fileTree()" | project.fileTree(baseDir)
+        desc                                    | fileCollection
+        "project.files()"                       | project.files(file, symlink, symlinked)
+        "project.layout.files()"                | project.getLayout().files(file, symlink, symlinked)
+        "project.layout.configurableFilesFor()" | project.getLayout().configurableFiles(file, symlink, symlinked)
+        "project.fileTree()"                    | project.fileTree(baseDir)
     }
 }

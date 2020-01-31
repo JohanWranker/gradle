@@ -15,11 +15,14 @@
  */
 package org.gradle.plugins.ide.eclipse;
 
+import org.gradle.api.internal.PropertiesTransformer;
 import org.gradle.api.tasks.Internal;
 import org.gradle.plugins.ide.api.PropertiesFileContentMerger;
 import org.gradle.plugins.ide.api.PropertiesGeneratorTask;
 import org.gradle.plugins.ide.eclipse.model.EclipseJdt;
 import org.gradle.plugins.ide.eclipse.model.Jdt;
+
+import javax.inject.Inject;
 
 /**
  * Generates the Eclipse JDT configuration file. If you want to fine tune the eclipse configuration
@@ -34,10 +37,17 @@ public class GenerateEclipseJdt extends PropertiesGeneratorTask<Jdt> {
         jdt = getInstantiator().newInstance(EclipseJdt.class, new PropertiesFileContentMerger(getTransformer()));
     }
 
+    @Inject
+    public GenerateEclipseJdt(EclipseJdt jdt) {
+        this.jdt = jdt;
+    }
+
+    @Override
     protected Jdt create() {
         return new Jdt(getTransformer());
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     protected void configure(Jdt jdtContent) {
         EclipseJdt jdtModel = getJdt();
@@ -45,6 +55,14 @@ public class GenerateEclipseJdt extends PropertiesGeneratorTask<Jdt> {
         jdtContent.setSourceCompatibility(jdtModel.getSourceCompatibility());
         jdtContent.setTargetCompatibility(jdtModel.getTargetCompatibility());
         jdtModel.getFile().getWhenMerged().execute(jdtContent);
+    }
+
+    @Override
+    protected PropertiesTransformer getTransformer() {
+        if (jdt == null) {
+            return super.getTransformer();
+        }
+        return jdt.getFile().getTransformer();
     }
 
     /**

@@ -15,9 +15,9 @@
  */
 package org.gradle.api.tasks.diagnostics.internal;
 
+import com.google.common.base.Strings;
 import com.google.common.collect.SetMultimap;
 import com.google.common.collect.TreeMultimap;
-import org.gradle.util.GUtil;
 import org.gradle.util.Path;
 
 import java.util.ArrayList;
@@ -30,10 +30,12 @@ public class AggregateMultiProjectTaskReportModel implements TaskReportModel {
     private SetMultimap<String, TaskDetails> groups;
     private final boolean mergeTasksWithSameName;
     private final boolean detail;
+    private final String group;
 
-    public AggregateMultiProjectTaskReportModel(boolean mergeTasksWithSameName, boolean detail) {
+    public AggregateMultiProjectTaskReportModel(boolean mergeTasksWithSameName, boolean detail, String group) {
         this.mergeTasksWithSameName = mergeTasksWithSameName;
         this.detail = detail;
+        this.group = Strings.isNullOrEmpty(group) ? null : group.toLowerCase();
     }
 
     public void add(TaskReportModel project) {
@@ -42,10 +44,12 @@ public class AggregateMultiProjectTaskReportModel implements TaskReportModel {
 
     public void build() {
         groups = TreeMultimap.create(new Comparator<String>() {
+            @Override
             public int compare(String string1, String string2) {
                 return string1.compareToIgnoreCase(string2);
             }
         }, new Comparator<TaskDetails>() {
+            @Override
             public int compare(TaskDetails task1, TaskDetails task2) {
                 return task1.getPath().compareTo(task2.getPath());
             }
@@ -62,7 +66,11 @@ public class AggregateMultiProjectTaskReportModel implements TaskReportModel {
     }
 
     private boolean isVisible(String group) {
-        return detail || GUtil.isTrue(group);
+        if (Strings.isNullOrEmpty(group)) {
+            return detail;
+        } else {
+            return this.group == null || group.toLowerCase().equals(this.group);
+        }
     }
 
     @Override
@@ -77,6 +85,7 @@ public class AggregateMultiProjectTaskReportModel implements TaskReportModel {
 
     private static class MergedTaskDetails implements TaskDetails {
         private final TaskDetails task;
+        private Path cachedPath;
 
         public MergedTaskDetails(TaskDetails task) {
             this.task = task;
@@ -84,7 +93,10 @@ public class AggregateMultiProjectTaskReportModel implements TaskReportModel {
 
         @Override
         public Path getPath() {
-            return Path.path(task.getPath().getName());
+            if (cachedPath == null) {
+                cachedPath = Path.path(task.getPath().getName());
+            }
+            return cachedPath;
         }
 
         @Override

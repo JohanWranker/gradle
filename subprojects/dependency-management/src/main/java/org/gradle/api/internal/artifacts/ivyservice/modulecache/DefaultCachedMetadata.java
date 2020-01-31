@@ -18,51 +18,67 @@ package org.gradle.api.internal.artifacts.ivyservice.modulecache;
 import org.gradle.api.artifacts.ResolvedModuleVersion;
 import org.gradle.api.internal.artifacts.ivyservice.modulecache.dynamicversions.DefaultResolvedModuleVersion;
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata;
-import org.gradle.internal.component.model.ModuleSource;
+import org.gradle.internal.component.model.ModuleSources;
 import org.gradle.util.BuildCommencedTimeProvider;
 
 import javax.annotation.Nullable;
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 class DefaultCachedMetadata implements ModuleMetadataCache.CachedMetadata {
-    private final ModuleSource moduleSource;
     private final long ageMillis;
-    private final ModuleComponentResolveMetadata metaData;
-    private ModuleComponentResolveMetadata processedMetadata;
+    private final ModuleComponentResolveMetadata metadata;
 
-    public DefaultCachedMetadata(ModuleMetadataCacheEntry entry, ModuleComponentResolveMetadata metaData, BuildCommencedTimeProvider timeProvider) {
-        this.moduleSource = entry.moduleSource;
+    private volatile Map<Integer, ModuleComponentResolveMetadata> processedMetadataByRules;
+
+    DefaultCachedMetadata(ModuleMetadataCacheEntry entry, ModuleComponentResolveMetadata metadata, BuildCommencedTimeProvider timeProvider) {
         this.ageMillis = timeProvider.getCurrentTime() - entry.createTimestamp;
-        this.metaData = metaData;
+        this.metadata = metadata;
     }
 
+    @Override
     public boolean isMissing() {
-        return metaData == null;
+        return metadata == null;
     }
 
-    public ModuleSource getModuleSource() {
-        return moduleSource;
+    @Override
+    public ModuleSources getModuleSources() {
+        return metadata.getSources();
     }
 
+    @Override
     public ResolvedModuleVersion getModuleVersion() {
-        return isMissing() ? null : new DefaultResolvedModuleVersion(getMetaData().getId());
+        return isMissing() ? null : new DefaultResolvedModuleVersion(getMetadata().getModuleVersionId());
     }
 
-    public ModuleComponentResolveMetadata getMetaData() {
-        return metaData;
+    @Override
+    public ModuleComponentResolveMetadata getMetadata() {
+        return metadata;
     }
 
+    @Override
     public long getAgeMillis() {
         return ageMillis;
     }
 
     @Nullable
     @Override
-    public ModuleComponentResolveMetadata getProcessedMetadata() {
-        return processedMetadata;
+    public ModuleComponentResolveMetadata getProcessedMetadata(int key) {
+        if (processedMetadataByRules != null) {
+            return processedMetadataByRules.get(key);
+        }
+        return null;
     }
 
     @Override
-    public void setProcessedMetadata(ModuleComponentResolveMetadata processedMetadata) {
-        this.processedMetadata = processedMetadata;
+    public synchronized void putProcessedMetadata(int hash, ModuleComponentResolveMetadata processed) {
+        if (processedMetadataByRules == null) {
+            processedMetadataByRules = Collections.singletonMap(hash, processed);
+            return;
+        } else if (processedMetadataByRules.size() == 1) {
+            processedMetadataByRules = new ConcurrentHashMap<>(processedMetadataByRules);
+        }
+        processedMetadataByRules.put(hash, processed);
     }
 }

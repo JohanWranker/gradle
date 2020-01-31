@@ -18,7 +18,6 @@ package org.gradle.integtests.composite
 
 import org.gradle.integtests.fixtures.build.BuildTestFile
 import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
-import org.gradle.util.Matchers
 
 /**
  * Tests for resolving dependency cycles in a composite build.
@@ -34,7 +33,7 @@ class CompositeBuildDependencyCycleIntegrationTest extends AbstractCompositeBuil
 
         buildA.buildFile << """
             task resolveArtifacts(type: Copy) {
-                from configurations.compile
+                from configurations.compileClasspath
                 into 'libs'
             }
 """
@@ -42,7 +41,7 @@ class CompositeBuildDependencyCycleIntegrationTest extends AbstractCompositeBuil
         buildB = multiProjectBuild("buildB", ['b1', 'b2']) {
             buildFile << """
                 allprojects {
-                    apply plugin: 'java'
+                    apply plugin: 'java-library'
                 }
 """
         }
@@ -50,7 +49,7 @@ class CompositeBuildDependencyCycleIntegrationTest extends AbstractCompositeBuil
 
         buildC = singleProjectBuild("buildC") {
             buildFile << """
-                apply plugin: 'java'
+                apply plugin: 'java-library'
 """
         }
         includedBuilds << buildC
@@ -86,11 +85,7 @@ class CompositeBuildDependencyCycleIntegrationTest extends AbstractCompositeBuil
         resolveFails(":resolveArtifacts")
 
         then:
-        failure
-            .assertHasDescription("Could not determine the dependencies of task")
-            .assertHasCause("Included build dependency cycle:")
-            .assertThatCause(Matchers.containsText("build 'buildC' -> build 'buildB'"))
-            .assertThatCause(Matchers.containsText("build 'buildB' -> build 'buildC'"))
+        failure.assertHasDescription("Included build dependency cycle: build 'buildB' -> build 'buildC' -> build 'buildB'")
     }
 
     def "indirect dependency cycle between included builds"() {
@@ -101,9 +96,9 @@ class CompositeBuildDependencyCycleIntegrationTest extends AbstractCompositeBuil
 
         def buildD = singleProjectBuild("buildD") {
             buildFile << """
-                apply plugin: 'java'
+                apply plugin: 'java-library'
                 dependencies {
-                    compile "org.test:buildB:1.0"
+                    implementation "org.test:buildB:1.0"
                 }
 """
         }
@@ -137,10 +132,7 @@ class CompositeBuildDependencyCycleIntegrationTest extends AbstractCompositeBuil
         resolveFails(":resolveArtifacts")
 
         then:
-        failure
-            .assertHasDescription("Could not determine the dependencies of task")
-            .assertHasCause("Included build dependency cycle:")
-            .assertThatCause(Matchers.containsText("build 'buildC' -> build 'buildD'"))
+        failure.assertHasDescription("Included build dependency cycle: build 'buildB' -> build 'buildC' -> build 'buildD' -> build 'buildB'")
     }
 
     // Not actually a cycle, just documenting behaviour
@@ -150,7 +142,7 @@ class CompositeBuildDependencyCycleIntegrationTest extends AbstractCompositeBuil
         buildB.buildFile << """
 project(':b1') {
     dependencies { 
-        compile "org.test:buildC:1.0"
+        implementation "org.test:buildC:1.0"
     }
 }
 """
@@ -180,11 +172,7 @@ project(':b1') {
         resolveFails(":resolveArtifacts")
 
         then:
-        failure
-            .assertHasDescription("Could not determine the dependencies of task")
-            .assertHasCause("Included build dependency cycle:")
-            .assertThatCause(Matchers.containsText("build 'buildC' -> build 'buildB'"))
-            .assertThatCause(Matchers.containsText("build 'buildB' -> build 'buildC'"))
+        failure.assertHasDescription("Included build dependency cycle: build 'buildB' -> build 'buildC' -> build 'buildB'")
     }
 
     def "compile-only dependency cycle between included builds"() {
@@ -192,7 +180,7 @@ project(':b1') {
         dependency "org.test:buildB:1.0"
         dependency buildB, "org.test:buildC:1.0"
         buildC.buildFile << """
-            apply plugin: 'java'
+            apply plugin: 'java-library'
             dependencies {
                 compileOnly "org.test:buildB:1.0"
             }
@@ -218,11 +206,7 @@ project(':b1') {
         resolveFails(":resolveArtifacts")
 
         then:
-        failure
-            .assertHasDescription("Could not determine the dependencies of task")
-            .assertHasCause("Included build dependency cycle:")
-            .assertThatCause(Matchers.containsText("build 'buildC' -> build 'buildB'"))
-            .assertThatCause(Matchers.containsText("build 'buildB' -> build 'buildC'"))
+        failure.assertHasDescription("Included build dependency cycle: build 'buildB' -> build 'buildC' -> build 'buildB'")
     }
 
     def "dependency cycle between subprojects in an included multiproject build"() {
@@ -231,16 +215,16 @@ project(':b1') {
 
         buildB.buildFile << """
             dependencies {
-                compile "org.test:b1:1.0"
+                implementation "org.test:b1:1.0"
             }
             project(':b1') {
                 dependencies {
-                    compile "org.test:b2:1.0"
+                    implementation "org.test:b2:1.0"
                 }
             }
             project(':b2') {
                 dependencies {
-                    compile "org.test:b1:1.0"
+                    implementation "org.test:b1:1.0"
                 }
             }
 """
@@ -270,8 +254,8 @@ project(':b1') {
         resolveFails(":resolveArtifacts")
 
         then:
-        failure
-            .assertHasDescription("Circular dependency between the following tasks:")
+        failure.assertHasDescription("Circular dependency between the following tasks:")
+        failure.assertThatDescription(containsNormalizedString(":buildB:b1:compileJava"))
     }
 
     protected void resolveSucceeds(String task) {

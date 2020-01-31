@@ -15,14 +15,12 @@
  */
 package org.gradle.jvm.test;
 
-import org.gradle.api.Incubating;
-
 /**
  * Represents a JUnit test suite.
  *
  * @since 2.11
  */
-@Incubating
+@Deprecated
 public interface JUnitTestSuiteSpec extends JvmTestSuiteSpec {
     String getjUnitVersion();
     void setjUnitVersion(String junitVersion);

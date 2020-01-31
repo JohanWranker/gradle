@@ -17,22 +17,27 @@
 package org.gradle.nativeplatform.internal.prebuilt;
 
 import org.gradle.api.Action;
+import org.gradle.api.artifacts.repositories.RepositoryContentDescriptor;
 import org.gradle.api.internal.AbstractNamedDomainObjectContainer;
-import org.gradle.api.internal.file.SourceDirectorySetFactory;
+import org.gradle.api.internal.CollectionCallbackActionDecorator;
+import org.gradle.api.internal.collections.DomainObjectCollectionFactory;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.nativeplatform.PrebuiltLibraries;
 import org.gradle.nativeplatform.PrebuiltLibrary;
 
 public class DefaultPrebuiltLibraries extends AbstractNamedDomainObjectContainer<PrebuiltLibrary> implements PrebuiltLibraries {
-    private final SourceDirectorySetFactory sourceDirectorySetFactory;
+    private final ObjectFactory objectFactory;
     private final Action<PrebuiltLibrary> libraryInitializer;
     private String name;
+    private final DomainObjectCollectionFactory domainObjectCollectionFactory;
 
-    public DefaultPrebuiltLibraries(String name, Instantiator instantiator, SourceDirectorySetFactory sourceDirectorySetFactory, Action<PrebuiltLibrary> libraryInitializer) {
-        super(PrebuiltLibrary.class, instantiator);
+    public DefaultPrebuiltLibraries(String name, Instantiator instantiator, ObjectFactory objectFactory, Action<PrebuiltLibrary> libraryInitializer, CollectionCallbackActionDecorator collectionCallbackActionDecorator, DomainObjectCollectionFactory domainObjectCollectionFactory) {
+        super(PrebuiltLibrary.class, instantiator, collectionCallbackActionDecorator);
         this.name = name;
-        this.sourceDirectorySetFactory = sourceDirectorySetFactory;
+        this.objectFactory = objectFactory;
         this.libraryInitializer = libraryInitializer;
+        this.domainObjectCollectionFactory = domainObjectCollectionFactory;
     }
 
     @Override
@@ -46,15 +51,24 @@ public class DefaultPrebuiltLibraries extends AbstractNamedDomainObjectContainer
     }
 
     @Override
+    public void content(Action<? super RepositoryContentDescriptor> configureAction) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     protected PrebuiltLibrary doCreate(String name) {
-        return getInstantiator().newInstance(DefaultPrebuiltLibrary.class, name, sourceDirectorySetFactory);
+        return getInstantiator().newInstance(DefaultPrebuiltLibrary.class, name, objectFactory, domainObjectCollectionFactory);
     }
 
     @Override
     public PrebuiltLibrary resolveLibrary(String name) {
         PrebuiltLibrary library = findByName(name);
-        if (library != null && library.getBinaries().isEmpty()) {
-            libraryInitializer.execute(library);
+        if (library != null) {
+            synchronized (library.getBinaries()) {
+                if (library.getBinaries().isEmpty()) {
+                    libraryInitializer.execute(library);
+                }
+            }
         }
         return library;
     }

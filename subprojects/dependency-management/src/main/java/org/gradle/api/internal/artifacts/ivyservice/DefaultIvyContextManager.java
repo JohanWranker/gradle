@@ -22,6 +22,7 @@ import org.apache.ivy.core.settings.IvySettings;
 import org.apache.ivy.util.Message;
 import org.gradle.api.Action;
 import org.gradle.api.Transformer;
+import org.gradle.internal.SystemProperties;
 import org.gradle.internal.Transformers;
 
 import java.util.LinkedList;
@@ -35,10 +36,12 @@ public class DefaultIvyContextManager implements IvyContextManager {
     private final LinkedList<Ivy> cached = new LinkedList<Ivy>();
     private final ThreadLocal<Integer> depth = new ThreadLocal<Integer>();
 
+    @Override
     public void withIvy(final Action<? super Ivy> action) {
         withIvy(Transformers.toTransformer(action));
     }
 
+    @Override
     public <T> T withIvy(Transformer<? extends T, ? super Ivy> action) {
         Integer currentDepth = depth.get();
 
@@ -83,7 +86,16 @@ public class DefaultIvyContextManager implements IvyContextManager {
         } finally {
             lock.unlock();
         }
-        return Ivy.newInstance(new IvySettings());
+        return createNewIvyInstance();
+    }
+
+    /*
+     * Synchronizes on the system properties, because IvySettings iterates
+     * over them without taking a defensive copy. This can fail if another
+     * process sets a system property at that moment.
+     */
+    private Ivy createNewIvyInstance() {
+        return SystemProperties.getInstance().withSystemProperties(() -> Ivy.newInstance(new IvySettings()));
     }
 
     private void releaseIvy(Ivy ivy) {

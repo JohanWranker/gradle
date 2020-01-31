@@ -16,7 +16,6 @@
 
 package org.gradle.api.artifacts.type;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.Named;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.attributes.HasAttributes;
@@ -28,14 +27,12 @@ import java.util.Set;
  *
  * @since 4.0
  */
-@Incubating
 public interface ArtifactTypeDefinition extends HasAttributes, Named {
     /**
      * Represents a JAR file.
      *
      * @since 4.0
      */
-    @Incubating
     String JAR_TYPE = "jar";
 
     /**
@@ -43,7 +40,6 @@ public interface ArtifactTypeDefinition extends HasAttributes, Named {
      *
      * @since 4.0
      */
-    @Incubating
     String JVM_CLASS_DIRECTORY = "java-classes-directory";
 
     /**
@@ -51,8 +47,21 @@ public interface ArtifactTypeDefinition extends HasAttributes, Named {
      *
      * @since 4.0
      */
-    @Incubating
     String JVM_RESOURCES_DIRECTORY = "java-resources-directory";
+
+    /**
+     * Represents a zip file
+     *
+     * @since 5.3
+     */
+    String ZIP_TYPE = "zip";
+
+    /**
+     * Represents a raw directory
+     *
+     * @since 5.3
+     */
+    String DIRECTORY_TYPE = "directory";
 
     /**
      * Returns the set of file name extensions that should be mapped to this artifact type. Defaults to the name of this type.

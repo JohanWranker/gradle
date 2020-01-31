@@ -16,10 +16,10 @@
 
 package org.gradle.internal.resource.transport;
 
-import org.gradle.api.internal.artifacts.ivyservice.CacheLockingManager;
 import org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.ExternalResourceCachePolicy;
 import org.gradle.api.internal.file.TemporaryFileProvider;
 import org.gradle.cache.internal.ProducerGuard;
+import org.gradle.internal.hash.ChecksumService;
 import org.gradle.internal.logging.progress.ProgressLoggerFactory;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.resource.ExternalResourceName;
@@ -42,27 +42,30 @@ public class ResourceConnectorRepositoryTransport extends AbstractRepositoryTran
                                                 TemporaryFileProvider temporaryFileProvider,
                                                 CachedExternalResourceIndex<String> cachedExternalResourceIndex,
                                                 BuildCommencedTimeProvider timeProvider,
-                                                CacheLockingManager cacheLockingManager,
                                                 ExternalResourceConnector connector,
                                                 BuildOperationExecutor buildOperationExecutor,
                                                 ExternalResourceCachePolicy cachePolicy,
                                                 ProducerGuard<ExternalResourceName> producerGuard,
-                                                FileResourceRepository fileResourceRepository) {
+                                                FileResourceRepository fileResourceRepository,
+                                                ChecksumService checksumService) {
         super(name);
         ProgressLoggingExternalResourceUploader loggingUploader = new ProgressLoggingExternalResourceUploader(connector, progressLoggerFactory);
         ProgressLoggingExternalResourceAccessor loggingAccessor = new ProgressLoggingExternalResourceAccessor(connector, progressLoggerFactory);
         repository = new DefaultExternalResourceRepository(name, connector, connector, connector, loggingAccessor, loggingUploader, buildOperationExecutor);
-        resourceAccessor = new DefaultCacheAwareExternalResourceAccessor(repository, cachedExternalResourceIndex, timeProvider, temporaryFileProvider, cacheLockingManager, cachePolicy, producerGuard, fileResourceRepository);
+        resourceAccessor = new DefaultCacheAwareExternalResourceAccessor(repository, cachedExternalResourceIndex, timeProvider, temporaryFileProvider, cachePolicy, producerGuard, fileResourceRepository, checksumService);
     }
 
+    @Override
     public ExternalResourceRepository getRepository() {
         return repository;
     }
 
+    @Override
     public CacheAwareExternalResourceAccessor getResourceAccessor() {
         return resourceAccessor;
     }
 
+    @Override
     public boolean isLocal() {
         return false;
     }

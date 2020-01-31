@@ -17,19 +17,22 @@
 package org.gradle.language.java
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
 import spock.lang.Unroll
 
 import static org.gradle.language.java.JavaIntegrationTesting.applyJavaPlugin
+import static org.gradle.language.java.JavaIntegrationTesting.expectJavaLangPluginDeprecationWarnings
 import static org.gradle.util.TextUtil.normaliseLineSeparators
 
 class JavaLanguageDependencyResolutionIntegrationTest extends AbstractIntegrationSpec {
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can resolve #scope level dependency on local library"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
@@ -53,9 +56,10 @@ model {
         scope << DependencyScope.values()
     }
 
+    @ToBeFixedForInstantExecution
     def "can define a dependency on the same library"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
@@ -82,7 +86,7 @@ model {
 
     def "can define a cyclic dependency but building fails"() {
         given: "a build file that defines a cyclic dependency"
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 class DependencyResolutionObserver extends RuleSource {
     @Validate
@@ -128,9 +132,10 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "should fail if library doesn't exist (#scope)"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
@@ -149,10 +154,11 @@ model {
         executedAndNotSkipped ':tasks'
 
         and: "build fails"
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then: "displays the possible solution"
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause("Could not resolve project ':' library 'someLib'")
         failure.assertHasCause("Project ':' does not contain library 'someLib'. Did you want to use 'main'?")
 
@@ -161,9 +167,10 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can resolve #scope level dependency on a different project library"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
@@ -183,7 +190,7 @@ model {
 
         file('settings.gradle') << 'include "dep"'
         def depBuildFile = file('dep/build.gradle')
-        applyJavaPlugin(depBuildFile)
+        applyJavaPlugin(depBuildFile, null)
         depBuildFile << '''
 model {
     components {
@@ -201,6 +208,7 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':mainJar'
 
         then:
@@ -210,9 +218,10 @@ model {
         scope << DependencyScope.values()
     }
 
+    @ToBeFixedForInstantExecution
     def "should fail if project doesn't exist"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
@@ -230,7 +239,7 @@ model {
 '''
         file('settings.gradle') << 'include "dep"'
         def depBuildFile = file('dep/build.gradle')
-        applyJavaPlugin(depBuildFile)
+        applyJavaPlugin(depBuildFile, null)
         depBuildFile << '''
 model {
     components {
@@ -247,18 +256,20 @@ model {
         executedAndNotSkipped ':tasks'
 
         and: "build fails"
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause("Could not resolve project ':sub' library 'main'")
         failure.assertHasCause("Project ':sub' not found.")
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "should fail if project exists but not library (#scope)"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
@@ -292,10 +303,11 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause("Could not resolve project ':dep' library 'doesNotExist'")
 
         and: "displays a suggestion about the library to use"
@@ -306,9 +318,10 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "should display the list of candidate libraries in case a library is not found (#scope)"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
@@ -343,10 +356,11 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause("Could not resolve project ':dep' library 'doesNotExist'")
 
         and: "displays a list of suggestion for libraries to use"
@@ -357,9 +371,10 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can resolve #scope level dependencies on a different projects"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
@@ -405,6 +420,7 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':mainJar'
 
         then:
@@ -415,9 +431,10 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "should fail and display the list of candidate libraries in case a library is required but multiple candidates available (#scope)"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
@@ -452,10 +469,11 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause("Could not resolve project ':dep'")
 
         and: "displays a list of suggestions for libraries in dependent project"
@@ -465,9 +483,10 @@ model {
         scope << DependencyScope.values()
     }
 
+    @ToBeFixedForInstantExecution
     def "should fail and display a sensible error message if target project doesn't define any library"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
@@ -484,7 +503,7 @@ model {
 }
 '''
         file('settings.gradle') << 'include "dep"'
-        applyJavaPlugin(file('dep/build.gradle'))
+        applyJavaPlugin(file('dep/build.gradle'), null)
         file('src/main/java/TestApp.java') << 'public class TestApp/* extends Dep */{}'
 
         when:
@@ -494,19 +513,21 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause("Could not resolve project ':dep'")
 
         and: "displays that the dependent project doesn't define any dependency"
         failure.assertHasCause("Project ':dep' doesn't define any library.")
     }
 
+    @ToBeFixedForInstantExecution
     def "should fail and display a sensible error message if target project doesn't use new model"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
@@ -523,7 +544,7 @@ model {
 }
 '''
         file('settings.gradle') << 'include "dep"'
-        file('dep/build.gradle') << ''
+        file('dep/build.gradle') << "apply plugin: 'java'"
         file('src/main/java/TestApp.java') << 'public class TestApp/* extends Dep */{}'
 
         when:
@@ -533,10 +554,11 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause("Could not resolve project ':dep'")
 
         and:
@@ -544,9 +566,10 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "compile classpath for #mainScope dependency #excludesOrIncludes transitive #libScope dependency"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
             model {
                 components {
@@ -573,7 +596,7 @@ model {
         """
         file('settings.gradle') << 'include "b","c"'
         file('b/build.gradle').with {
-            applyJavaPlugin(it)
+            applyJavaPlugin(it, null)
             it << """
                 model {
                     components {
@@ -587,7 +610,7 @@ model {
             """
         }
         file('c/build.gradle').with {
-            applyJavaPlugin(it)
+            applyJavaPlugin(it, null)
             it << '''
                 model {
                     components {
@@ -607,6 +630,7 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':mainJar'
 
         then:
@@ -627,9 +651,10 @@ model {
         excludesOrIncludes = libScope == DependencyScope.API ? 'includes' : 'excludes'
     }
 
+    @ToBeFixedForInstantExecution
     def "dependency resolution should be limited to the scope of the API of a single project"() {
         given: "project 'a' depending on project 'b' depending itself on project 'c' but 'c' doesn't exist"
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 import org.gradle.model.internal.core.ModelPath
 import org.gradle.model.internal.type.ModelType
@@ -708,12 +733,14 @@ model {
         executedAndNotSkipped ':tasks'
 
         and: "we query the classpath for project 'a' library 'main'"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':checkDependenciesForMainJar'
 
         then: "dependency resolution resolves the classpath"
         executedAndNotSkipped ':checkDependenciesForMainJar'
 
         when: "we query the classpath for project 'b' library 'main'"
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':b:checkDependenciesForMainJar'
 
         then: "dependency resolution fails because project 'c' doesn't exist"
@@ -722,9 +749,10 @@ model {
         failure.assertHasCause(/Project ':c' not found./)
     }
 
+    @ToBeFixedForInstantExecution
     def "classpath for sourceset excludes transitive sourceset jar if no explicit library name is used"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
@@ -796,15 +824,17 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':mainJar'
 
         then:
         executedAndNotSkipped ':c:mainApiJar', ':b:mainApiJar'
     }
 
+    @ToBeFixedForInstantExecution
     def "fails if a dependency does not provide any JarBinarySpec"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         addCustomLibraryType(buildFile)
 
         buildFile << '''
@@ -833,19 +863,21 @@ model {
         executedAndNotSkipped ':tasks'
 
         when:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause("Could not resolve project ':' library 'zdep'")
 
         and:
         failure.assertHasCause("Project ':' contains a library named 'zdep' but it doesn't have any binary of type JvmBinarySpec")
     }
 
+    @ToBeFixedForInstantExecution
     def "successfully selects a JVM library if no library name is provided and 2 components are available"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
@@ -863,7 +895,7 @@ model {
 }
 '''
         def projectB = file('b/build.gradle')
-        applyJavaPlugin(projectB)
+        applyJavaPlugin(projectB, null)
         addCustomLibraryType(projectB)
         projectB << '''
 model {
@@ -885,6 +917,7 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':mainJar'
 
         then:
@@ -892,19 +925,20 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "should choose appropriate Java variants for #scope level dependency"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
         dep(JvmLibrarySpec) {
-            targetPlatform 'java6'
+            targetPlatform 'java7'
         }
 
         main(JvmLibrarySpec) {
+            targetPlatform 'java8'
             targetPlatform 'java7'
-            targetPlatform 'java6'
             $scope.begin
                 library 'dep'
             $scope.end
@@ -912,11 +946,11 @@ model {
     }
 
     tasks {
-        mainJava6Jar.finalizedBy('checkDependencies')
         mainJava7Jar.finalizedBy('checkDependencies')
+        mainJava8Jar.finalizedBy('checkDependencies')
         create('checkDependencies') {
-            assert compileMainJava6JarMainJava.taskDependencies.getDependencies(compileMainJava6JarMainJava).contains(depApiJar)
             assert compileMainJava7JarMainJava.taskDependencies.getDependencies(compileMainJava7JarMainJava).contains(depApiJar)
+            assert compileMainJava8JarMainJava.taskDependencies.getDependencies(compileMainJava8JarMainJava).contains(depApiJar)
         }
     }
 }
@@ -931,18 +965,21 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
-        succeeds 'mainJava6Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds 'mainJava7Jar'
 
         and:
-        succeeds 'mainJava7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds 'mainJava8Jar'
 
         where:
         scope << DependencyScope.values()
     }
 
+    @ToBeFixedForInstantExecution
     def "should fail because multiple binaries match for the same variant"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 
 class CustomBinaries extends RuleSource {
@@ -994,19 +1031,21 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then:
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
         failure.assertHasCause(normaliseLineSeparators("""Multiple compatible variants found for library 'dep':
     - Jar 'dep:jar' [platform:'java6']
     - Jar 'dep:jar2' [platform:'java6']"""
         ))
     }
 
+    @ToBeFixedForInstantExecution
     def "should display reasonable error messages in case of multiple binaries available or no compatible variant is found"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 
 class CustomBinaries extends RuleSource {
@@ -1060,20 +1099,22 @@ model {
         executedAndNotSkipped ':tasks'
 
         and: "attempt to build main jar Java 6"
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJava6Jar'
 
         then: "fails because multiple binaries are available for the Java 6 variant of 'dep'"
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:java6Jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:java6Jar'' source set 'Java source 'main:java'")
         failure.assertHasCause(normaliseLineSeparators("""Multiple compatible variants found for library 'dep':
     - Jar 'dep:jar' [platform:'java6']
     - Jar 'dep:jar2' [platform:'java6']"""
         ))
 
         when: "attempt to build main jar Java 7"
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJava7Jar'
 
         then: "fails because multiple binaries are available for the Java 6 compatible variant of 'dep'"
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:java7Jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:java7Jar'' source set 'Java source 'main:java'")
         failure.assertHasCause(normaliseLineSeparators("""Multiple compatible variants found for library 'dep':
     - Jar 'dep:jar' [platform:'java6']
     - Jar 'dep:jar2' [platform:'java6']"""
@@ -1081,20 +1122,21 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "should choose matching variants from #scope level dependency"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
         dep(JvmLibrarySpec) {
-            targetPlatform 'java6'
             targetPlatform 'java7'
+            targetPlatform 'java8'
         }
 
         main(JvmLibrarySpec) {
             targetPlatform 'java7'
-            targetPlatform 'java6'
+            targetPlatform 'java8'
             $scope.begin
                 library 'dep'
             $scope.end
@@ -1102,11 +1144,11 @@ model {
     }
 
     tasks {
-        mainJava6Jar.finalizedBy('checkDependencies')
         mainJava7Jar.finalizedBy('checkDependencies')
+        mainJava8Jar.finalizedBy('checkDependencies')
         create('checkDependencies') {
-            assert compileMainJava6JarMainJava.taskDependencies.getDependencies(compileMainJava6JarMainJava).contains(depJava6ApiJar)
             assert compileMainJava7JarMainJava.taskDependencies.getDependencies(compileMainJava7JarMainJava).contains(depJava7ApiJar)
+            assert compileMainJava8JarMainJava.taskDependencies.getDependencies(compileMainJava8JarMainJava).contains(depJava8ApiJar)
         }
     }
 }
@@ -1121,28 +1163,30 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
-        succeeds 'mainJava6Jar', 'mainJava7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds 'mainJava7Jar', 'mainJava8Jar'
 
         where:
         scope << DependencyScope.values()
     }
 
-    @Requires(TestPrecondition.JDK8_OR_LATER)
+    @Requires(TestPrecondition.JDK9_OR_LATER)
+    @ToBeFixedForInstantExecution
     def "should not choose higher version than available"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
         dep(JvmLibrarySpec) {
-            targetPlatform 'java6'
             targetPlatform 'java7'
             targetPlatform 'java8'
+            targetPlatform 'java9'
         }
 
         main(JvmLibrarySpec) {
             targetPlatform 'java7'
-            targetPlatform 'java6'
+            targetPlatform 'java8'
             sources {
                 java {
                     dependencies {
@@ -1154,11 +1198,11 @@ model {
     }
 
     tasks {
-        mainJava6Jar.finalizedBy('checkDependencies')
         mainJava7Jar.finalizedBy('checkDependencies')
+        mainJava8Jar.finalizedBy('checkDependencies')
         create('checkDependencies') {
-            assert compileMainJava6JarMainJava.taskDependencies.getDependencies(compileMainJava6JarMainJava).contains(depJava6ApiJar)
             assert compileMainJava7JarMainJava.taskDependencies.getDependencies(compileMainJava7JarMainJava).contains(depJava7ApiJar)
+            assert compileMainJava8JarMainJava.taskDependencies.getDependencies(compileMainJava8JarMainJava).contains(depJava8ApiJar)
         }
     }
 }
@@ -1173,15 +1217,18 @@ model {
         executedAndNotSkipped ':tasks'
 
         then:
-        succeeds 'mainJava6Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds 'mainJava7Jar'
 
         and:
-        succeeds 'mainJava7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds 'mainJava8Jar'
     }
 
+    @ToBeFixedForInstantExecution
     def "should display candidate platforms if no one matches"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
@@ -1212,6 +1259,7 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails 'mainJar'
 
         then:
@@ -1222,9 +1270,10 @@ model {
     }
 
     @Requires(TestPrecondition.JDK8_OR_LATER)
+    @ToBeFixedForInstantExecution
     def "should display candidate platforms if no one matches and multiple binaries are defined"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << '''
 model {
     components {
@@ -1257,6 +1306,7 @@ model {
         executedAndNotSkipped ':tasks'
 
         and:
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJava6Jar'
 
         then:
@@ -1280,9 +1330,10 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "collects all errors if there's more than one resolution failure for #scope level dependencies"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         buildFile << """
 model {
     components {
@@ -1305,10 +1356,11 @@ model {
         executedAndNotSkipped ':tasks'
 
         and: "build fails"
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
 
         then: "displays a reasonable error message indicating the faulty source set"
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:jar'' source set 'Java source 'main:java'")
 
         and: "first resolution error is displayed"
         failure.assertHasCause("Could not resolve project ':' library 'someLib'")

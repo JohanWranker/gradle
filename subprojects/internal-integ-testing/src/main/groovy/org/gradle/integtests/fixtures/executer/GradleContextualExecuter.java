@@ -15,7 +15,10 @@
  */
 package org.gradle.integtests.fixtures.executer;
 
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeoutInterceptor;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
+
+import static org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout.DEFAULT_TIMEOUT_SECONDS;
 
 /**
  * Selects a different executer implementation based on the value of a system property.
@@ -25,7 +28,6 @@ import org.gradle.test.fixtures.file.TestDirectoryProvider;
 public class GradleContextualExecuter extends AbstractDelegatingGradleExecuter {
 
     private static final String EXECUTER_SYS_PROP = "org.gradle.integtest.executer";
-    private static final String UNKNOWN_OS_SYS_PROP = "org.gradle.integtest.unknownos";
 
     private Executer executerType;
 
@@ -33,7 +35,9 @@ public class GradleContextualExecuter extends AbstractDelegatingGradleExecuter {
         embedded(false),
         forking(true),
         noDaemon(true),
-        parallel(true, true);
+        parallel(true, true),
+        instant(true),
+        vfsRetention(true);
 
         final public boolean forks;
         final public boolean executeParallel;
@@ -60,6 +64,10 @@ public class GradleContextualExecuter extends AbstractDelegatingGradleExecuter {
         return getSystemPropertyExecuter() == Executer.noDaemon;
     }
 
+    public static boolean isVfsRetention() {
+        return getSystemPropertyExecuter() == Executer.vfsRetention;
+    }
+
     public static boolean isDaemon() {
         return !(isNoDaemon() || isEmbedded());
     }
@@ -72,6 +80,10 @@ public class GradleContextualExecuter extends AbstractDelegatingGradleExecuter {
         return getSystemPropertyExecuter().executeParallel;
     }
 
+    public static boolean isInstant() {
+        return getSystemPropertyExecuter() == Executer.instant;
+    }
+
     private GradleExecuter gradleExecuter;
 
     public GradleContextualExecuter(GradleDistribution distribution, TestDirectoryProvider testDirectoryProvider, IntegrationTestBuildContext buildContext) {
@@ -79,6 +91,7 @@ public class GradleContextualExecuter extends AbstractDelegatingGradleExecuter {
         this.executerType = getSystemPropertyExecuter();
     }
 
+    @Override
     protected GradleExecuter configureExecuter() {
         if (!getClass().desiredAssertionStatus()) {
             throw new RuntimeException("Assertions must be enabled when running integration tests.");
@@ -102,10 +115,6 @@ public class GradleContextualExecuter extends AbstractDelegatingGradleExecuter {
 
     private void configureExecuter(GradleExecuter gradleExecuter) {
         copyTo(gradleExecuter);
-
-        if (System.getProperty(UNKNOWN_OS_SYS_PROP) != null) {
-            gradleExecuter.withBuildJvmOpts("-Dos.arch=unknown architecture", "-Dos.name=unknown operating system", "-Dos.version=unknown version");
-        }
     }
 
     private GradleExecuter createExecuter(Executer executerType) {
@@ -118,6 +127,11 @@ public class GradleContextualExecuter extends AbstractDelegatingGradleExecuter {
                 return new ParallelForkingGradleExecuter(getDistribution(), getTestDirectoryProvider(), gradleVersion, buildContext);
             case forking:
                 return new DaemonGradleExecuter(getDistribution(), getTestDirectoryProvider(), gradleVersion, buildContext);
+            case instant:
+                return new InstantExecutionGradleExecuter(getDistribution(), getTestDirectoryProvider(), gradleVersion, buildContext);
+            case vfsRetention:
+                requireIsolatedDaemons();
+                return new VfsRetentionGradleExecuter(getDistribution(), getTestDirectoryProvider(), gradleVersion, buildContext);
             default:
                 throw new RuntimeException("Not a supported executer type: " + executerType);
         }
@@ -125,10 +139,13 @@ public class GradleContextualExecuter extends AbstractDelegatingGradleExecuter {
 
     @Override
     public void cleanup() {
-        if (gradleExecuter != null) {
-            gradleExecuter.stop();
-        }
-        super.cleanup();
+        new IntegrationTestTimeoutInterceptor(DEFAULT_TIMEOUT_SECONDS).intercept(ignored -> {
+            if (gradleExecuter != null) {
+                gradleExecuter.stop();
+            }
+            GradleContextualExecuter.super.cleanup();
+        });
+
     }
 
     @Override

@@ -18,17 +18,16 @@ package org.gradle.initialization
 import org.gradle.StartParameter
 import org.gradle.api.initialization.Settings
 import org.gradle.api.internal.GradleInternal
-import org.gradle.api.internal.ThreadGlobalInstantiator
 import org.gradle.api.internal.file.FileResolver
 import org.gradle.api.internal.initialization.ClassLoaderScope
-import org.gradle.api.internal.initialization.RootClassLoaderScope
 import org.gradle.api.internal.initialization.ScriptHandlerFactory
 import org.gradle.api.internal.initialization.ScriptHandlerInternal
-import org.gradle.api.internal.initialization.loadercache.DummyClassLoaderCache
 import org.gradle.configuration.ScriptPluginFactory
 import org.gradle.groovy.scripts.ScriptSource
+import org.gradle.internal.instantiation.InstantiatorFactory
 import org.gradle.internal.service.ServiceRegistry
 import org.gradle.internal.service.scopes.ServiceRegistryFactory
+import org.gradle.util.TestUtil
 import org.gradle.util.WrapUtil
 import spock.lang.Specification
 
@@ -46,21 +45,24 @@ class SettingsFactoryTest extends Specification {
         def scriptPluginFactory = Mock(ScriptPluginFactory)
         def scriptHandlerFactory = Mock(ScriptHandlerFactory)
         def projectDescriptorRegistry = Mock(ProjectDescriptorRegistry)
+        def scope = Mock(ClassLoaderScope)//new ClassLoaderScopeIdentifier(rootScope.id, 'buildSrc'), rootScope, cache)
 
         1 * serviceRegistryFactory.createFor(_ as Settings) >> settingsServices
         1 * settingsServices.get(FileResolver) >> fileResolver
         1 * settingsServices.get(ScriptPluginFactory) >> scriptPluginFactory
         1 * settingsServices.get(ScriptHandlerFactory) >> scriptHandlerFactory
         1 * settingsServices.get(ProjectDescriptorRegistry) >> projectDescriptorRegistry
+        1 * settingsServices.get(InstantiatorFactory) >> Stub(InstantiatorFactory)
         1 * projectDescriptorRegistry.addProject(_ as DefaultProjectDescriptor)
         1 * scriptHandlerFactory.create(scriptSource, _ as ClassLoaderScope) >> Mock(ScriptHandlerInternal)
+        1 * scope.createChild(_) >> scope
 
         when:
-        SettingsFactory settingsFactory = new SettingsFactory(ThreadGlobalInstantiator.getOrCreate(), serviceRegistryFactory, scriptHandlerFactory);
+        SettingsFactory settingsFactory = new SettingsFactory(TestUtil.instantiatorFactory().decorateLenient(), serviceRegistryFactory, scriptHandlerFactory);
         GradleInternal gradle = Mock(GradleInternal)
 
         DefaultSettings settings = (DefaultSettings) settingsFactory.createSettings(gradle,
-                settingsDir, scriptSource, expectedGradleProperties, startParameter, new RootClassLoaderScope(getClass().classLoader, getClass().classLoader, new DummyClassLoaderCache()));
+                settingsDir, scriptSource, expectedGradleProperties, startParameter, scope);
 
         then:
         gradle.is(settings.gradle)

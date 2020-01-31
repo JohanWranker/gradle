@@ -16,7 +16,6 @@
 
 package org.gradle.nativeplatform.toolchain.internal.swift;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import org.gradle.internal.file.PathToFileResolver;
 import org.gradle.internal.operations.BuildOperationExecutor;
@@ -25,6 +24,7 @@ import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.work.WorkerLeaseService;
 import org.gradle.nativeplatform.internal.CompilerOutputFileNamingSchemeFactory;
 import org.gradle.nativeplatform.platform.NativePlatform;
+import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
 import org.gradle.nativeplatform.platform.internal.NativePlatformInternal;
 import org.gradle.nativeplatform.toolchain.Swiftc;
 import org.gradle.nativeplatform.toolchain.SwiftcPlatformToolChain;
@@ -33,11 +33,13 @@ import org.gradle.nativeplatform.toolchain.internal.NativeLanguage;
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 import org.gradle.nativeplatform.toolchain.internal.ToolType;
 import org.gradle.nativeplatform.toolchain.internal.UnavailablePlatformToolProvider;
+import org.gradle.nativeplatform.toolchain.internal.UnsupportedPlatformToolProvider;
 import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetaDataProvider;
 import org.gradle.nativeplatform.toolchain.internal.swift.metadata.SwiftcMetadata;
 import org.gradle.nativeplatform.toolchain.internal.tools.CommandLineToolSearchResult;
 import org.gradle.nativeplatform.toolchain.internal.tools.DefaultCommandLineToolConfiguration;
 import org.gradle.nativeplatform.toolchain.internal.tools.ToolSearchPath;
+import org.gradle.platform.base.internal.toolchain.SearchResult;
 import org.gradle.platform.base.internal.toolchain.ToolChainAvailability;
 import org.gradle.process.internal.ExecActionFactory;
 
@@ -87,19 +89,28 @@ public class SwiftcToolChain extends ExtendableToolChain<SwiftcPlatformToolChain
         addDefaultTools(configurableToolChain);
         configureActions.execute(configurableToolChain);
 
+        // TODO: this is an approximation as we know swift currently supports only 64-bit runtimes - eventually, we'll want to query for this
+        if (!isCurrentArchitecture(targetPlatform)) {
+            return new UnsupportedPlatformToolProvider(targetPlatform.getOperatingSystem(), String.format("Don't know how to build for %s.", targetPlatform.getDisplayName()));
+        }
+
         CommandLineToolSearchResult compiler = toolSearchPath.locate(ToolType.SWIFT_COMPILER, "swiftc");
         ToolChainAvailability result = new ToolChainAvailability();
         result.mustBeAvailable(compiler);
         if (!result.isAvailable()) {
             return new UnavailablePlatformToolProvider(targetPlatform.getOperatingSystem(), result);
         }
-        SwiftcMetadata swiftcMetaData = compilerMetaDataProvider.getCompilerMetaData(compiler.getTool(), ImmutableList.<String>of());
+        SearchResult<SwiftcMetadata> swiftcMetaData = compilerMetaDataProvider.getCompilerMetaData(toolSearchPath.getPath(), spec -> spec.executable(compiler.getTool()));
         result.mustBeAvailable(swiftcMetaData);
         if (!result.isAvailable()) {
             return new UnavailablePlatformToolProvider(targetPlatform.getOperatingSystem(), result);
         }
 
-        return new SwiftPlatformToolProvider(buildOperationExecutor, targetPlatform.getOperatingSystem(), toolSearchPath, configurableToolChain, execActionFactory, compilerOutputFileNamingSchemeFactory, workerLeaseService, swiftcMetaData);
+        return new SwiftPlatformToolProvider(buildOperationExecutor, targetPlatform.getOperatingSystem(), toolSearchPath, configurableToolChain, execActionFactory, compilerOutputFileNamingSchemeFactory, workerLeaseService, swiftcMetaData.getComponent());
+    }
+
+    private boolean isCurrentArchitecture(NativePlatformInternal targetPlatform) {
+        return targetPlatform.getArchitecture().equals(DefaultNativePlatform.getCurrentArchitecture());
     }
 
     @Override
@@ -109,7 +120,7 @@ public class SwiftcToolChain extends ExtendableToolChain<SwiftcPlatformToolChain
             case ANY:
                 return select(targetMachine);
             default:
-                return new UnavailablePlatformToolProvider(targetMachine.getOperatingSystem(), String.format("Don't know how to compile language %s.", sourceLanguage));
+                return new UnsupportedPlatformToolProvider(targetMachine.getOperatingSystem(), String.format("Don't know how to compile language %s.", sourceLanguage));
         }
     }
 

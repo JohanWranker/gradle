@@ -28,17 +28,20 @@ import org.codehaus.groovy.control.Phases
 import org.codehaus.groovy.control.SourceUnit
 import org.gradle.api.Action
 import org.gradle.api.GradleException
-import org.gradle.api.internal.initialization.ClassLoaderIds
-import org.gradle.api.internal.initialization.loadercache.ClassLoaderId
+import org.gradle.api.internal.file.TestFiles
+import org.gradle.api.internal.initialization.ClassLoaderScope
+import org.gradle.api.internal.initialization.RootClassLoaderScope
 import org.gradle.api.internal.initialization.loadercache.DummyClassLoaderCache
 import org.gradle.configuration.ImportsReader
 import org.gradle.groovy.scripts.ScriptCompilationException
 import org.gradle.groovy.scripts.ScriptSource
 import org.gradle.groovy.scripts.StringScriptSource
 import org.gradle.groovy.scripts.Transformer
+import org.gradle.initialization.ClassLoaderScopeRegistryListener
 import org.gradle.internal.Actions
 import org.gradle.internal.hash.HashCode
 import org.gradle.internal.hash.Hashing
+import org.gradle.internal.reflect.JavaReflectionUtil
 import org.gradle.internal.resource.TextResource
 import org.gradle.internal.serialize.BaseSerializerFactory
 import org.gradle.internal.serialize.Serializer
@@ -51,13 +54,16 @@ import spock.lang.Issue
 import spock.lang.Specification
 import spock.lang.Unroll
 
-import static org.hamcrest.Matchers.instanceOf
-import static org.junit.Assert.*
+import static org.hamcrest.CoreMatchers.instanceOf
+import static org.junit.Assert.assertEquals
+import static org.junit.Assert.assertFalse
+import static org.junit.Assert.assertThat
+import static org.junit.Assert.assertTrue
 
 class DefaultScriptCompilationHandlerTest extends Specification {
 
-    static final String TEST_EXPECTED_SYSTEMPROP_VALUE = "somevalue"
-    static final String TEST_EXPECTED_SYSTEMPROP_KEY = "somekey"
+    static final String TEST_EXPECTED_SYSTEM_PROP_VALUE = "someValue"
+    static final String TEST_EXPECTED_SYSTEM_PROP_KEY = "someKey"
 
     private DefaultScriptCompilationHandler scriptCompilationHandler
 
@@ -69,7 +75,8 @@ class DefaultScriptCompilationHandlerTest extends Specification {
     private String scriptClassName
     private String scriptFileName
 
-    private ClassLoader classLoader
+    private ClassLoader classLoader = getClass().getClassLoader()
+    private ClassLoaderScope targetScope = new RootClassLoaderScope("test", getClass().classLoader, getClass().classLoader, new DummyClassLoaderCache(), Stub(ClassLoaderScopeRegistryListener))
 
     private Action<ClassNode> verifier = Actions.doNothing()
 
@@ -80,16 +87,17 @@ class DefaultScriptCompilationHandlerTest extends Specification {
     public TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     @Rule
     public SetSystemProperties systemProperties = new SetSystemProperties()
-    private final ClassLoaderId classLoaderId = ClassLoaderIds.buildScript("foo", "bar")
 
     def setup() {
         File testProjectDir = tmpDir.createDir("projectDir")
-        classLoader = getClass().getClassLoader()
         importsReader = Stub(ImportsReader.class)
-        scriptCompilationHandler = new DefaultScriptCompilationHandler(new DummyClassLoaderCache(), importsReader)
+        scriptCompilationHandler = new DefaultScriptCompilationHandler(
+            TestFiles.deleter(),
+            importsReader
+        )
         scriptCacheDir = new File(testProjectDir, "cache")
         metadataCacheDir = new File(testProjectDir, "metadata")
-        scriptText = "System.setProperty('" + TEST_EXPECTED_SYSTEMPROP_KEY + "', '" + TEST_EXPECTED_SYSTEMPROP_VALUE + "')"
+        scriptText = "System.setProperty('" + TEST_EXPECTED_SYSTEM_PROP_KEY + "', '" + TEST_EXPECTED_SYSTEM_PROP_VALUE + "')"
 
         scriptClassName = "ScriptClassName"
         scriptFileName = "script-file-name"
@@ -119,12 +127,12 @@ class DefaultScriptCompilationHandlerTest extends Specification {
         checkScriptClassesInCache()
 
         when:
-        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, classLoader, scriptCacheDir, metadataCacheDir, null, expectedScriptClass, classLoaderId)
+        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, targetScope, scriptCacheDir, metadataCacheDir, null, expectedScriptClass)
 
         then:
         compiledScript.runDoesSomething
         compiledScript.data == null
-        Script script = compiledScript.loadClass().newInstance()
+        Script script = JavaReflectionUtil.newInstance(compiledScript.loadClass())
         evaluateScript(script)
     }
 
@@ -152,7 +160,7 @@ println 'hi'
         checkEmptyScriptInCache()
 
         when:
-        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, classLoader, scriptCacheDir, metadataCacheDir, null, expectedScriptClass, classLoaderId)
+        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, targetScope, scriptCacheDir, metadataCacheDir, null, expectedScriptClass)
 
         then:
         !compiledScript.runDoesSomething
@@ -180,7 +188,7 @@ println 'hi'
         checkEmptyScriptInCache()
 
         when:
-        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, classLoader, scriptCacheDir, metadataCacheDir, null, expectedScriptClass, classLoaderId)
+        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, targetScope, scriptCacheDir, metadataCacheDir, null, expectedScriptClass)
 
         then:
         !compiledScript.runDoesSomething
@@ -200,7 +208,7 @@ println 'hi'
         checkScriptClassesInCache(true)
 
         when:
-        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, classLoader, scriptCacheDir, metadataCacheDir, null, expectedScriptClass, classLoaderId)
+        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, targetScope, scriptCacheDir, metadataCacheDir, null, expectedScriptClass)
 
         then:
         !compiledScript.runDoesSomething
@@ -208,7 +216,7 @@ println 'hi'
         compiledScript.data == null
 
         and:
-        Script script = compiledScript.loadClass().newInstance()
+        Script script = JavaReflectionUtil.newInstance(compiledScript.loadClass())
         expectedScriptClass.isInstance(script)
         script.method(12) == "[12]"
     }
@@ -225,7 +233,7 @@ println 'hi'
         checkScriptClassesInCache(true)
 
         when:
-        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, classLoader, scriptCacheDir, metadataCacheDir, null, expectedScriptClass, classLoaderId)
+        def compiledScript = scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, targetScope, scriptCacheDir, metadataCacheDir, null, expectedScriptClass)
 
         then:
         !compiledScript.runDoesSomething
@@ -242,7 +250,7 @@ println 'hi'
         scriptCompilationHandler.compileToDir(scriptSource, classLoader, scriptCacheDir, metadataCacheDir, null, Script.class, verifier)
 
         when:
-        scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, classLoader, scriptCacheDir, metadataCacheDir, null, expectedScriptClass, classLoaderId).loadClass()
+        scriptCompilationHandler.loadFromDir(scriptSource, sourceHashCode, targetScope, scriptCacheDir, metadataCacheDir, null, expectedScriptClass).loadClass()
 
         then:
         GradleException e = thrown()
@@ -251,7 +259,7 @@ println 'hi'
     }
 
     def testCompileToDirWithSyntaxError() {
-        ScriptSource source = new StringScriptSource("script.gradle", "\n\nnew HHHHJSJSJ jsj")
+        ScriptSource source = new StringScriptSource("script.gradle", "\n\nnew invalid syntax")
 
         when:
         scriptCompilationHandler.compileToDir(source, classLoader, scriptCacheDir, metadataCacheDir, null, expectedScriptClass, verifier)
@@ -259,7 +267,7 @@ println 'hi'
         then:
         ScriptCompilationException e = thrown()
         e.lineNumber == 3
-        e.cause.message.contains("script.gradle: 3: unexpected token: jsj")
+        e.cause.message.contains("script.gradle: 3: unexpected token: syntax")
 
         and:
         checkScriptCacheEmpty()
@@ -272,15 +280,15 @@ println 'hi'
             }
 
             @Override
-            public void call(SourceUnit source) throws CompilationFailedException {
+            void call(SourceUnit source) throws CompilationFailedException {
                 source.getAST().getStatementBlock().visit(new CodeVisitorSupport() {
                     @Override
-                    public void visitMethodCallExpression(MethodCallExpression call) {
+                    void visitMethodCallExpression(MethodCallExpression call) {
                         call.setObjectExpression(new ClassExpression(ClassHelper.make(System.class)))
                         call.setMethod(new ConstantExpression("setProperty"))
                         ArgumentListExpression arguments = (ArgumentListExpression) call.getArguments()
-                        arguments.addExpression(new ConstantExpression(TEST_EXPECTED_SYSTEMPROP_KEY))
-                        arguments.addExpression(new ConstantExpression(TEST_EXPECTED_SYSTEMPROP_VALUE))
+                        arguments.addExpression(new ConstantExpression(TEST_EXPECTED_SYSTEM_PROP_KEY))
+                        arguments.addExpression(new ConstantExpression(TEST_EXPECTED_SYSTEM_PROP_VALUE))
                     }
                 })
             }
@@ -288,22 +296,28 @@ println 'hi'
 
         def transformer = new CompileOperation<String>() {
             @Override
-            public String getId() {
+            String getId() {
                 return "id"
             }
 
             @Override
-            public Transformer getTransformer() {
-                return visitor
+            String getStage() {
+                return "STAGE"
             }
 
             @Override
-            public String getExtractedData() {
+            Transformer getTransformer() {
+                return visitor
+            }
+
+
+            @Override
+            String getExtractedData() {
                 return "extracted data"
             }
 
             @Override
-            public Serializer<String> getDataSerializer() {
+            Serializer<String> getDataSerializer() {
                 return new BaseSerializerFactory().getSerializerFor(String)
             }
         }
@@ -314,13 +328,13 @@ println 'hi'
 
         when:
         scriptCompilationHandler.compileToDir(source, classLoader, scriptCacheDir, metadataCacheDir, transformer, expectedScriptClass, verifier)
-        def compiledScript = scriptCompilationHandler.loadFromDir(source, sourceHashCode, classLoader, scriptCacheDir, metadataCacheDir, transformer, expectedScriptClass, classLoaderId)
+        def compiledScript = scriptCompilationHandler.loadFromDir(source, sourceHashCode, targetScope, scriptCacheDir, metadataCacheDir, transformer, expectedScriptClass)
 
         then:
         compiledScript.runDoesSomething
         !compiledScript.hasMethods
         compiledScript.data == "extracted data"
-        def script = compiledScript.loadClass().newInstance()
+        def script = JavaReflectionUtil.newInstance(compiledScript.loadClass())
         evaluateScript(script)
     }
 
@@ -331,29 +345,34 @@ println 'hi'
             }
 
             @Override
-            public void call(SourceUnit source) throws CompilationFailedException {
+            void call(SourceUnit source) throws CompilationFailedException {
                 source.getAST().getStatementBlock().getStatements().clear()
             }
         }
 
         def transformer = new CompileOperation<String>() {
             @Override
-            public String getId() {
+            String getId() {
                 return "id"
             }
 
             @Override
-            public Transformer getTransformer() {
+            String getStage() {
+                return "STAGE"
+            }
+
+            @Override
+            Transformer getTransformer() {
                 return visitor
             }
 
             @Override
-            public String getExtractedData() {
+            String getExtractedData() {
                 return "extracted data"
             }
 
             @Override
-            public Serializer<String> getDataSerializer() {
+            Serializer<String> getDataSerializer() {
                 return new BaseSerializerFactory().getSerializerFor(String)
             }
 
@@ -365,7 +384,7 @@ println 'hi'
 
         when:
         scriptCompilationHandler.compileToDir(source, classLoader, scriptCacheDir, metadataCacheDir, transformer, expectedScriptClass, verifier)
-        def compiledScript = scriptCompilationHandler.loadFromDir(source, sourceHashCode, classLoader, scriptCacheDir, metadataCacheDir, transformer, expectedScriptClass, classLoaderId)
+        def compiledScript = scriptCompilationHandler.loadFromDir(source, sourceHashCode, targetScope, scriptCacheDir, metadataCacheDir, transformer, expectedScriptClass)
 
         then:
         !compiledScript.runDoesSomething
@@ -401,7 +420,7 @@ println 'hi'
         checkScriptCacheEmpty()
 
         where:
-        unknownClass << [ 'unknownclass', 'fully.qualified.unknownclass', 'not.java.util.Map.Entry' ]
+        unknownClass << [ 'unknownClass', 'fully.qualified.unknownClass', 'not.java.util.Map.Entry' ]
     }
 
     @Issue('GRADLE-3423')
@@ -494,15 +513,15 @@ Outer.Inner.Deeper weMustGoDeeper = null
     private void evaluateScript(Script script) {
         assertThat(script, instanceOf(expectedScriptClass))
         assertEquals(script.getClass().getSimpleName(), scriptClassName)
-        System.setProperty(TEST_EXPECTED_SYSTEMPROP_KEY, "not the expected value")
+        System.setProperty(TEST_EXPECTED_SYSTEM_PROP_KEY, "not the expected value")
         script.run()
-        assertEquals(TEST_EXPECTED_SYSTEMPROP_VALUE, System.getProperty(TEST_EXPECTED_SYSTEMPROP_KEY))
+        assertEquals(TEST_EXPECTED_SYSTEM_PROP_VALUE, System.getProperty(TEST_EXPECTED_SYSTEM_PROP_KEY))
     }
 
-    public abstract static class TestBaseScript extends Script {
+    abstract static class TestBaseScript extends Script {
     }
 
     private static HashCode hashFor(String scriptText) {
-        Hashing.md5().hashString(scriptText)
+        Hashing.hashString(scriptText)
     }
 }

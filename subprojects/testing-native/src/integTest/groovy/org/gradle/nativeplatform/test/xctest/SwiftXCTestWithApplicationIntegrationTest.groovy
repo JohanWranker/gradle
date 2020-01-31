@@ -21,7 +21,7 @@ import org.gradle.nativeplatform.fixtures.app.XCTestSourceElement
 
 class SwiftXCTestWithApplicationIntegrationTest extends AbstractSwiftXCTestWithComponentIntegrationTest {
     @Override
-    protected String[] getTaskToAssembleComponentUnderTest() {
+    protected String[] getTasksToAssembleComponentUnderTest() {
         return [":linkDebug", ":installDebug"]
     }
 
@@ -47,5 +47,10 @@ class SwiftXCTestWithApplicationIntegrationTest extends AbstractSwiftXCTestWithC
             apply plugin: 'xctest'
             apply plugin: 'swift-application'
         """
+    }
+
+    @Override
+    protected String getComponentUnderTestDsl() {
+        return "application"
     }
 }

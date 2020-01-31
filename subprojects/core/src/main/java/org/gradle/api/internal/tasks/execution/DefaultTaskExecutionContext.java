@@ -15,61 +15,47 @@
  */
 package org.gradle.api.internal.tasks.execution;
 
-import org.gradle.api.internal.changedetection.TaskArtifactState;
-import org.gradle.api.internal.tasks.OriginTaskExecutionMetadata;
+import org.gradle.api.internal.changedetection.TaskExecutionMode;
 import org.gradle.api.internal.tasks.TaskExecutionContext;
-import org.gradle.caching.internal.tasks.TaskOutputCachingBuildCacheKey;
+import org.gradle.api.internal.tasks.properties.TaskProperties;
+import org.gradle.execution.plan.LocalTaskNode;
+import org.gradle.internal.operations.ExecutingBuildOperation;
 import org.gradle.internal.time.Time;
 import org.gradle.internal.time.Timer;
 
-import javax.annotation.Nullable;
-import java.util.List;
+import java.util.Optional;
 
 public class DefaultTaskExecutionContext implements TaskExecutionContext {
 
-    private TaskArtifactState taskArtifactState;
-    private TaskOutputCachingBuildCacheKey buildCacheKey;
-    private List<String> upToDateMessages;
-    private TaskProperties taskProperties;
-    private OriginTaskExecutionMetadata originExecutionMetadata;
+    private final LocalTaskNode localTaskNode;
+    private TaskExecutionMode taskExecutionMode;
+    private TaskProperties properties;
     private Long executionTime;
+    private ExecutingBuildOperation snapshotTaskInputsBuildOperation;
 
     private final Timer executionTimer;
 
-    public DefaultTaskExecutionContext() {
+    public DefaultTaskExecutionContext(LocalTaskNode localTaskNode) {
+        this.localTaskNode = localTaskNode;
         this.executionTimer = Time.startTimer();
     }
 
     @Override
-    public TaskArtifactState getTaskArtifactState() {
-        return taskArtifactState;
+    public LocalTaskNode getLocalTaskNode() {
+        return localTaskNode;
     }
 
     @Override
-    public void setTaskArtifactState(TaskArtifactState taskArtifactState) {
-        this.taskArtifactState = taskArtifactState;
+    public TaskExecutionMode getTaskExecutionMode() {
+        return taskExecutionMode;
     }
 
     @Override
-    public TaskOutputCachingBuildCacheKey getBuildCacheKey() {
-        return buildCacheKey;
+    public void setTaskExecutionMode(TaskExecutionMode taskExecutionMode) {
+        this.taskExecutionMode = taskExecutionMode;
     }
 
     @Override
-    public void setBuildCacheKey(TaskOutputCachingBuildCacheKey buildCacheKey) {
-        this.buildCacheKey = buildCacheKey;
-    }
-
-    @Override
-    public OriginTaskExecutionMetadata getOriginExecutionMetadata() {
-        return originExecutionMetadata;
-    }
-
-    @Override
-    public void setOriginExecutionMetadata(OriginTaskExecutionMetadata originExecutionMetadata) {
-        this.originExecutionMetadata = originExecutionMetadata;
-    }
-
     public long markExecutionTime() {
         if (this.executionTime != null) {
             throw new IllegalStateException("execution time already set");
@@ -79,33 +65,24 @@ public class DefaultTaskExecutionContext implements TaskExecutionContext {
     }
 
     @Override
-    public long getExecutionTime() {
-        if (this.executionTime == null) {
-            throw new IllegalStateException("execution time not yet set");
-        }
-
-        return executionTime;
-    }
-
-    @Override
-    @Nullable
-    public List<String> getUpToDateMessages() {
-        return upToDateMessages;
-    }
-
-    @Override
-    public void setUpToDateMessages(List<String> upToDateMessages) {
-        this.upToDateMessages = upToDateMessages;
-    }
-
-    @Override
-    public void setTaskProperties(TaskProperties taskProperties) {
-        this.taskProperties = taskProperties;
+    public void setTaskProperties(TaskProperties properties) {
+        this.properties = properties;
     }
 
     @Override
     public TaskProperties getTaskProperties() {
-        return taskProperties;
+        return properties;
     }
 
+    @Override
+    public Optional<ExecutingBuildOperation> removeSnapshotTaskInputsBuildOperation() {
+        Optional<ExecutingBuildOperation> result = Optional.ofNullable(snapshotTaskInputsBuildOperation);
+        snapshotTaskInputsBuildOperation = null;
+        return result;
+    }
+
+    @Override
+    public void setSnapshotTaskInputsBuildOperation(ExecutingBuildOperation snapshotTaskInputsBuildOperation) {
+        this.snapshotTaskInputsBuildOperation = snapshotTaskInputsBuildOperation;
+    }
 }

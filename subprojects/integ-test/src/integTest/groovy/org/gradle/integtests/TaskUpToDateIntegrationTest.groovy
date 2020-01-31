@@ -17,13 +17,18 @@
 
 package org.gradle.integtests
 
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFiles
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Issue
 import spock.lang.Unroll
 
+@Unroll
 class TaskUpToDateIntegrationTest extends AbstractIntegrationSpec {
     @Unroll
     @Issue("https://issues.gradle.org/browse/GRADLE-3540")
+    @ToBeFixedForInstantExecution
     def "order of #annotation marks task not up-to-date"() {
         buildFile << """
             class MyTask extends DefaultTask {
@@ -44,12 +49,12 @@ class TaskUpToDateIntegrationTest extends AbstractIntegrationSpec {
         """
 
         run "myTask"
-        skippedTasks.empty
+        noneSkipped()
 
         when:
         run "myTask"
         then:
-        skippedTasks.contains ":myTask"
+        skipped ":myTask"
 
         when:
         run "myTask", "-Preverse"
@@ -63,6 +68,7 @@ class TaskUpToDateIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("https://issues.gradle.org/browse/GRADLE-3540")
+    @ToBeFixedForInstantExecution(skip = ToBeFixedForInstantExecution.Skip.FLAKY)
     def "hash set output files marks task up-to-date"() {
         buildFile << """
             class MyTask extends DefaultTask {
@@ -93,6 +99,7 @@ class TaskUpToDateIntegrationTest extends AbstractIntegrationSpec {
 
 
     @Issue("https://github.com/gradle/gradle/issues/3073")
+    @ToBeFixedForInstantExecution
     def "optional output changed from null to non-null marks task not up-to-date"() {
         buildFile << """
             class CustomTask extends DefaultTask {
@@ -124,8 +131,8 @@ class TaskUpToDateIntegrationTest extends AbstractIntegrationSpec {
         executedAndNotSkipped ":customTask"
     }
 
-    @Unroll
     @Issue("https://github.com/gradle/gradle/issues/3073")
+    @ToBeFixedForInstantExecution
     def "output files changed from #before to #after marks task #upToDateString"() {
         buildFile << """
             class CustomTask extends DefaultTask {
@@ -189,6 +196,7 @@ class TaskUpToDateIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("https://github.com/gradle/gradle/issues/3073")
+    @ToBeFixedForInstantExecution
     def "optional input changed from null to non-null marks task not up-to-date"() {
         file("input.txt") << "Input data"
         buildFile << """
@@ -268,5 +276,200 @@ class TaskUpToDateIntegrationTest extends AbstractIntegrationSpec {
         succeeds "customTask"
         then:
         executedAndNotSkipped ":customTask"
+    }
+
+    def "changes to inputs that are excluded by default leave task up-to-date"() {
+        def inputDir = file("inputDir").createDir()
+        inputDir.file('inputFile.txt').text = "input file"
+        inputDir.createDir('something')
+
+        buildFile << """
+            task myTask {
+                inputs.dir('inputDir')
+                outputs.file('build/output.txt')
+                doLast {
+                    file('build/output.txt').text = "Hello world"
+                }
+            }
+        """
+
+        when:
+        run 'myTask'
+        then:
+        executedAndNotSkipped(':myTask')
+
+        when:
+        inputDir.file('.gitignore').text = "some ignored file"
+        inputDir.file('#ignored#').text = "some ignored file"
+        inputDir.file('.git/any-name.txt').text = "some ignored file"
+        inputDir.file('something/.git/deeper/dir/structure/any-name.txt').text = "some ignored file"
+        inputDir.file('._ignored').text = "some ignored file"
+        inputDir.file('some-file.txt~').text = "some ignored file"
+
+        run 'myTask', "--info"
+        then:
+        skipped(':myTask')
+    }
+
+    def "can register multiple file trees within a single output property"() {
+        buildFile << """import org.gradle.api.tasks.OutputFiles
+import org.gradle.api.tasks.TaskAction
+            abstract class MyTask extends DefaultTask {
+                @OutputFiles
+                abstract ConfigurableFileCollection getOutputFiles()
+                
+                @TaskAction
+                void doStuff() {
+                    project.file('build/dir1/output1.txt').text = "first"
+                    project.file('build/dir2/output2.txt').text = "second"
+                }
+            }
+            
+            tasks.register("myTask", MyTask) {
+                outputFiles.from(fileTree('build/dir1'))
+                outputFiles.from(fileTree('build/dir2'))
+            }
+        """
+
+        when:
+        run("myTask")
+        then:
+        executedAndNotSkipped(":myTask")
+
+        when:
+        file("build/dir1").deleteDir()
+        run("myTask")
+        then:
+        executedAndNotSkipped(":myTask")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/4204")
+    @ToBeFixedForInstantExecution
+    def "changing path of empty root directory makes task out of date for #inputAnnotation"() {
+        buildFile << """
+            class MyTask extends DefaultTask {
+                @${inputAnnotation}
+                File input
+                @OutputFile
+                File output
+                
+                @TaskAction
+                void doStuff() {
+                    output.text = input.list().join('\\n')
+                }
+            }           
+            
+            task myTask(type: MyTask) {
+                input = file(inputDir)
+                output = project.file("build/output.txt")
+            }          
+
+            myTask.input.mkdirs()
+        """
+        String myTask = ':myTask'
+
+        when:
+        run myTask, '-PinputDir=inputDir1'
+        then:
+        executedAndNotSkipped(myTask)
+
+        when:
+        run myTask, '-PinputDir=inputDir2'
+        then:
+        executedAndNotSkipped(myTask)
+
+        where:
+        inputAnnotation << [InputFiles.name, InputDirectory.name]
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/6592")
+    def "missing directory is ignored"() {
+        buildFile << """
+            class TaskWithInputDir extends DefaultTask {
+            
+                @InputFiles
+                FileTree inputDir
+                
+                @OutputFile
+                File outputFile
+            
+                @TaskAction
+                void doStuff() { 
+                    outputFile.text = inputDir.files.collect { it.name }.join("\\n") 
+                }
+            }                             
+
+            task myTask1(type: TaskWithInputDir) {
+                inputDir = fileTree(file('input'))
+                outputFile = file('build/output.txt')
+            }
+            task myTask2(type: TaskWithInputDir) {
+                inputDir = fileTree(file('input'))
+                outputFile = file('build/output.txt')
+                dependsOn("myTask1")
+            }
+        """
+
+        def tasks = [":myTask1", ":myTask2"]
+
+        when:
+        run(*tasks)
+        then:
+        executedAndNotSkipped(*tasks)
+
+        when:
+        run(*tasks)
+        then:
+        skipped(*tasks)
+    }
+
+    def "cannot register #invalidOutput as an output"() {
+        buildFile << """
+            abstract class TaskWithInvalidOutput extends DefaultTask {
+                @TaskAction
+                void doStuff() {}
+
+                @OutputFiles
+                abstract ConfigurableFileCollection getInvalidOutput()
+            }
+
+            tasks.register("taskWithInvalidOutput", TaskWithInvalidOutput) {
+                invalidOutput.from(${invalidOutput}(file('${fileName}')))
+            }
+        """
+
+        expect:
+        fails("taskWithInvalidOutput")
+        failure.assertHasCause("Only files and directories can be registered as outputs (was: ${String.format(message, file(fileName).getAbsolutePath())})")
+
+        where:
+        invalidOutput | fileName   | message
+        'zipTree'     | 'some.jar' | "ZIP '%s'"
+        'tarTree'     | 'some.tar' | "TAR '%s'"
+    }
+
+    def "cannot register tar tree of custom resource as an output"() {
+        buildFile << """
+            abstract class TaskWithInvalidOutput extends DefaultTask {
+                @TaskAction
+                void doStuff() {}
+
+                @OutputFiles
+                abstract ConfigurableFileCollection getInvalidOutput()
+            }
+
+            tasks.register("taskWithInvalidOutput", TaskWithInvalidOutput) {
+                invalidOutput.from(tarTree(new ReadableResource() {
+                    InputStream read() { new ByteArrayInputStream("Hello".bytes) }
+                    String displayName = "readable resource"
+                    URI URI = uri("https://test.com")
+                    String baseName = "base name"
+                }))
+            }
+        """
+
+        expect:
+        fails("taskWithInvalidOutput")
+        failure.assertHasCause("Only files and directories can be registered as outputs (was: TAR 'readable resource')")
     }
 }

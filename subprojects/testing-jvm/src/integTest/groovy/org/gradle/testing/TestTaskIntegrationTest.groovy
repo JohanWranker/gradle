@@ -16,14 +16,20 @@
 
 package org.gradle.testing
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.testing.fixture.JUnitMultiVersionIntegrationSpec
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
 import spock.lang.Issue
 import spock.lang.Unroll
 
-class TestTaskIntegrationTest extends AbstractIntegrationSpec {
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_4_LATEST
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_VINTAGE_JUPITER
+
+@TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE_JUPITER })
+class TestTaskIntegrationTest extends JUnitMultiVersionIntegrationSpec {
 
     @Issue("GRADLE-2702")
     def "should not resolve configuration results when there are no tests"() {
@@ -107,7 +113,7 @@ class TestTaskIntegrationTest extends AbstractIntegrationSpec {
         buildFile << """
             apply plugin: 'java'
             ${jcenterRepository()}
-            dependencies { testCompile 'junit:junit:4.12' }
+            dependencies { testImplementation 'junit:junit:4.12' }
             test {
                 maxParallelForks = $maxParallelForks
             }
@@ -135,8 +141,8 @@ class TestTaskIntegrationTest extends AbstractIntegrationSpec {
                 ${jcenterRepository()}
             }
             dependencies { 
-                testCompile 'junit:junit:4.12'
-                testCompile project(":dependency") 
+                testImplementation 'junit:junit:4.12'
+                testImplementation project(":dependency") 
             }
         """
         settingsFile << """
@@ -176,7 +182,7 @@ class TestTaskIntegrationTest extends AbstractIntegrationSpec {
             ${jcenterRepository()}
 
             dependencies { 
-                testCompile 'junit:junit:4.12' 
+                testImplementation 'junit:junit:4.12' 
             }
         """
         file("src/test/java/MyTest.java") << """
@@ -206,32 +212,8 @@ class TestTaskIntegrationTest extends AbstractIntegrationSpec {
         fails 'test'
     }
 
-    @Requires(TestPrecondition.ONLINE)
-    def "emits deprecation warning when using testClassesDir"() {
-        buildFile << """
-            apply plugin: 'java'
-            ${jcenterRepository()}
-
-            dependencies { 
-                testCompile 'junit:junit:4.12' 
-            }
-            compileTestJava {
-                destinationDir = file("build/non-standard")
-            }
-            test {
-                testClassesDir = compileTestJava.destinationDir
-                classpath = sourceSets.test.runtimeClasspath + files(compileTestJava.destinationDir)
-            }
-        """
-        file('src/test/java/MyTest.java') << standaloneTestClass()
-        when:
-        executer.expectDeprecationWarning()
-        succeeds("test")
-        then:
-        result.assertOutputContains("The setTestClassesDir(File) method has been deprecated and is scheduled to be removed in Gradle 5.0. Please use the setTestClassesDirs(FileCollection) method instead.")
-    }
-
     @Issue("https://github.com/gradle/gradle/issues/3627")
+    @ToBeFixedForInstantExecution
     def "can reference properties from TestTaskReports when using @CompileStatic"() {
         buildFile << """
             import groovy.transform.CompileStatic
@@ -280,7 +262,7 @@ class TestTaskIntegrationTest extends AbstractIntegrationSpec {
             ${jcenterRepository()}
 
             dependencies {
-                testCompile 'junit:junit:4.12'
+                testImplementation 'junit:junit:4.12'
             }
 
             sourceCompatibility = 1.9
@@ -288,7 +270,7 @@ class TestTaskIntegrationTest extends AbstractIntegrationSpec {
         """
     }
 
-    private int classFormat(TestFile path) {
+    private static int classFormat(TestFile path) {
         path.bytes[7] & 0xFF
     }
 }

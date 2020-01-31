@@ -17,30 +17,30 @@
 
 package org.gradle.api.publish.maven.internal.artifact
 
+import com.google.common.collect.ImmutableSet
 import org.gradle.api.Task
-import org.gradle.api.artifacts.PublishArtifact
+import org.gradle.api.internal.artifacts.PublishArtifactInternal
 import org.gradle.api.internal.file.FileResolver
+import org.gradle.api.internal.tasks.DefaultTaskDependency
 import org.gradle.api.publish.maven.MavenArtifact
-import org.gradle.api.tasks.TaskDependency
 import org.gradle.api.tasks.bundling.Jar
-import org.gradle.internal.reflect.DirectInstantiator
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.internal.typeconversion.NotationParser
 import org.gradle.test.fixtures.AbstractProjectBuilderSpec
 import org.gradle.util.TestUtil
 
 public class MavenArtifactNotationParserFactoryTest extends AbstractProjectBuilderSpec {
-    Instantiator instantiator = DirectInstantiator.INSTANCE
-    def taskDependency = Mock(TaskDependency)
+    Instantiator instantiator = TestUtil.instantiatorFactory().decorateLenient()
+    def task = Mock(Task)
+    def dependencies = ImmutableSet.of(task)
+    def taskDependency = new DefaultTaskDependency(null, dependencies)
     def fileNotationParser = Mock(NotationParser)
-    def publishArtifact = Stub(PublishArtifact) {
+    def publishArtifact = Stub(PublishArtifactInternal) {
         getExtension() >> 'extension'
         getClassifier() >> 'classifier'
         getFile() >> new File('foo')
         getBuildDependencies() >> taskDependency
     }
-    def task = Mock(Task)
-    def dependencies = Collections.singleton(Mock(Task))
 
     NotationParser<Object, MavenArtifact> parser
 
@@ -62,7 +62,6 @@ public class MavenArtifactNotationParserFactoryTest extends AbstractProjectBuild
 
     def "creates MavenArtifact for PublishArtifact"() {
         when:
-        taskDependency.getDependencies(task) >> dependencies
         def mavenArtifact = parser.parseNotation(publishArtifact)
 
         then:
@@ -76,7 +75,6 @@ public class MavenArtifactNotationParserFactoryTest extends AbstractProjectBuild
 
     def "creates MavenArtifact for source map notation"() {
         when:
-        taskDependency.getDependencies(task) >> dependencies
         MavenArtifact mavenArtifact = parser.parseNotation(source: publishArtifact)
 
         then:
@@ -90,7 +88,6 @@ public class MavenArtifactNotationParserFactoryTest extends AbstractProjectBuild
 
     def "creates and configures MavenArtifact for source map notation"() {
         when:
-        taskDependency.getDependencies(task) >> dependencies
         MavenArtifact mavenArtifact = parser.parseNotation(source: publishArtifact, extension: "ext", classifier: "classy")
 
         then:
@@ -123,6 +120,7 @@ public class MavenArtifactNotationParserFactoryTest extends AbstractProjectBuild
         def rootProject = TestUtil.createRootProject(temporaryFolder.testDirectory)
         def archive = rootProject.task('foo', type: Jar, {})
         archive.setBaseName("baseName")
+        archive.setDestinationDir(temporaryFolder.testDirectory)
         archive.setExtension(archiveExtension)
         archive.setClassifier(archiveClassifier)
 

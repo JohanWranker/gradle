@@ -16,6 +16,7 @@
 
 package org.gradle.plugins.ide.idea
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.plugins.ide.AbstractIdeIntegrationTest
 import org.junit.Rule
@@ -26,6 +27,7 @@ class ConfigurationHooksIntegrationTest extends AbstractIdeIntegrationTest {
     public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Test
+    @ToBeFixedForInstantExecution
     void triggersBeforeAndWhenConfigurationHooks() {
 
         //this test is a bit peculiar as it has assertions inside the gradle script
@@ -60,14 +62,15 @@ idea {
 
 tasks.idea {
     doLast {
-        assert beforeConfiguredObjects == 3 : "beforeConfigured() hooks shoold be fired for domain model objects"
-        assert whenConfiguredObjects == 3 : "whenConfigured() hooks shoold be fired for domain model objects"
+        assert beforeConfiguredObjects == 3 : "beforeConfigured() hooks should be fired for domain model objects"
+        assert whenConfiguredObjects == 3 : "whenConfigured() hooks should be fired for domain model objects"
     }
 }
 '''
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void whenHooksApplyChangesToGeneratedFile() {
         //when
         runIdeaTask '''

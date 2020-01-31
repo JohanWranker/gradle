@@ -15,9 +15,9 @@
  */
 
 
-
 package org.gradle.play.tasks
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
 import org.gradle.test.fixtures.archive.JarTestFixture
 import org.gradle.test.fixtures.file.TestFile
@@ -30,29 +30,21 @@ abstract class AbstractRoutesCompileIntegrationTest extends MultiVersionIntegrat
     def destinationDir = file(destinationDirPath)
 
     abstract getScalaRoutesFileName(String packageName, String namespace)
-    abstract getJavaRoutesFileName(String packageName, String namespace)
-    abstract getReverseRoutesFileName(String packageName, String namespace)
-    abstract getOtherRoutesFileNames()
 
-    protected fixForPlayVersion() {
-        if (versionNumber >= VersionNumber.parse("2.6.0")) {
-            [ '', '.other', '.some.pkg' ].each { path ->
-                file("app/controllers/${path}/Application.scala").with {
-                    if (exists()) {
-                        text = text.replaceFirst("Controller", "InjectedController")
-                    }
-                }
-            }
-        }
-    }
+    abstract getJavaRoutesFileName(String packageName, String namespace)
+
+    abstract getReverseRoutesFileName(String packageName, String namespace)
+
+    abstract getOtherRoutesFileNames()
 
     def destinationDir(String sourceSetName) {
         return file("build/src/play/binary/${sourceSetName}")
     }
 
     def setup() {
+        executer.noDeprecationChecks()
         settingsFile << """ rootProject.name = 'routes-play-app' """
-        buildFile <<"""
+        buildFile << """
 plugins {
     id 'play-application'
 }
@@ -69,6 +61,49 @@ ${PLAY_REPOSITORIES}
 """
     }
 
+    protected String controllers() {
+        if (versionNumber >= VersionNumber.parse('2.6.0')) {
+            return "@controllers"
+        } else {
+            return "controllers"
+        }
+    }
+
+    protected String controller(String packageId) {
+        if (versionNumber >= VersionNumber.parse('2.6.0')) {
+            return """
+package controllers${packageId}
+
+import javax.inject._
+import play.api._
+import play.api.mvc._
+import models._
+
+@Singleton
+class Application @Inject() extends InjectedController {
+  def index = Action {
+    Ok("Your new application is ready.")
+  }
+}
+"""
+        } else {
+            return """
+package controllers${packageId}
+
+
+import play.api._
+import play.api.mvc._
+import models._
+
+object Application extends Controller {
+  def index = Action {
+    Ok("Your new application is ready.")
+  }
+}
+"""
+        }
+    }
+
     def "can run RoutesCompile"() {
         given:
         withRoutesTemplate()
@@ -78,6 +113,7 @@ ${PLAY_REPOSITORIES}
         destinationDir.assertHasDescendants(createRouteFileList() as String[])
     }
 
+    @ToBeFixedForInstantExecution
     def "recompiles on changed routes file input"() {
         given:
         TestFile templateFile = withRoutesTemplate()
@@ -94,10 +130,11 @@ ${PLAY_REPOSITORIES}
         // I suspect that the Play routes compiler has some incremental check based on timestamp
         sleep(1000)
         templateFile << """
-GET     /newroute                          controllers.Application.index()
+GET     /newroute                          ${controllers()}.Application.index()
 """
 
         and:
+        executer.noDeprecationChecks()
         succeeds "compilePlayBinaryPlayRoutes"
 
         then:
@@ -109,6 +146,7 @@ GET     /newroute                          controllers.Application.index()
         getReverseRoutesFile().assertContentsHaveChangedSince(reverseRoutesFileSnapshot);
 
         when:
+        executer.noDeprecationChecks()
         succeeds "compilePlayBinaryPlayRoutes"
 
         then:
@@ -127,7 +165,8 @@ GET     /newroute                          controllers.Application.index()
         file(destinationDirPath, getReverseRoutesFileName('', ''))
     }
 
-    def "compiles additional routes file and cleans up output on removal"(){
+    @ToBeFixedForInstantExecution
+    def "compiles additional routes file and cleans up output on removal"() {
         when:
         withRoutesTemplate()
         then:
@@ -136,6 +175,7 @@ GET     /newroute                          controllers.Application.index()
         destinationDir.assertHasDescendants(createRouteFileList() as String[])
 
         when:
+        executer.noDeprecationChecks()
         withRoutesTemplate("foo")
         and:
         succeeds("compilePlayBinaryPlayRoutes")
@@ -143,6 +183,7 @@ GET     /newroute                          controllers.Application.index()
         destinationDir.assertHasDescendants((createRouteFileList() + createRouteFileList('foo')) as String[])
 
         when:
+        executer.noDeprecationChecks()
         file("conf/foo.routes").delete()
         then:
         succeeds("compilePlayBinaryPlayRoutes")
@@ -151,21 +192,20 @@ GET     /newroute                          controllers.Application.index()
         createRouteFileList('foo').each { destinationDir.file(it).assertDoesNotExist() }
     }
 
-    def "compiles multiple Routes source sets as part of play application build" () {
+    def "compiles multiple Routes source sets as part of play application build"() {
         withExtraSourceSets()
         withRoutesTemplate()
         withRoutesSource(file("extraRoutes", "some", "pkg", "some.pkg.routes"), ".some.pkg")
         withRoutesSource(file("otherRoutes", "other", "other.routes"), ".other")
-        fixForPlayVersion()
 
         when:
         succeeds "assemble"
 
         then:
         executedAndNotSkipped(
-                ":compilePlayBinaryPlayRoutes",
-                ":compilePlayBinaryPlayExtraRoutes",
-                ":compilePlayBinaryPlayOtherRoutes"
+            ":compilePlayBinaryPlayRoutes",
+            ":compilePlayBinaryPlayExtraRoutes",
+            ":compilePlayBinaryPlayOtherRoutes"
         )
 
         and:
@@ -179,7 +219,7 @@ GET     /newroute                          controllers.Application.index()
         jar("build/playBinary/lib/routes-play-app.jar").containsDescendants("controllers/other/routes.class")
     }
 
-    def "extra route sources appear in the components report" () {
+    def "extra route sources appear in the components report"() {
         withExtraSourceSets()
 
         when:
@@ -242,7 +282,7 @@ Binaries
 # ~~~~
 
 # Home page
-GET     /                          controllers${packageId}.Application.index()
+GET     /                          ${controllers()}${packageId}.Application.index()
 """
         withControllerSource(file("app/controllers/${packageId}/Application.scala"), packageId)
         return routesFile
@@ -250,20 +290,7 @@ GET     /                          controllers${packageId}.Application.index()
 
     def withControllerSource(TestFile file, String packageId) {
         file.createFile()
-        file << """
-package controllers${packageId}
-
-
-import play.api._
-import play.api.mvc._
-import models._
-
-object Application extends Controller {
-  def index = Action {
-    Ok("Your new application is ready.")
-  }
-}
-"""
+        file << controller(packageId)
     }
 
     def withRoutesTemplate(String packageName = "") {
@@ -272,8 +299,10 @@ object Application extends Controller {
         withRoutesSource(routesFile, packageId)
     }
 
-    def createRouteFileList(String packageName = '', String namespace='') {
-        [getJavaRoutesFileName(packageName, namespace), getReverseRoutesFileName(packageName, namespace), getScalaRoutesFileName(packageName, namespace)] + otherRoutesFileNames.collect { it(packageName, namespace) }
+    def createRouteFileList(String packageName = '', String namespace = '') {
+        [getJavaRoutesFileName(packageName, namespace), getReverseRoutesFileName(packageName, namespace), getScalaRoutesFileName(packageName, namespace)] + otherRoutesFileNames.collect {
+            it(packageName, namespace)
+        }
     }
 
     def withExtraSourceSets() {

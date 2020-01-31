@@ -15,17 +15,24 @@
  */
 package org.gradle.testing
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.JUnitXmlTestExecutionResult
+import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
+import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.integtests.fixtures.TestResources
 import org.junit.Rule
 
-class IncrementalTestIntegrationTest extends AbstractIntegrationSpec {
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_4_LATEST
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_VINTAGE_JUPITER
+
+@TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE_JUPITER })
+class IncrementalTestIntegrationTest extends MultiVersionIntegrationSpec {
 
     @Rule public final TestResources resources = new TestResources(temporaryFolder)
 
     def setup() {
         executer.noExtraLogging()
+        executer.withRepositoryMirrors()
     }
 
     def doesNotRunStaleTests() {
@@ -38,6 +45,7 @@ class IncrementalTestIntegrationTest extends AbstractIntegrationSpec {
         succeeds('test')
     }
 
+    @ToBeFixedForInstantExecution
     def executesTestsWhenSourceChanges() {
         given:
         succeeds('test')
@@ -47,7 +55,7 @@ class IncrementalTestIntegrationTest extends AbstractIntegrationSpec {
         file('src/main/java/MainClass.java').assertIsFile().copyFrom(file('NewMainClass.java'))
 
         then:
-        succeeds('test').assertTasksNotSkipped(':compileJava', ':classes', ':compileTestJava', ':testClasses', ':test')
+        succeeds('test').assertTasksNotSkipped(':compileJava', ':classes', ':test')
         succeeds('test').assertTasksNotSkipped()
 
         when:
@@ -59,6 +67,7 @@ class IncrementalTestIntegrationTest extends AbstractIntegrationSpec {
         succeeds('test').assertTasksNotSkipped()
     }
 
+    @ToBeFixedForInstantExecution
     def executesTestsWhenTestFrameworkChanges() {
         given:
         succeeds('test')
@@ -95,29 +104,53 @@ public class BarTest {
         file("build.gradle") << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile 'junit:junit:4.12' }
+            dependencies { testImplementation 'junit:junit:4.12' }
             test.beforeTest { println "executed " + it }
         """
 
         when:
-        def result = executer.withTasks("test", "-Dtest.single=Foo").run()
+        succeeds("test", "--tests", "Foo*")
 
         then:
         //asserting on output because test results are kept in between invocations
-        !result.output.contains("executed Test test(BarTest)")
-        result.output.contains("executed Test test(FooTest)")
+        outputDoesNotContain("executed Test test(BarTest)")
+        outputContains("executed Test test(FooTest)")
 
         when:
-        result = executer.withTasks("test", "-Dtest.single=Bar").run()
+        succeeds("test", "--tests", "Bar*")
 
         then:
-        result.output.contains("executed Test test(BarTest)")
-        !result.output.contains("executed Test test(FooTest)")
+        outputContains("executed Test test(BarTest)")
+        outputDoesNotContain("executed Test test(FooTest)")
 
         when:
-        result = executer.withTasks("test", "-Dtest.single=Bar").run()
+        succeeds("test", "--tests", "Bar*")
 
         then:
         result.assertTaskSkipped(":test")
+    }
+
+    def "does not re-run tests when parameter of disabled report changes"() {
+        buildFile << """
+            test {
+                reports.html {
+                    enabled = true
+                }
+                reports.junitXml {
+                    enabled = false
+                    outputPerTestCase = Boolean.parseBoolean(project.property('outputPerTestCase'))
+                }
+            }
+        """
+
+        when:
+        succeeds("test", "-PoutputPerTestCase=true")
+        then:
+        executedAndNotSkipped(":test")
+
+        when:
+        succeeds("test", "-PoutputPerTestCase=false")
+        then:
+        skipped(":test")
     }
 }

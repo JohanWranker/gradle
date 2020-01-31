@@ -15,7 +15,6 @@
  */
 package org.gradle.tooling.model.eclipse;
 
-import org.gradle.api.Incubating;
 import org.gradle.tooling.model.DomainObjectSet;
 import org.gradle.tooling.model.GradleProject;
 import org.gradle.tooling.model.HasGradleProject;
@@ -34,11 +33,13 @@ public interface EclipseProject extends HierarchicalEclipseProject {
     /**
      * {@inheritDoc}
      */
+    @Override
     EclipseProject getParent();
 
     /**
      * {@inheritDoc}
      */
+    @Override
     DomainObjectSet<? extends EclipseProject> getChildren();
 
     /**
@@ -48,7 +49,7 @@ public interface EclipseProject extends HierarchicalEclipseProject {
      * @throws UnsupportedMethodException For Gradle versions older than 2.10, where this method is not supported.
      * @since 2.10
      */
-    @Nullable @Incubating
+    @Nullable
     EclipseJavaSourceSettings getJavaSourceSettings() throws UnsupportedMethodException;
 
     /**
@@ -60,6 +61,7 @@ public interface EclipseProject extends HierarchicalEclipseProject {
      * @return associated gradle project
      * @since 1.0-milestone-5
      */
+    @Override
     GradleProject getGradleProject();
 
     /**
@@ -84,7 +86,6 @@ public interface EclipseProject extends HierarchicalEclipseProject {
      * @since 2.9
      * @throws UnsupportedMethodException For Gradle versions older than 2.9, where this method is not supported.
      */
-    @Incubating
     DomainObjectSet<? extends EclipseProjectNature> getProjectNatures() throws UnsupportedMethodException;
 
     /**
@@ -101,7 +102,6 @@ public interface EclipseProject extends HierarchicalEclipseProject {
      * @since 2.9
      * @throws UnsupportedMethodException For Gradle versions older than 2.9, where this method is not supported.
      */
-    @Incubating
     DomainObjectSet<? extends EclipseBuildCommand> getBuildCommands() throws UnsupportedMethodException;
 
     /**
@@ -111,7 +111,6 @@ public interface EclipseProject extends HierarchicalEclipseProject {
      * @since 3.0
      * @throws UnsupportedMethodException For Gradle versions older than 3.0, where this method is not supported.
      */
-    @Incubating
     DomainObjectSet<? extends EclipseClasspathContainer> getClasspathContainers() throws UnsupportedMethodException;
 
     /**
@@ -121,6 +120,15 @@ public interface EclipseProject extends HierarchicalEclipseProject {
      * @since 3.0
      * @throws UnsupportedMethodException For Gradle versions older than 3.0, where this method is not supported.
      */
-    @Incubating
     EclipseOutputLocation getOutputLocation() throws UnsupportedMethodException;
+
+    /**
+     * If this method returns true then Eclipse should execute the tasks configured at {@code eclipse.autoBuildTasks}
+     * every time the auto-build is triggered for the target project.
+     *
+     * @return whether the project has auto-build tasks configured
+     * @since 5.4
+     * @see RunEclipseAutoBuildTasks
+     */
+    boolean hasAutoBuildTasks();
 }

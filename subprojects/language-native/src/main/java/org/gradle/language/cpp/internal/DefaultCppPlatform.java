@@ -17,11 +17,28 @@
 package org.gradle.language.cpp.internal;
 
 import org.gradle.language.cpp.CppPlatform;
-import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
-import org.gradle.nativeplatform.platform.internal.NativePlatformInternal;
+import org.gradle.nativeplatform.TargetMachine;
+import org.gradle.nativeplatform.platform.NativePlatform;
 
-public class DefaultCppPlatform extends DefaultNativePlatform implements CppPlatform {
-    public DefaultCppPlatform(String name, NativePlatformInternal targetMachine) {
-        super(name, targetMachine.getOperatingSystem(), targetMachine.getArchitecture());
+public class DefaultCppPlatform implements CppPlatform {
+    private final TargetMachine targetMachine;
+    private final NativePlatform nativePlatform;
+
+    public DefaultCppPlatform(TargetMachine targetMachine) {
+        this(targetMachine, null);
+    }
+
+    public DefaultCppPlatform(TargetMachine targetMachine, NativePlatform nativePlatform) {
+        this.targetMachine = targetMachine;
+        this.nativePlatform = nativePlatform;
+    }
+
+    @Override
+    public TargetMachine getTargetMachine() {
+        return targetMachine;
+    }
+
+    public NativePlatform getNativePlatform() {
+        return nativePlatform;
     }
 }

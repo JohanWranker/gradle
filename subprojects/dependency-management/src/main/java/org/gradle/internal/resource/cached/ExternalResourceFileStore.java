@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 the original author or authors.
+ * Copyright 2020 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,31 +15,10 @@
  */
 package org.gradle.internal.resource.cached;
 
-import org.apache.commons.lang.StringUtils;
-import org.gradle.api.Transformer;
-import org.gradle.api.internal.file.TemporaryFileProvider;
-import org.gradle.internal.resource.local.GroupedAndNamedUniqueFileStore;
-import org.gradle.internal.resource.local.UniquePathKeyFileStore;
+import org.gradle.internal.resource.local.FileAccessTracker;
+import org.gradle.internal.resource.local.FileStore;
+import org.gradle.internal.resource.local.FileStoreSearcher;
 
-import java.io.File;
-
-public class ExternalResourceFileStore extends GroupedAndNamedUniqueFileStore<String> {
-
-    private static final Transformer<String, String> GROUPER = new Transformer<String, String>() {
-        @Override
-        public String transform(String s) {
-            return String.valueOf(Math.abs(s.hashCode()) % 100);
-        }
-    };
-
-    private static final Transformer<String, String> NAMER = new Transformer<String, String>() {
-        @Override
-        public String transform(String s) {
-            return StringUtils.substringAfterLast(s, "/");
-        }
-    };
-
-    public ExternalResourceFileStore(File baseDir, TemporaryFileProvider tmpProvider) {
-        super(new UniquePathKeyFileStore(baseDir), tmpProvider, GROUPER, NAMER);
-    }
+public interface ExternalResourceFileStore extends FileStore<String>, FileStoreSearcher<String> {
+    FileAccessTracker getFileAccessTracker();
 }

@@ -19,13 +19,12 @@ package org.gradle.api.internal.artifacts.ivyservice.resolveengine;
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.DefaultConflictResolverDetails;
 import org.gradle.internal.Cast;
-import org.gradle.internal.component.model.ComponentResolveMetadata;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-class ProjectDependencyForcingResolver implements ModuleConflictResolver {
+class ProjectDependencyForcingResolver<T extends ComponentResolutionState> implements ModuleConflictResolver<T> {
     private final ModuleConflictResolver delegate;
 
     ProjectDependencyForcingResolver(ModuleConflictResolver delegate) {
@@ -33,14 +32,13 @@ class ProjectDependencyForcingResolver implements ModuleConflictResolver {
     }
 
     @Override
-    public <T extends ComponentResolutionState> void select(ConflictResolverDetails<T> details) {
+    public void select(ConflictResolverDetails<T> details) {
         // the collection will only be initialized if more than one project candidate is found
         Collection<T> projectCandidates = null;
         T foundProjectCandidate = null;
         // fine one or more project dependencies among conflicting modules
         for (T candidate : details.getCandidates()) {
-            ComponentResolveMetadata metaData = candidate.getMetaData();
-            if (metaData != null && metaData.getComponentId() instanceof ProjectComponentIdentifier) {
+            if (candidate.getComponentId() instanceof ProjectComponentIdentifier) {
                 if (foundProjectCandidate == null) {
                     // found the first project dependency
                     foundProjectCandidate = candidate;

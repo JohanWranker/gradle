@@ -16,7 +16,6 @@
 package org.gradle.testing.jacoco.tasks;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.Task;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
@@ -40,7 +39,6 @@ import java.io.File;
  * Task to merge multiple execution data files into one.
  */
 @CacheableTask
-@Incubating
 public class JacocoMerge extends JacocoBase {
 
     private FileCollection executionData;

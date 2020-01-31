@@ -15,7 +15,6 @@
  */
 package org.gradle.api.reporting;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.Project;
 import org.gradle.api.file.Directory;
 import org.gradle.api.file.DirectoryProperty;
@@ -56,7 +55,8 @@ public class ReportingExtension {
 
     public ReportingExtension(Project project) {
         this.project = (ProjectInternal)project;
-        this.baseDirectory = project.getLayout().directoryProperty(project.getLayout().getBuildDirectory().dir(DEFAULT_REPORTS_DIR_NAME));
+        this.baseDirectory = project.getObjects().directoryProperty();
+        baseDirectory.set(project.getLayout().getBuildDirectory().dir(DEFAULT_REPORTS_DIR_NAME));
     }
 
     /**
@@ -91,7 +91,7 @@ public class ReportingExtension {
         this.baseDirectory.set(project.provider(new Callable<Directory>() {
             @Override
             public Directory call() throws Exception {
-                DirectoryProperty result = project.getLayout().directoryProperty();
+                DirectoryProperty result = project.getObjects().directoryProperty();
                 result.set(project.file(baseDir));
                 return result.get();
             }
@@ -103,7 +103,6 @@ public class ReportingExtension {
      *
      * @since 4.4
      */
-    @Incubating
     public DirectoryProperty getBaseDirectory() {
         return baseDirectory;
     }

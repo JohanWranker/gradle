@@ -45,7 +45,7 @@ class CacheableTaskOutcomeCrossVersionSpec extends ToolingApiSpecification {
         def cacheDir = file("task-output-cache")
         settingsFile << """
             buildCache {
-                local(DirectoryBuildCache) {
+                local {
                     directory = "${TextUtil.escapeString(cacheDir.absolutePath)}"
                 }
             }
@@ -73,7 +73,7 @@ class CacheableTaskOutcomeCrossVersionSpec extends ToolingApiSpecification {
         cacheableTaskResult(pullFromCacheResults).upToDate
     }
 
-    @ToolingApiVersion('<3.3 >=2.5')
+    @ToolingApiVersion('<3.3 >=3.0')
     @TargetGradleVersion('>=3.5')
     def "cacheable task is reported as UP-TO-DATE on older TAPI versions"() {
         when:

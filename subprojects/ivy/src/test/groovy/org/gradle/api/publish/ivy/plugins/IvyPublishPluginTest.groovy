@@ -16,6 +16,7 @@
 
 package org.gradle.api.publish.ivy.plugins
 
+
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.ivy.IvyPublication
 import org.gradle.api.publish.ivy.internal.publication.DefaultIvyPublication
@@ -57,7 +58,7 @@ class IvyPublishPluginTest extends PlatformBaseSpecification {
         project.tasks["publish"].dependsOn.contains publishTask.name
     }
 
-    def "ivy publication coordinates are a snapshot of project identity"() {
+    def "ivy publication coordinates are live"() {
         when:
         project.group = "foo"
         project.version = 1.0
@@ -80,8 +81,8 @@ class IvyPublishPluginTest extends PlatformBaseSpecification {
 
         then:
         with(publishing.publications.test) {
-            identity.organisation == "foo"
-            identity.revision == "1.0"
+            identity.organisation == "changed-group"
+            identity.revision == "changed-version"
         }
     }
 
@@ -101,5 +102,23 @@ class IvyPublishPluginTest extends PlatformBaseSpecification {
         def transformer = new XmlTransformer()
         transformer.addAction(publication.descriptor.xmlAction)
         transformer.transform("<things/>").contains('things foo="bar"')
+    }
+
+    def "creates publish tasks for all publications in a repository"() {
+        when:
+        publishing.publications.create("test", IvyPublication)
+        publishing.publications.create("test2", IvyPublication)
+        publishing.repositories { ivy { url = "http://foo.com" } }
+        publishing.repositories { ivy { name='other'; url = "http://bar.com" } }
+
+        then:
+        project.tasks["publishAllPublicationsToIvyRepository"].dependsOn.containsAll([
+                "publishTestPublicationToIvyRepository",
+                "publishTest2PublicationToIvyRepository"
+        ])
+        project.tasks["publishAllPublicationsToOtherRepository"].dependsOn.containsAll([
+                "publishTestPublicationToOtherRepository",
+                "publishTest2PublicationToOtherRepository"
+        ])
     }
 }

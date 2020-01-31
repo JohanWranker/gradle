@@ -18,14 +18,42 @@ package org.gradle.api.publish.maven.internal.publication;
 
 import org.gradle.api.Action;
 import org.gradle.api.XmlProvider;
+import org.gradle.api.publish.internal.versionmapping.VersionMappingStrategyInternal;
 import org.gradle.api.publish.maven.MavenDependency;
 import org.gradle.api.publish.maven.MavenPom;
+import org.gradle.api.publish.maven.MavenPomCiManagement;
+import org.gradle.api.publish.maven.MavenPomContributor;
+import org.gradle.api.publish.maven.MavenPomDeveloper;
+import org.gradle.api.publish.maven.MavenPomIssueManagement;
+import org.gradle.api.publish.maven.MavenPomLicense;
+import org.gradle.api.publish.maven.MavenPomMailingList;
+import org.gradle.api.publish.maven.MavenPomOrganization;
+import org.gradle.api.publish.maven.MavenPomScm;
 import org.gradle.api.publish.maven.internal.dependencies.MavenDependencyInternal;
 import org.gradle.api.publish.maven.internal.publisher.MavenProjectIdentity;
 
+import java.util.List;
 import java.util.Set;
 
 public interface MavenPomInternal extends MavenPom {
+
+    List<MavenPomLicense> getLicenses();
+
+    MavenPomOrganization getOrganization();
+
+    List<MavenPomDeveloper> getDevelopers();
+
+    List<MavenPomContributor> getContributors();
+
+    MavenPomScm getScm();
+
+    MavenPomIssueManagement getIssueManagement();
+
+    MavenPomCiManagement getCiManagement();
+
+    MavenPomDistributionManagementInternal getDistributionManagement();
+
+    List<MavenPomMailingList> getMailingLists();
 
     MavenProjectIdentity getProjectIdentity();
 
@@ -33,9 +61,17 @@ public interface MavenPomInternal extends MavenPom {
 
     Set<MavenDependency> getRuntimeDependencyManagement();
 
+    Set<MavenDependency> getImportDependencyManagement();
+
     Set<MavenDependencyInternal> getApiDependencies();
 
     Set<MavenDependencyInternal> getRuntimeDependencies();
 
+    Set<MavenDependencyInternal> getOptionalDependencies();
+
     Action<XmlProvider> getXmlAction();
+
+    VersionMappingStrategyInternal getVersionMappingStrategy();
+
+    boolean writeGradleMetadataMarker();
 }

@@ -15,25 +15,24 @@
  */
 package org.gradle.api.internal.artifacts.repositories.resolver;
 
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
 import org.gradle.internal.component.external.model.UrlBackedArtifactMetadata;
 import org.gradle.internal.component.model.ModuleDescriptorArtifactMetadata;
-import org.gradle.internal.component.model.ModuleSource;
 import org.gradle.internal.resolve.result.ResourceAwareResolveResult;
 import org.gradle.internal.resource.ExternalResourceName;
 import org.gradle.internal.resource.ExternalResourceRepository;
 import org.gradle.internal.resource.ResourceExceptions;
 import org.gradle.internal.resource.local.FileStore;
 import org.gradle.internal.resource.local.LocallyAvailableExternalResource;
-import org.gradle.internal.resource.local.LocallyAvailableResource;
 import org.gradle.internal.resource.local.LocallyAvailableResourceCandidates;
 import org.gradle.internal.resource.local.LocallyAvailableResourceFinder;
 import org.gradle.internal.resource.transfer.CacheAwareExternalResourceAccessor;
+import org.gradle.internal.resource.transfer.CacheAwareExternalResourceAccessor.DefaultResourceFileStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.util.List;
 
 class DefaultExternalResourceArtifactResolver implements ExternalResourceArtifactResolver {
@@ -56,10 +55,6 @@ class DefaultExternalResourceArtifactResolver implements ExternalResourceArtifac
     }
 
     @Override
-    public ModuleSource getSource() {
-        return null;
-    }
-
     public LocallyAvailableExternalResource resolveArtifact(ModuleComponentArtifactMetadata artifact, ResourceAwareResolveResult result) {
         if (artifact instanceof ModuleDescriptorArtifactMetadata) {
             return downloadStaticResource(ivyPatterns, artifact, result);
@@ -67,6 +62,7 @@ class DefaultExternalResourceArtifactResolver implements ExternalResourceArtifac
         return downloadStaticResource(artifactPatterns, artifact, result);
     }
 
+    @Override
     public boolean artifactExists(ModuleComponentArtifactMetadata artifact, ResourceAwareResolveResult result) {
         return staticResourceExists(artifactPatterns, artifact, result);
     }
@@ -104,17 +100,13 @@ class DefaultExternalResourceArtifactResolver implements ExternalResourceArtifac
             if (isIncomplete(resourcePattern, artifact)) {
                 continue;
             }
-            ExternalResourceName moduleDir = resourcePattern.toModuleVersionPath(artifact.getComponentId());
+            ExternalResourceName moduleDir = resourcePattern.toModuleVersionPath(normalizeComponentId(artifact));
             ExternalResourceName location = moduleDir.resolve(artifact.getRelativeUrl());
             result.attempted(location);
             LOGGER.debug("Loading {}", location);
             LocallyAvailableResourceCandidates localCandidates = locallyAvailableResourceFinder.findCandidates(artifact);
             try {
-                LocallyAvailableExternalResource resource = resourceAccessor.getResource(location, artifact.getId().getFileName(), new CacheAwareExternalResourceAccessor.ResourceFileStore() {
-                    public LocallyAvailableResource moveIntoCache(File downloadedResource) {
-                        return fileStore.move(artifact.getId(), downloadedResource);
-                    }
-                }, localCandidates);
+                LocallyAvailableExternalResource resource = resourceAccessor.getResource(location, artifact.getId().getFileName(), getFileStore(artifact), localCandidates);
                 if (resource != null) {
                     return resource;
                 }
@@ -123,6 +115,15 @@ class DefaultExternalResourceArtifactResolver implements ExternalResourceArtifac
             }
         }
         return null;
+    }
+
+    private ModuleComponentIdentifier normalizeComponentId(UrlBackedArtifactMetadata artifact) {
+        ModuleComponentIdentifier rawId = artifact.getComponentId();
+        if (rawId instanceof MavenUniqueSnapshotComponentIdentifier) {
+            // We cannot use a Maven unique snapshot id for the path part
+            return ((MavenUniqueSnapshotComponentIdentifier) rawId).getSnapshotComponent();
+        }
+        return rawId;
     }
 
     private LocallyAvailableExternalResource downloadByCoords(List<ResourcePattern> patternList, final ModuleComponentArtifactMetadata artifact, ResourceAwareResolveResult result) {
@@ -135,11 +136,7 @@ class DefaultExternalResourceArtifactResolver implements ExternalResourceArtifac
             LOGGER.debug("Loading {}", location);
             LocallyAvailableResourceCandidates localCandidates = locallyAvailableResourceFinder.findCandidates(artifact);
             try {
-                LocallyAvailableExternalResource resource = resourceAccessor.getResource(location, null, new CacheAwareExternalResourceAccessor.ResourceFileStore() {
-                    public LocallyAvailableResource moveIntoCache(File downloadedResource) {
-                        return fileStore.move(artifact.getId(), downloadedResource);
-                    }
-                }, localCandidates);
+                LocallyAvailableExternalResource resource = resourceAccessor.getResource(location, null, getFileStore(artifact), localCandidates);
                 if (resource != null) {
                     return resource;
                 }
@@ -148,6 +145,15 @@ class DefaultExternalResourceArtifactResolver implements ExternalResourceArtifac
             }
         }
         return null;
+    }
+
+    private CacheAwareExternalResourceAccessor.ResourceFileStore getFileStore(final ModuleComponentArtifactMetadata artifact) {
+        return new DefaultResourceFileStore<ModuleComponentArtifactIdentifier>(fileStore) {
+            @Override
+            protected ModuleComponentArtifactIdentifier computeKey() {
+                return artifact.getId();
+            }
+        };
     }
 
     private boolean isIncomplete(ResourcePattern resourcePattern, ModuleComponentArtifactMetadata artifact) {

@@ -17,14 +17,15 @@
 package org.gradle.testing.testng
 
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
 import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.testing.fixture.TestNGCoverage
 import spock.lang.Ignore
 import spock.lang.Issue
 
-import static org.hamcrest.Matchers.containsString
-import static org.hamcrest.Matchers.not
+import static org.hamcrest.CoreMatchers.containsString
+import static org.hamcrest.CoreMatchers.not
 
 @TargetCoverage({ TestNGCoverage.STANDARD_COVERAGE_WITH_INITIAL_ICLASS_LISTENER })
 class TestNGIntegrationTest extends MultiVersionIntegrationSpec {
@@ -34,6 +35,7 @@ class TestNGIntegrationTest extends MultiVersionIntegrationSpec {
         TestNGCoverage.enableTestNG(buildFile, version)
     }
 
+    @ToBeFixedForInstantExecution
     def "executes tests in correct environment"() {
         given:
         buildFile << """
@@ -85,6 +87,7 @@ class TestNGIntegrationTest extends MultiVersionIntegrationSpec {
         new DefaultTestExecutionResult(testDirectory).testClass('org.gradle.OkTest').assertTestPassed('ok')
     }
 
+    @ToBeFixedForInstantExecution
     def "can listen for test results"() {
         given:
         buildFile << """
@@ -112,28 +115,29 @@ class TestNGIntegrationTest extends MultiVersionIntegrationSpec {
         '''.stripIndent()
 
         when:
-        def result = succeeds 'test'
+        succeeds 'test'
 
         then:
-        result.output.contains "START [Gradle Test Run :test] [Gradle Test Run :test]\n"
-        result.output.contains "FINISH [Gradle Test Run :test] [Gradle Test Run :test]\n"
+        outputContains "START [Gradle Test Run :test] [Gradle Test Run :test]\n"
+        outputContains "FINISH [Gradle Test Run :test] [Gradle Test Run :test]\n"
         result.output.readLines().find { it.matches "START \\[Gradle Test Executor \\d+] \\[Gradle Test Executor \\d+]" }
         result.output.readLines().find { it.matches "FINISH \\[Gradle Test Executor \\d+] \\[Gradle Test Executor \\d+]" }
-        result.output.contains "START [Test suite 'Gradle suite'] [Gradle suite]\n"
-        result.output.contains "FINISH [Test suite 'Gradle suite'] [Gradle suite]\n"
-        result.output.contains "START [Test suite 'Gradle test'] [Gradle test]\n"
-        result.output.contains "FINISH [Test suite 'Gradle test'] [Gradle test]\n"
-        result.output.contains "START [Test method pass(SomeTest)] [pass]\n"
-        result.output.contains "FINISH [Test method pass(SomeTest)] [pass] [null]\n"
-        result.output.contains "START [Test method fail(SomeTest)] [fail]\n"
-        result.output.contains "FINISH [Test method fail(SomeTest)] [fail] [java.lang.AssertionError]\n"
-        result.output.contains "START [Test method knownError(SomeTest)] [knownError]\n"
-        result.output.contains "FINISH [Test method knownError(SomeTest)] [knownError] [java.lang.RuntimeException: message]\n"
-        result.output.contains "START [Test method unknownError(SomeTest)] [unknownError]\n"
-        result.output.contains "FINISH [Test method unknownError(SomeTest)] [unknownError] [AppException]\n"
+        outputContains "START [Test suite 'Gradle suite'] [Gradle suite]\n"
+        outputContains "FINISH [Test suite 'Gradle suite'] [Gradle suite]\n"
+        outputContains "START [Test suite 'Gradle test'] [Gradle test]\n"
+        outputContains "FINISH [Test suite 'Gradle test'] [Gradle test]\n"
+        outputContains "START [Test method pass(SomeTest)] [pass]\n"
+        outputContains "FINISH [Test method pass(SomeTest)] [pass] [null]\n"
+        outputContains "START [Test method fail(SomeTest)] [fail]\n"
+        outputContains "FINISH [Test method fail(SomeTest)] [fail] [java.lang.AssertionError]\n"
+        outputContains "START [Test method knownError(SomeTest)] [knownError]\n"
+        outputContains "FINISH [Test method knownError(SomeTest)] [knownError] [java.lang.RuntimeException: message]\n"
+        outputContains "START [Test method unknownError(SomeTest)] [unknownError]\n"
+        outputContains "FINISH [Test method unknownError(SomeTest)] [unknownError] [AppException]\n"
     }
 
     @Issue("GRADLE-1532")
+    @ToBeFixedForInstantExecution
     def "supports thread pool size"() {
         given:
         file('src/test/java/SomeTest.java') << '''
@@ -150,6 +154,7 @@ class TestNGIntegrationTest extends MultiVersionIntegrationSpec {
         succeeds 'test'
     }
 
+    @ToBeFixedForInstantExecution
     def "supports test groups"() {
         buildFile << """
             ext {
@@ -188,6 +193,7 @@ class TestNGIntegrationTest extends MultiVersionIntegrationSpec {
         result.testClass('org.gradle.groups.SomeTest').assertTestsExecuted("databaseTest")
     }
 
+    @ToBeFixedForInstantExecution
     def "supports test factory"() {
         given:
         file('src/test/java/org/gradle/factory/FactoryTest.java') << '''
@@ -259,6 +265,59 @@ class TestNGIntegrationTest extends MultiVersionIntegrationSpec {
 
         then:
         result.assertTestsFailed()
+    }
+
+    @ToBeFixedForInstantExecution
+    def "tries to execute unparseable test classes"() {
+        given:
+        testDirectory.file('build/classes/java/test/com/example/Foo.class').text = "invalid class file"
+
+        when:
+        fails('test', '-x', 'compileTestJava')
+
+        then:
+        failureCauseContains("There were failing tests")
+        DefaultTestExecutionResult result = new DefaultTestExecutionResult(testDirectory)
+        result.testClassStartsWith('Gradle Test Executor')
+            .assertTestCount(1, 1, 0)
+            .assertTestFailed("failed to execute tests", containsString("Could not execute test class 'com.example.Foo'"))
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/7878")
+    @ToBeFixedForInstantExecution
+    def "can concurrently execute the same test class multiple times"() {
+        given:
+        file('src/test/java/TestNG7878.java') << """
+            import org.testng.annotations.Factory;
+            import org.testng.annotations.Test;
+            import org.testng.Assert;
+            
+            public class TestNG7878 {
+                @Factory
+                public static Object[] createTests() {
+                    return new Object[]{ 
+                            new TestNG7878(), 
+                            new TestNG7878() 
+                    };
+                }
+            
+                @Test
+                public void runFirst() {}
+                
+                @Test(dependsOnMethods = "runFirst")
+                public void testGet2() {
+                    Assert.assertEquals(true, true);
+                }
+            }
+        """
+
+        when:
+        succeeds('test')
+
+        then:
+        new DefaultTestExecutionResult(testDirectory)
+            .assertTestClassesExecuted('TestNG7878')
+            .testClass('TestNG7878').assertTestCount(4, 0, 0)
     }
 
     private static String testListener() {

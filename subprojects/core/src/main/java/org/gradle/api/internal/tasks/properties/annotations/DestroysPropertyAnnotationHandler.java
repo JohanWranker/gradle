@@ -16,13 +16,17 @@
 
 package org.gradle.api.internal.tasks.properties.annotations;
 
-import org.gradle.api.internal.tasks.DefaultTaskDestroyablePropertySpec;
-import org.gradle.api.internal.tasks.PropertySpecFactory;
+import com.google.common.collect.ImmutableSet;
+import org.gradle.api.internal.tasks.properties.BeanPropertyContext;
 import org.gradle.api.internal.tasks.properties.PropertyValue;
 import org.gradle.api.internal.tasks.properties.PropertyVisitor;
 import org.gradle.api.tasks.Destroys;
+import org.gradle.internal.reflect.AnnotationCategory;
+import org.gradle.internal.reflect.PropertyMetadata;
 
 import java.lang.annotation.Annotation;
+
+import static org.gradle.api.internal.tasks.properties.ModifierAnnotationCategory.OPTIONAL;
 
 public class DestroysPropertyAnnotationHandler implements PropertyAnnotationHandler {
     @Override
@@ -31,7 +35,22 @@ public class DestroysPropertyAnnotationHandler implements PropertyAnnotationHand
     }
 
     @Override
-    public void visitPropertyValue(PropertyValue propertyValue, PropertyVisitor visitor, PropertySpecFactory specFactory) {
-        visitor.visitDestroyableProperty(new DefaultTaskDestroyablePropertySpec(propertyValue.getPropertyName(), propertyValue));
+    public ImmutableSet<? extends AnnotationCategory> getAllowedModifiers() {
+        return ImmutableSet.of(OPTIONAL);
+    }
+
+    @Override
+    public boolean isPropertyRelevant() {
+        return true;
+    }
+
+    @Override
+    public boolean shouldVisit(PropertyVisitor visitor) {
+        return !visitor.visitOutputFilePropertiesOnly();
+    }
+
+    @Override
+    public void visitPropertyValue(String propertyName, PropertyValue value, PropertyMetadata propertyMetadata, PropertyVisitor visitor, BeanPropertyContext context) {
+        visitor.visitDestroyableProperty(value);
     }
 }

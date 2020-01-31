@@ -19,6 +19,7 @@ package org.gradle.integtests
 import org.gradle.api.internal.tasks.execution.CleanupStaleOutputsExecuter
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.BuildOperationsFixture
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.ToBeImplemented
 import spock.lang.Issue
@@ -28,6 +29,7 @@ import spock.lang.Unroll
 class StaleOutputIntegrationTest extends AbstractIntegrationSpec {
 
     @Issue(['GRADLE-2440', 'GRADLE-2579'])
+    @ToBeFixedForInstantExecution
     def 'stale output file is removed after input source directory is emptied.'() {
         def taskWithSources = new TaskWithSources()
         taskWithSources.createInputs()
@@ -55,6 +57,13 @@ class StaleOutputIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         taskWithSources.outputsHaveBeenRemoved()
+        skipped(taskWithSources.taskPath)
+
+        when:
+        taskWithSources.outputFile << "Added by other task"
+        run(taskWithSources.taskPath)
+        then:
+        taskWithSources.outputFile.exists()
         skipped(taskWithSources.taskPath)
     }
 
@@ -110,6 +119,39 @@ class StaleOutputIntegrationTest extends AbstractIntegrationSpec {
         overlappingOutputFile.exists()
         taskWithSources.onlyOutputFileHasBeenRemoved()
         executedAndNotSkipped(taskWithSources.taskPath)
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/8299")
+    def "two tasks can output in the same directory with --rerun-tasks"() {
+        buildFile << """
+            apply plugin: 'base'
+            
+            task firstCopy {
+                inputs.file('first.file')
+                outputs.dir('build/destination')
+                doLast {
+                    file('build/destination/first.file').text = file('first.file').text
+                }
+            }
+            
+            task secondCopy {
+                inputs.file('second.file')
+                outputs.dir('build/destination')
+                doLast {
+                    file('build/destination/second.file').text = file('second.file').text
+                }
+            }
+            
+            secondCopy.dependsOn firstCopy
+        """
+        file("first.file").createFile()
+        file("second.file").createFile()
+
+        when:
+        succeeds("secondCopy", "--rerun-tasks", "--info")
+        then:
+        file("build/destination/first.file").exists()
+        file("build/destination/second.file").exists()
     }
 
     def "custom clean targets are removed"() {
@@ -394,6 +436,7 @@ class StaleOutputIntegrationTest extends AbstractIntegrationSpec {
         skipped(taskWithLocalState.taskPath)
     }
 
+    @ToBeFixedForInstantExecution
     def "up-to-date checks detect removed stale outputs"() {
         buildFile << """                                    
             plugins {
@@ -455,6 +498,50 @@ class StaleOutputIntegrationTest extends AbstractIntegrationSpec {
         executedAndNotSkipped(':restore')
         original.text == backup.text
         original.text == "Original"
+    }
+
+    def "task with file tree output can be up-to-date"() {
+        buildFile << """                                     
+            plugins {
+                id 'base'
+            }
+
+            class TaskWithFileTreeOutput extends DefaultTask {
+                @Input
+                String input
+                
+                @Internal
+                File outputDir
+                
+                @OutputFiles
+                FileCollection getOutputFileTree() {
+                    project.fileTree(outputDir).include('**/myOutput.txt')
+                }
+                
+                @TaskAction
+                void generateOutputs() {
+                    outputDir.mkdirs()
+                    new File(outputDir, 'myOutput.txt').text = input
+                }
+            }
+            
+            task custom(type: TaskWithFileTreeOutput) {
+                outputDir = file('build/outputs')
+                input = 'input'
+            }
+        """
+        def taskPath = ':custom'
+
+        when:
+        run taskPath
+        then:
+        executedAndNotSkipped taskPath
+
+        when:
+        run taskPath, '--info'
+
+        then:
+        skipped taskPath
     }
 
     class TaskWithLocalState {

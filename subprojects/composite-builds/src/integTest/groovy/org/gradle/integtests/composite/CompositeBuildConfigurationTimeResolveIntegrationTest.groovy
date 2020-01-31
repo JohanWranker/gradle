@@ -16,9 +16,11 @@
 
 package org.gradle.integtests.composite
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.build.BuildTestFile
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.maven.MavenModule
+
 /**
  * Tests for resolving dependencies at configuration-time in a composite build.
  * These tests demonstrate actual behaviour, not necessarily desired behaviour.
@@ -37,7 +39,7 @@ class CompositeBuildConfigurationTimeResolveIntegrationTest extends AbstractComp
         buildA.buildFile << """
             println "Configured buildA"
             task resolve(type: Copy) {
-                from configurations.compile
+                from configurations.compileClasspath
                 into 'libs'
             }
 """
@@ -76,12 +78,13 @@ class CompositeBuildConfigurationTimeResolveIntegrationTest extends AbstractComp
         then:
         executed ":resolve"
         notExecuted ":buildB:jar"
-        result.assertOutputContains "[$buildBjar]"
+        outputContains "[$buildBjar]"
 
         configured("buildB") == 1
     }
 
-    def "uses substituted dependency when same root build dependency is resolved at both configuration and executiong time"() {
+    @ToBeFixedForInstantExecution
+    def "uses substituted dependency when same root build dependency is resolved at both configuration and execution time"() {
         configurationTimeDependency 'org.test:buildB:1.0'
         dependency 'org.test:buildB:1.0'
 
@@ -90,11 +93,12 @@ class CompositeBuildConfigurationTimeResolveIntegrationTest extends AbstractComp
 
         then:
         executedInOrder ":buildB:jar", ":resolve"
-        result.assertOutputContains "[$buildBjar]"
+        outputContains "[$buildBjar]"
 
         configured("buildB") == 1
     }
 
+    @ToBeFixedForInstantExecution
     def "references substituted dependencies when root build dependencies are resolved at both configuration and execution time"() {
         configurationTimeDependency 'org.test:buildB:1.0'
         dependency 'org.test:b1:1.0'
@@ -106,7 +110,7 @@ class CompositeBuildConfigurationTimeResolveIntegrationTest extends AbstractComp
         executedInOrder ":buildB:b1:jar", ":resolve"
         notExecuted ":buildB:jar"
 
-        result.assertOutputContains("[$buildBjar]")
+        outputContains("[$buildBjar]")
         assertResolved buildB.file('b1/build/libs/b1-1.0.jar')
 
         configured("buildB") == 1
@@ -122,7 +126,7 @@ class CompositeBuildConfigurationTimeResolveIntegrationTest extends AbstractComp
         then:
         executed ":help"
         notExecuted ":buildB:jar"
-        result.assertOutputContains("[$buildBjar]")
+        outputContains("[$buildBjar]")
 
         configured("buildB") == 1
     }
@@ -139,7 +143,7 @@ class CompositeBuildConfigurationTimeResolveIntegrationTest extends AbstractComp
         then:
         executedInOrder ":help"
         notExecuted ":buildB:jar"
-        result.assertOutputContains("[${publishedModuleB.artifactFile}]")
+        outputContains("[${publishedModuleB.artifactFile}]")
 
         configured("buildB") == 1
     }
@@ -158,14 +162,6 @@ class CompositeBuildConfigurationTimeResolveIntegrationTest extends AbstractComp
 """
     }
 
-    private void resolveArtifacts() {
-        execute(buildA, ":resolve", arguments)
-    }
-
-    private void resolveArtifactsFails() {
-        fails(buildA, ":resolve", arguments)
-    }
-
     private void assertResolved(TestFile... files) {
         String[] names = files.collect { it.name }
         buildA.file('libs').assertHasDescendants(names)
@@ -179,15 +175,6 @@ class CompositeBuildConfigurationTimeResolveIntegrationTest extends AbstractComp
     }
 
     private void executedInOrder(String... tasks) {
-        def executedTasks = result.executedTasks
-        def beforeTask
-        for (String task : tasks) {
-            containsOnce(executedTasks, task)
-
-            if (beforeTask != null) {
-                assert executedTasks.indexOf(beforeTask) < executedTasks.indexOf(task) : "task ${beforeTask} must be executed before ${task}"
-            }
-            beforeTask = task
-        }
+        result.assertTaskOrder(tasks)
     }
 }

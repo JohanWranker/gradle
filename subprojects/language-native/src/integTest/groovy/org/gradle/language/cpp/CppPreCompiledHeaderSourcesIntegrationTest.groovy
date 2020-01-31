@@ -17,9 +17,12 @@
 package org.gradle.language.cpp
 
 import org.gradle.integtests.fixtures.DirectoryBuildCacheFixture
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.language.AbstractNativePreCompiledHeaderIntegrationTest
 import org.gradle.nativeplatform.fixtures.app.CppHelloWorldApp
 import org.gradle.nativeplatform.fixtures.app.IncrementalHelloWorldApp
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 
 class CppPreCompiledHeaderSourcesIntegrationTest extends AbstractNativePreCompiledHeaderIntegrationTest implements DirectoryBuildCacheFixture {
 
@@ -28,6 +31,7 @@ class CppPreCompiledHeaderSourcesIntegrationTest extends AbstractNativePreCompil
         return new CppHelloWorldApp()
     }
 
+    @ToBeFixedForInstantExecution
     def "caching is disabled if precompiled headers are configured" () {
         writeStandardSourceFiles()
 
@@ -38,8 +42,47 @@ class CppPreCompiledHeaderSourcesIntegrationTest extends AbstractNativePreCompil
         then:
         libAndPCHTasksExecuted()
         pchCompiledOnceForEach([ PCHHeaderDirName ])
-        output.contains "Caching disabled for task ':compileHelloSharedLibraryCppPreCompiledHeader': Caching has not been enabled for the task"
-        output.contains "Caching disabled for task ':compileHelloSharedLibraryHelloCpp': 'Pre-compiled headers are used' satisfied"
+        output.contains "Caching disabled for task ':compileHelloSharedLibraryCppPreCompiledHeader' because:\n" +
+            "  Caching has not been enabled for the task"
+        output.contains "Caching disabled for task ':compileHelloSharedLibraryHelloCpp' because:\n" +
+            "  'Pre-compiled headers are used' satisfied"
     }
 
+    @Requires(TestPrecondition.MAC_OS_X)
+    @ToBeFixedForInstantExecution
+    def "can compile and link C++ code with precompiled headers using standard macOS framework" () {
+        given:
+        writeStandardSourceFiles()
+
+        and:
+        file(commonHeader.withPath("src/hello")) << """
+            #include <CoreFoundation/CoreFoundation.h>
+        """
+
+        and:
+        file("src/hello/cpp/includeFramework.cpp") << """
+            #include "common.h"
+            void sayHelloFoundation() {
+                CFShow(CFSTR("Hello"));
+            }
+        """
+
+        and:
+        buildFile << preCompiledHeaderComponent()
+        buildFile << """
+            model {
+                components {
+                    hello {
+                        binaries.withType(SharedLibraryBinarySpec) {
+                            linker.args "-framework", "CoreFoundation"
+                        }
+                    }
+                }
+            }
+        """
+
+        expect:
+        succeeds "helloSharedLibrary"
+        libAndPCHTasksExecuted()
+    }
 }

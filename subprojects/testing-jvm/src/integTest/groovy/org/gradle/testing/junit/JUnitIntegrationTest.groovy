@@ -16,23 +16,30 @@
 package org.gradle.testing.junit
 
 import org.gradle.api.JavaVersion
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
 import org.gradle.integtests.fixtures.JUnitXmlTestExecutionResult
+import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.testing.fixture.JUnitMultiVersionIntegrationSpec
 import org.junit.Rule
 import spock.lang.IgnoreIf
 import spock.lang.Issue
 
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_4_LATEST
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_VINTAGE_JUPITER
 import static org.gradle.util.Matchers.containsLine
 import static org.gradle.util.Matchers.matchesRegexp
-import static org.hamcrest.Matchers.*
+import static org.hamcrest.CoreMatchers.containsString
+import static org.hamcrest.CoreMatchers.equalTo
+import static org.hamcrest.CoreMatchers.not
+import static org.hamcrest.CoreMatchers.startsWith
 import static org.junit.Assert.assertThat
 
-class JUnitIntegrationTest extends AbstractIntegrationSpec {
+@TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE_JUPITER })
+class JUnitIntegrationTest extends JUnitMultiVersionIntegrationSpec {
     @Rule
     final TestResources resources = new TestResources(testDirectoryProvider)
 
@@ -60,6 +67,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
 
     def suitesOutputIsVisible() {
         when:
+        ignoreWhenJupiter()
         executer.withTasks('test').run()
 
         then:
@@ -79,6 +87,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
 
     def testClassesCanBeSharedByMultipleSuites() {
         when:
+        ignoreWhenJupiter()
         executer.withTasks('test').run()
 
         then:
@@ -86,18 +95,6 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         result.assertTestClassesExecuted('org.gradle.SomeTest')
         result.testClass("org.gradle.SomeTest").assertTestCount(2, 0, 0)
         result.testClass("org.gradle.SomeTest").assertTestsExecuted("ok", "ok")
-    }
-
-    def canRunTestsUsingJUnit3() {
-        when:
-        resources.maybeCopy('JUnitIntegrationTest/junit3Tests')
-        executer.withTasks('check').run()
-
-        then:
-        def result = new DefaultTestExecutionResult(testDirectory)
-        result.assertTestClassesExecuted('org.gradle.Junit3Test')
-        result.testClass('org.gradle.Junit3Test').assertTestsExecuted('testRenamesItself')
-        result.testClass('org.gradle.Junit3Test').assertTestPassed('testRenamesItself')
     }
 
     def reportsAndBreaksBuildWhenTestFails() {
@@ -139,29 +136,28 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
 
     def canRunSingleTests() {
         when:
-        executer.withTasks('test').withArguments('-Dtest.single=Ok2').run()
+        succeeds("test", "--tests=Ok2*")
 
         then:
-        def result = new DefaultTestExecutionResult(testDirectory)
-        result.assertTestClassesExecuted('Ok2')
+        def testResult = new DefaultTestExecutionResult(testDirectory)
+        testResult.assertTestClassesExecuted('Ok2')
 
         when:
-        executer.withTasks('cleanTest', 'test').withArguments('-Dtest.single=Ok').run()
+        succeeds("cleanTest", "test", "--tests=Ok*")
 
         then:
-        result.assertTestClassesExecuted('Ok', 'Ok2')
+        testResult.assertTestClassesExecuted('Ok', 'Ok2')
 
         when:
-        def failure = executer.withTasks('test').withArguments('-Dtest.single=DoesNotMatchAClass').runWithFailure()
+        fails("test", "--tests=DoesNotMatchAClass*")
 
         then:
-        failure.assertHasCause('Could not find matching test for pattern: DoesNotMatchAClass')
+        result.assertHasCause('No tests found for given includes: [DoesNotMatchAClass*](--tests filter)')
 
         when:
-        failure = executer.withTasks('test').withArguments('-Dtest.single=NotATest').runWithFailure()
-
+        fails("test", "--tests=NotATest*")
         then:
-        failure.assertHasCause('Could not find matching test for pattern: NotATest')
+        result.assertHasCause('No tests found for given includes: [NotATest*](--tests filter)')
     }
 
     def canUseTestSuperClassesFromAnotherProject() {
@@ -170,7 +166,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         testDirectory.file('b/build.gradle') << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { compile 'junit:junit:4.12' }
+            dependencies { implementation 'junit:junit:4.12' }
         """
         testDirectory.file('b/src/main/java/org/gradle/AbstractTest.java') << '''
             package org.gradle;
@@ -182,7 +178,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         buildFile << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile project(':b') }
+            dependencies { testImplementation project(':b') }
         """
         testDirectory.file('a/src/test/java/org/gradle/SomeTest.java') << '''
             package org.gradle;
@@ -205,7 +201,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         buildFile << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile 'junit:junit:4.12' }
+            dependencies { testImplementation 'junit:junit:4.12' }
             test { exclude '**/BaseTest.*' }
         """
         testDirectory.file('src/test/java/org/gradle/BaseTest.java') << '''
@@ -258,7 +254,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         testDirectory.file('build.gradle').writelns(
                 "apply plugin: 'java'",
                 mavenCentralRepository(),
-                "dependencies { compile 'junit:junit:4.12' }"
+                "dependencies { implementation 'junit:junit:4.12' }"
         )
         testDirectory.file('src/test/java/org/gradle/AbstractTest.java').writelns(
                 "package org.gradle;",
@@ -293,7 +289,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         testDirectory.file('build.gradle').writelns(
                 "apply plugin: 'java'",
                 mavenCentralRepository(),
-                "dependencies { compile 'junit:junit:4.12' }",
+                "dependencies { implementation 'junit:junit:4.12' }",
                 "test.forkEvery = 1"
         )
         testDirectory.file('src/test/java/org/gradle/AbstractTest.java').writelns(
@@ -347,7 +343,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         testDirectory.file('build.gradle') << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile 'junit:junit:4.12' }
+            dependencies { testImplementation 'junit:junit:4.12' }
             def listener = new TestListenerImpl()
             test.addTestListener(listener)
             test.ignoreFailures = true
@@ -386,6 +382,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
 
     def canListenForTestResultsWhenJUnit3IsUsed() {
         given:
+        ignoreWhenJupiter()
         testDirectory.file('src/test/java/SomeTest.java').writelns(
                 "public class SomeTest extends junit.framework.TestCase {",
                 "public void testPass() { }",
@@ -397,7 +394,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         testDirectory.file('build.gradle') << """
             apply plugin: 'java'
             ${mavenCentralRepository()}
-            dependencies { testCompile 'junit:junit:3.8' }
+            dependencies { testImplementation 'junit:junit:3.8' }
             def listener = new TestListenerImpl()
             test.addTestListener(listener)
             test.ignoreFailures = true
@@ -423,7 +420,7 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         assert containsLine(result.getOutput(), "FINISH [Test testError(SomeTest)] [testError] [java.lang.RuntimeException: message]")
     }
 
-    @IgnoreIf({GradleContextualExecuter.parallel})
+    @IgnoreIf({ GradleContextualExecuter.parallel })
     def canHaveMultipleTestTaskInstances() {
         when:
         executer.withTasks('check').run()
@@ -454,5 +451,33 @@ class JUnitIntegrationTest extends AbstractIntegrationSpec {
         result.testClass("org.gradle.SomeSuite").assertStdout(containsString("stdout in TestSetup#teardown"))
         result.testClass("org.gradle.SomeSuite").assertStderr(containsString("stderr in TestSetup#setup"))
         result.testClass("org.gradle.SomeSuite").assertStderr(containsString("stderr in TestSetup#teardown"))
+    }
+
+    def "tries to execute unparseable test classes"() {
+        given:
+        testDirectory.file('build/classes/java/test/com/example/Foo.class').text = "invalid class file"
+        buildFile << """
+            apply plugin: 'java'
+            ${mavenCentralRepository()}
+            dependencies {
+                testImplementation '$dependencyNotation'
+            }
+        """
+
+        when:
+        fails('test', '-x', 'compileTestJava')
+
+        then:
+        failureCauseContains("There were failing tests")
+        DefaultTestExecutionResult result = new DefaultTestExecutionResult(testDirectory)
+        if (isVintage() || isJupiter()) {
+            result.testClassStartsWith('Gradle Test Executor')
+                .assertTestCount(1, 1, 0)
+                .assertTestFailed("failed to execute tests", containsString("Could not execute test class 'com.example.Foo'"))
+        } else {
+            result.testClass('com.example.Foo')
+                .assertTestCount(1, 1, 0)
+                .assertTestFailed("initializationError", containsString('ClassFormatError'))
+        }
     }
 }

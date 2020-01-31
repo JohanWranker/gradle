@@ -19,6 +19,8 @@ package org.gradle.integtests.fixtures
 import groovy.io.FileType
 import org.gradle.internal.FileUtils
 
+import java.util.function.Predicate
+
 import static org.apache.commons.io.FilenameUtils.removeExtension
 import static org.spockframework.util.CollectionUtil.asSet
 
@@ -71,28 +73,62 @@ class CompilationOutputsFixture {
     }
 
     //asserts files changed/added since last snapshot
+    void recompiledFiles(File... files) {
+        recompiledFiles(files as List)
+    }
+
+    //asserts files changed/added since last snapshot
     void recompiledFiles(Collection<File> files) {
         def expectedNames = files.collect({ removeExtension(it.name) }) as Set
         assert changedFileNames == expectedNames
     }
 
+    //asserts has the exact set of output files
+    void hasFiles(File... files) {
+        def expectedNames = files.collect({ removeExtension(it.name) }) as Set
+        assert getFiles { true } == expectedNames
+    }
+
+    //asserts file changed/added since last snapshot
+    void recompiledFile(String fileName) {
+        recompiledFiles(fileName)
+    }
+
+    //asserts files changed/added since last snapshot
+    void recompiledFiles(String... fileNames) {
+        def expectedNames = fileNames.collect({ removeExtension(it) }) as Set
+        assert changedFileNames == expectedNames
+    }
+
     //asserts classes changed/added since last snapshot. Class means file name without extension.
-    void recompiledClasses(String ... classNames) {
+    void recompiledClasses(String... classNames) {
         assert changedFileNames == asSet(classNames)
     }
 
+    //asserts files deleted since last snapshot.
+    void deletedFiles(String... fileNames) {
+        def expectedNames = fileNames.collect({ removeExtension(it) }) as Set
+        def deleted = snapshot.findAll { !it.exists() }.collect { removeExtension(it.name) } as Set
+        assert deleted == expectedNames
+    }
+
     //asserts classes deleted since last snapshot. Class means file name without extension.
-    void deletedClasses(String ... classNames) {
+    void deletedClasses(String... classNames) {
         def deleted = snapshot.findAll { !it.exists() }.collect { removeExtension(it.name) } as Set
         assert deleted == asSet(classNames)
     }
 
     private Set<String> getChangedFileNames() {
         // Get all of the files that do not have a zero last modified timestamp
+        return getFiles { it.lastModified() > 0 }
+    }
+
+    private Set<String> getFiles(Predicate<File> criteria) {
+        // Get all of the files that do not have a zero last modified timestamp
         def changed = new HashSet()
         targetDir.eachFileRecurse(FileType.FILES) {
             if (isIncluded(it)) {
-                if (it.lastModified() > 0) {
+                if (criteria.test(it)) {
                     changed << removeExtension(it.name)
                 }
             }

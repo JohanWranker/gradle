@@ -17,6 +17,7 @@ package org.gradle.api.publication.maven.internal.action;
 
 import org.apache.maven.artifact.ant.RemoteRepository;
 import org.gradle.api.GradleException;
+import org.gradle.api.publish.maven.internal.publisher.MavenProjectIdentity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sonatype.aether.RepositorySystem;
@@ -35,11 +36,17 @@ import java.util.List;
 public class MavenDeployAction extends AbstractMavenPublishAction {
     private static final Logger LOGGER = LoggerFactory.getLogger(MavenDeployAction.class);
 
+    private final static String MAX_DEPLOY_ATTEMPTS = "org.gradle.internal.remote.repository.deploy.max.attempts";
+    private final static String INITIAL_BACKOFF_MS = "org.gradle.internal.remote.repository.deploy.initial.backoff";
     private RemoteRepository remoteRepository;
     private RemoteRepository remoteSnapshotRepository;
+    private final int maxDeployAttempts;
+    private final int initialBackOff;
 
-    public MavenDeployAction(File pomFile, File metadataFile, List<File> wagonJars) {
-        super(pomFile, metadataFile, wagonJars);
+    public MavenDeployAction(String packaging, MavenProjectIdentity projectIdentity, List<File> wagonJars) {
+        super(packaging, projectIdentity, wagonJars);
+        this.maxDeployAttempts = Integer.getInteger(MAX_DEPLOY_ATTEMPTS, 3);
+        this.initialBackOff = Integer.getInteger(INITIAL_BACKOFF_MS, 1000);
     }
 
     public void setRepositories(RemoteRepository repository, RemoteRepository snapshotRepository) {
@@ -48,7 +55,7 @@ public class MavenDeployAction extends AbstractMavenPublishAction {
     }
 
     @Override
-    protected void publishArtifacts(Collection<Artifact> artifacts, RepositorySystem repositorySystem, RepositorySystemSession session) throws DeploymentException {
+    protected void publishArtifacts(Collection<Artifact> artifacts, final RepositorySystem repositorySystem, final RepositorySystemSession session) throws DeploymentException {
         RemoteRepository gradleRepo = remoteRepository;
         if (artifacts.iterator().next().isSnapshot() && remoteSnapshotRepository != null) {
             gradleRepo = remoteSnapshotRepository;
@@ -59,14 +66,25 @@ public class MavenDeployAction extends AbstractMavenPublishAction {
 
         org.sonatype.aether.repository.RemoteRepository aetherRepo = createRepository(gradleRepo);
 
-        DeployRequest request = new DeployRequest();
+        final DeployRequest request = new DeployRequest();
         request.setRepository(aetherRepo);
         for (Artifact artifact : artifacts) {
             request.addArtifact(artifact);
         }
 
         LOGGER.info("Deploying to {}", gradleRepo.getUrl());
-        repositorySystem.deploy(session, request);
+
+        DefaultMavenDeployRetrier deployRetrier = new DefaultMavenDeployRetrier(
+            () -> {
+                repositorySystem.deploy(session, request);
+                return null;
+                },
+            remoteRepository,
+            maxDeployAttempts,
+            initialBackOff
+        );
+
+        deployRetrier.deployWithRetry();
     }
 
     private org.sonatype.aether.repository.RemoteRepository createRepository(RemoteRepository gradleRepo) {
@@ -87,4 +105,5 @@ public class MavenDeployAction extends AbstractMavenPublishAction {
 
         return repo;
     }
+
 }

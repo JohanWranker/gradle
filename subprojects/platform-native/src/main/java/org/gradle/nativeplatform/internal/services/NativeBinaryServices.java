@@ -23,6 +23,7 @@ import org.gradle.internal.os.OperatingSystem;
 import org.gradle.internal.service.ServiceRegistration;
 import org.gradle.internal.service.scopes.AbstractPluginServiceRegistry;
 import org.gradle.nativeplatform.internal.CompilerOutputFileNamingSchemeFactory;
+import org.gradle.nativeplatform.internal.DefaultTargetMachineFactory;
 import org.gradle.nativeplatform.internal.NativeBinaryRenderer;
 import org.gradle.nativeplatform.internal.NativeExecutableBinaryRenderer;
 import org.gradle.nativeplatform.internal.NativePlatformResolver;
@@ -30,6 +31,7 @@ import org.gradle.nativeplatform.internal.SharedLibraryBinaryRenderer;
 import org.gradle.nativeplatform.internal.StaticLibraryBinaryRenderer;
 import org.gradle.nativeplatform.internal.resolve.NativeDependencyResolverServices;
 import org.gradle.nativeplatform.platform.internal.NativePlatforms;
+import org.gradle.nativeplatform.toolchain.internal.gcc.metadata.SystemLibraryDiscovery;
 import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetaDataProviderFactory;
 import org.gradle.nativeplatform.toolchain.internal.msvcpp.DefaultUcrtLocator;
 import org.gradle.nativeplatform.toolchain.internal.msvcpp.DefaultVisualStudioLocator;
@@ -45,6 +47,9 @@ import org.gradle.nativeplatform.toolchain.internal.msvcpp.version.VisualStudioM
 import org.gradle.nativeplatform.toolchain.internal.msvcpp.version.VisualStudioVersionDeterminer;
 import org.gradle.nativeplatform.toolchain.internal.msvcpp.version.VswhereVersionLocator;
 import org.gradle.nativeplatform.toolchain.internal.msvcpp.version.WindowsRegistryVersionLocator;
+import org.gradle.nativeplatform.toolchain.internal.xcode.MacOSSdkPathLocator;
+import org.gradle.nativeplatform.toolchain.internal.xcode.MacOSSdkPlatformPathLocator;
+import org.gradle.nativeplatform.toolchain.internal.xcode.SwiftStdlibToolLocator;
 import org.gradle.process.internal.ExecActionFactory;
 
 public class NativeBinaryServices extends AbstractPluginServiceRegistry {
@@ -56,12 +61,17 @@ public class NativeBinaryServices extends AbstractPluginServiceRegistry {
         registration.add(NativeExecutableBinaryRenderer.class);
         registration.add(NativePlatforms.class);
         registration.add(NativePlatformResolver.class);
+        registration.add(DefaultTargetMachineFactory.class);
     }
 
     @Override
     public void registerBuildSessionServices(ServiceRegistration registration) {
         registration.addProvider(new BuildSessionScopeServices());
         registration.add(DefaultUcrtLocator.class);
+        registration.add(MacOSSdkPathLocator.class);
+        registration.add(MacOSSdkPlatformPathLocator.class);
+        registration.add(SwiftStdlibToolLocator.class);
+        registration.add(SystemLibraryDiscovery.class);
     }
 
     @Override

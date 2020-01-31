@@ -16,12 +16,15 @@
 
 package org.gradle.vcs.internal
 
+import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.build.BuildTestFile
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
 import org.gradle.vcs.fixtures.GitFileRepository
 import org.junit.Rule
 import spock.lang.Issue
 
-class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
+class GitVcsIntegrationTest extends AbstractIntegrationSpec implements SourceDependencies {
     @Rule
     GitFileRepository repo = new GitFileRepository('dep', temporaryFolder.getTestDirectory())
 
@@ -30,10 +33,59 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
 
     @Rule
     GitFileRepository evenDeeperRepo = new GitFileRepository('evenDeeperDep', temporaryFolder.getTestDirectory())
+    BuildTestFile depProject
 
-    def 'can define and use source repositories'() {
+    def setup() {
+        buildFile << """
+            apply plugin: 'java'
+            group = 'org.gradle'
+            version = '2.0'
+            
+            dependencies {
+                implementation "org.test:dep:latest.integration"
+            }
+        """
+        file("src/main/java/Main.java") << """
+            public class Main {
+                Dep dep = null;
+            }
+        """
+        buildTestFixture.withBuildInSubDir()
+        depProject = singleProjectBuild("dep") {
+            buildFile << """
+                allprojects {
+                    apply plugin: 'java-library'
+                    group = 'org.test'
+                }
+            """
+            file("src/main/java/Dep.java") << "public class Dep {}"
+        }
+    }
+
+    @ToBeFixedForInstantExecution
+    def 'can define and use source repository'() {
         given:
         def commit = repo.commit('initial commit')
+
+        settingsFile << """
+            sourceControl {
+                gitRepository("${repo.url}").producesModule("org.test:dep")
+            }
+        """
+        expect:
+        succeeds('assemble')
+        result.assertTaskExecuted(":dep:compileJava")
+        result.assertTaskExecuted(":compileJava")
+
+        // Git repo is cloned
+        def gitCheckout = checkoutDir(repo.name, commit.id.name, repo.id)
+        gitCheckout.file('.git').assertExists()
+    }
+
+    @ToBeFixedForInstantExecution
+    def 'can define and use source repositories using VCS mapping'() {
+        given:
+        repo.commit('initial commit')
 
         settingsFile << """
             sourceControl {
@@ -48,11 +100,11 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
         """
         expect:
         succeeds('assemble')
-        // Git repo is cloned
-        def gitCheckout = checkoutDir(repo.name, commit.id.name, repo.id)
-        gitCheckout.file('.git').assertExists()
+        result.assertTaskExecuted(":dep:compileJava")
+        result.assertTaskExecuted(":compileJava")
     }
 
+    @ToBeFixedForInstantExecution
     def 'can define and use source repositories with submodules'() {
         given:
         // Populate submodule origin
@@ -108,7 +160,27 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
         gitCheckout.file('deeperDep/evenDeeperDep/foo').text == "buzz"
     }
 
+    def 'reports error when badly formed module used'() {
+        given:
+        settingsFile << """
+            rootProject.name = 'test'
+            sourceControl {
+                gitRepository("${repo.url}").producesModule(":not:a:module:")
+            }
+        """
+
+        expect:
+        fails('assemble')
+        failure.assertHasFileName("Settings file '$settingsFile'")
+        failure.assertHasLineNumber(4)
+        failure.assertHasDescription("A problem occurred evaluating settings 'test'.")
+        failure.assertHasCause("""Cannot convert the provided notation to a module identifier: :not:a:module:.
+The following types/formats are supported:
+  - String describing the module in 'group:name' format, for example 'org.gradle:gradle-core'.""")
+    }
+
     @Issue('gradle/gradle-native#206')
+    @ToBeFixedForInstantExecution
     def 'can define and use source repositories with initscript resolution present'() {
         given:
         def commit = repo.commit('initial commit')
@@ -141,6 +213,7 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
     }
 
     @Issue('gradle/gradle-native#207')
+    @ToBeFixedForInstantExecution
     def 'can use repositories even when clean is run'() {
         given:
         def commit = repo.commit('initial commit')
@@ -169,6 +242,7 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
         gitCheckout.file('.git').assertExists()
     }
 
+    @ToBeFixedForInstantExecution
     def 'can handle conflicting versions'() {
         given:
         settingsFile << """
@@ -189,8 +263,8 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
             version = '2.0'
             
             dependencies {
-                compile "org.test:dep:1.3.0"
-                compile "org.test:dep:1.4.0"
+                implementation "org.test:dep:1.3.0"
+                implementation "org.test:dep:1.4.0"
             }
         """
         def commit = repo.commit('initial commit')
@@ -210,6 +284,7 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
         gitCheckout2.file('.git').assertExists()
     }
 
+    @ToBeFixedForInstantExecution
     def 'uses root project cache directory'() {
         given:
         settingsFile << """
@@ -265,6 +340,7 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
         deeperCheckout.file('.git').assertExists()
     }
 
+    @ToBeFixedForInstantExecution
     def 'can resolve the same version for latest.integration within the same build session'() {
         given:
         BlockingHttpServer server = new BlockingHttpServer()
@@ -292,7 +368,7 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
             project(':bar') {
                 apply plugin: 'java'
                 dependencies {
-                    compile 'org.test:dep:latest.integration'
+                    implementation 'org.test:dep:latest.integration'
                 }
             }
 
@@ -301,7 +377,7 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
             }
 
             dependencies {
-                compile project(':bar')
+                implementation project(':bar')
             }
         """
         def commit = repo.commit('initial commit')
@@ -327,13 +403,14 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
         gitCheckout.file('.git').assertExists()
 
         and:
-        def hashedRepo = hashRepositoryId(repo.id)
-        file(".gradle/vcsWorkingDirs/${hashedRepo}-${commit.id.name}").assertIsDir()
+        def commitDir = checkoutDir(repo.name, commit.id.name, repo.id)
+        commitDir.assertIsDir()
 
         cleanup:
         server.stop()
     }
 
+    @ToBeFixedForInstantExecution
     def "external modifications to source dependency directories are reset"() {
         given:
         repo.file('foo').text = "bar"
@@ -367,6 +444,7 @@ class GitVcsIntegrationTest extends AbstractVcsIntegrationTest {
         gitCheckout.file('foo').text == "bar"
     }
 
+    @ToBeFixedForInstantExecution
     def "external modifications to source dependency submodule directories are reset"() {
         given:
         // Populate submodule origin

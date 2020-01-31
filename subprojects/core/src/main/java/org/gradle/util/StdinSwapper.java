@@ -16,7 +16,7 @@
 package org.gradle.util;
 
 import org.gradle.api.Action;
-import java.util.concurrent.Callable;
+import org.gradle.internal.Factory;
 
 import java.io.InputStream;
 
@@ -24,12 +24,14 @@ public class StdinSwapper extends Swapper<InputStream> {
 
     public StdinSwapper() {
         super(
-            new Callable<InputStream>() {
-                public InputStream call() {
+            new Factory<InputStream>() {
+                @Override
+                public InputStream create() {
                     return System.in;
                 }
             },
             new Action<InputStream>() {
+                @Override
                 public void execute(InputStream newValue) {
                     System.setIn(newValue);
                 }

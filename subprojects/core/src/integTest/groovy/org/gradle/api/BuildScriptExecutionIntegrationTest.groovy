@@ -18,18 +18,16 @@
 package org.gradle.api
 
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.test.fixtures.file.TestFile
 import org.junit.Test
 
-import static org.hamcrest.Matchers.containsString
-import static org.hamcrest.Matchers.not
-import static org.junit.Assert.assertThat
-
+@SuppressWarnings("IntegrationTestFixtures")
 class BuildScriptExecutionIntegrationTest extends AbstractIntegrationTest {
 
     @Test
-    public void executesBuildScriptWithCorrectEnvironment() {
+    void executesBuildScriptWithCorrectEnvironment() {
         def implClassName = 'com.google.common.collect.Multimap'
         TestFile buildScript = testFile('build.gradle')
         buildScript << """
@@ -53,14 +51,14 @@ try {
 """
 
         ExecutionResult result = inTestDirectory().withTasks('doStuff').run()
-        assertThat(result.output, containsString('quiet message'))
-        assertThat(result.output, not(containsString('error message')))
-        assertThat(result.error, containsString('error message'))
-        assertThat(result.error, not(containsString('quiet message')))
+        result.assertOutputContains('quiet message')
+        result.assertHasErrorOutput('error message')
     }
 
     @Test
-    public void buildScriptCanContainATaskDefinition() {
+    @ToBeFixedForInstantExecution
+    void buildScriptCanContainATaskDefinition() {
+
         testFile('build.gradle') << '''
             task t(type: SomeTask)
 
@@ -72,7 +70,9 @@ try {
     }
 
     @Test
-    public void buildScriptCanContainOnlyClassDefinitions() {
+    @ToBeFixedForInstantExecution
+    void buildScriptCanContainOnlyClassDefinitions() {
+
         testFile('build.gradle') << '''
             class TestComparable implements Comparable<TestComparable>, SomeInterface {
                 int compareTo(TestComparable t) {

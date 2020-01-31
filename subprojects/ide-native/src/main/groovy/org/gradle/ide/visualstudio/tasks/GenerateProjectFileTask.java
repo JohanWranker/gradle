@@ -22,7 +22,9 @@ import org.gradle.api.Transformer;
 import org.gradle.api.XmlProvider;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
+import org.gradle.api.tasks.OutputFile;
 import org.gradle.ide.visualstudio.VisualStudioProject;
 import org.gradle.ide.visualstudio.internal.DefaultVisualStudioProject;
 import org.gradle.ide.visualstudio.internal.VisualStudioProjectConfiguration;
@@ -31,17 +33,23 @@ import org.gradle.ide.visualstudio.tasks.internal.VisualStudioProjectFile;
 import org.gradle.plugins.ide.api.XmlGeneratorTask;
 import org.gradle.plugins.ide.internal.IdePlugin;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.util.concurrent.Callable;
 
 /**
- * Task for generating a project file.
+ * Task for generating a Visual Studio project file (e.g. {@code foo.vcxproj}).
  */
 @Incubating
 public class GenerateProjectFileTask extends XmlGeneratorTask<VisualStudioProjectFile> {
     private DefaultVisualStudioProject visualStudioProject;
     private String gradleExe;
     private String gradleArgs;
+
+    @Override
+    protected boolean getIncremental() {
+        return true;
+    }
 
     public void initGradleCommand() {
         final File gradlew = new File(IdePlugin.toGradleCommand(getProject()));
@@ -72,17 +80,19 @@ public class GenerateProjectFileTask extends XmlGeneratorTask<VisualStudioProjec
         this.visualStudioProject = (DefaultVisualStudioProject) vsProject;
     }
 
-    @Internal
+    @Nested
     public VisualStudioProject getVisualStudioProject() {
         return visualStudioProject;
     }
 
     @Override
+    @Internal
     public File getInputFile() {
         return null;
     }
 
     @Override
+    @OutputFile
     public File getOutputFile() {
         return visualStudioProject.getProjectFile().getLocation();
     }
@@ -97,6 +107,8 @@ public class GenerateProjectFileTask extends XmlGeneratorTask<VisualStudioProjec
         DefaultVisualStudioProject vsProject = visualStudioProject;
         projectFile.setGradleCommand(buildGradleCommand());
         projectFile.setProjectUuid(DefaultVisualStudioProject.getUUID(getOutputFile()));
+        projectFile.setVisualStudioVersion(visualStudioProject.getVisualStudioVersion().get());
+        projectFile.setSdkVersion(visualStudioProject.getSdkVersion().get());
 
         for (File sourceFile : vsProject.getSourceFiles()) {
             projectFile.addSourceFile(sourceFile);
@@ -110,6 +122,9 @@ public class GenerateProjectFileTask extends XmlGeneratorTask<VisualStudioProjec
             projectFile.addHeaderFile(headerFile);
         }
 
+        if (vsProject.getConfigurations().stream().noneMatch(it -> it.isBuildable())) {
+            getLogger().warn("'" + vsProject.getComponentName() + "' component in project '" + getProject().getPath() + "' is not buildable.");
+        }
         for (VisualStudioProjectConfiguration configuration : vsProject.getConfigurations()) {
             projectFile.addConfiguration(configuration);
         }
@@ -139,13 +154,14 @@ public class GenerateProjectFileTask extends XmlGeneratorTask<VisualStudioProjec
         this.gradleExe = gradleExe;
     }
 
-    @Input
+    @Nullable
     @Optional
+    @Input
     public String getGradleArgs() {
         return gradleArgs;
     }
 
-    public void setGradleArgs(String gradleArgs) {
+    public void setGradleArgs(@Nullable String gradleArgs) {
         this.gradleArgs = gradleArgs;
     }
 }

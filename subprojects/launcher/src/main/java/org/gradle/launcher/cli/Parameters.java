@@ -16,32 +16,27 @@
 
 package org.gradle.launcher.cli;
 
-import org.gradle.StartParameter;
 import org.gradle.api.internal.StartParameterInternal;
+import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.initialization.BuildLayoutParameters;
 import org.gradle.launcher.daemon.configuration.DaemonParameters;
 
 public class Parameters {
     private BuildLayoutParameters layout;
-    private StartParameter startParameter;
+    private StartParameterInternal startParameter;
     private DaemonParameters daemonParameters;
 
-    public Parameters() {
+    public Parameters(FileCollectionFactory fileCollectionFactory) {
         this.layout = new BuildLayoutParameters();
         this.startParameter = new StartParameterInternal();
-        this.daemonParameters = new DaemonParameters(layout);
-    }
-
-    public Parameters(StartParameter startParameter) {
-        this();
-        this.startParameter = startParameter;
+        this.daemonParameters = new DaemonParameters(layout, fileCollectionFactory);
     }
 
     public DaemonParameters getDaemonParameters() {
         return daemonParameters;
     }
 
-    public StartParameter getStartParameter() {
+    public StartParameterInternal getStartParameter() {
         return startParameter;
     }
 

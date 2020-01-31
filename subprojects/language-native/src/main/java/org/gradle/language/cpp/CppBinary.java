@@ -16,8 +16,8 @@
 
 package org.gradle.language.cpp;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.attributes.Attribute;
+import org.gradle.api.component.BuildableComponent;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.provider.Provider;
 import org.gradle.language.ComponentWithDependencies;
@@ -30,8 +30,7 @@ import org.gradle.nativeplatform.Linkage;
  *
  * @since 4.2
  */
-@Incubating
-public interface CppBinary extends ComponentWithObjectFiles, ComponentWithDependencies {
+public interface CppBinary extends ComponentWithObjectFiles, ComponentWithDependencies, BuildableComponent {
     /**
      * The dependency resolution attribute use to indicate whether a binary is debuggable or not.
      */
@@ -72,7 +71,7 @@ public interface CppBinary extends ComponentWithObjectFiles, ComponentWithDepend
     FileCollection getRuntimeLibraries();
 
     /**
-     * {@inheritDoc}
+     * Returns the target platform for this component.
      *
      * @since 4.5
      */

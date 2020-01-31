@@ -115,6 +115,7 @@ public class StartScriptGenerator {
     }
 
     static class AntUnixFileOperation implements UnixFileOperation {
+        @Override
         public void createExecutablePermission(File file) {
             Chmod chmod = new Chmod();
             chmod.setFile(file);
@@ -124,7 +125,7 @@ public class StartScriptGenerator {
         }
     }
 
-    private class Generate implements Action<BufferedWriter> {
+    private static class Generate implements Action<BufferedWriter> {
         private final JavaAppStartScriptGenerationDetails startScriptGenerationDetails;
         private final ScriptGenerator unixStartScriptGenerator;
 

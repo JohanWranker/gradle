@@ -45,7 +45,6 @@ class EvaluateSettingsBuildOperationIntegrationTest extends AbstractIntegrationS
         def projectDirectory = testDirectory.createDir("a")
 
         when:
-        executer.withSearchUpwards()
         projectDir(projectDirectory)
         succeeds('help')
 
@@ -100,6 +99,15 @@ class EvaluateSettingsBuildOperationIntegrationTest extends AbstractIntegrationS
         operations()[0].details.buildPath == ":"
         verifySettings(operations()[1], nestedSettingsFile)
         operations()[1].details.buildPath == ":nested"
+    }
+
+    def 'can configure feature preview in settings'() {
+        given:
+        settingsFile << '''
+enableFeaturePreview('GROOVY_COMPILATION_AVOIDANCE')
+'''
+        expect:
+        succeeds('help')
     }
 
     private List<BuildOperationRecord> operations() {

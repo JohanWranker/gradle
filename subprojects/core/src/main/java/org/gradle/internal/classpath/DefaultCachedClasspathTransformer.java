@@ -17,40 +17,37 @@
 package org.gradle.internal.classpath;
 
 import org.gradle.api.Transformer;
-import org.gradle.cache.CacheBuilder;
 import org.gradle.cache.CacheRepository;
-import org.gradle.cache.FileLockManager;
 import org.gradle.cache.PersistentCache;
-import org.gradle.internal.Factories;
-import org.gradle.internal.Factory;
 import org.gradle.internal.UncheckedException;
+import org.gradle.internal.file.FileAccessTimeJournal;
 import org.gradle.internal.file.JarCache;
+import org.gradle.internal.resource.local.FileAccessTracker;
+import org.gradle.internal.vfs.AdditiveCacheLocations;
 import org.gradle.util.CollectionUtils;
 
 import java.io.Closeable;
 import java.io.File;
-import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
-
-import static org.gradle.cache.internal.filelock.LockOptionsBuilder.mode;
 
 public class DefaultCachedClasspathTransformer implements CachedClasspathTransformer, Closeable {
+
     private final PersistentCache cache;
     private final Transformer<File, File> jarFileTransformer;
 
-    public DefaultCachedClasspathTransformer(CacheRepository cacheRepository, JarCache jarCache, List<CachedJarFileStore> fileStores) {
-        this.cache = cacheRepository
-            .cache("jars-3")
-            .withDisplayName("jars")
-            .withCrossVersionCache(CacheBuilder.LockTarget.DefaultTarget)
-            .withLockOptions(mode(FileLockManager.LockMode.None))
-            .open();
-        this.jarFileTransformer = new CachedJarFileTransformer(jarCache, cache, fileStores);
+    public DefaultCachedClasspathTransformer(
+        CacheRepository cacheRepository,
+        ClasspathTransformerCacheFactory classpathTransformerCacheFactory,
+        FileAccessTimeJournal fileAccessTimeJournal,
+        JarCache jarCache,
+        AdditiveCacheLocations additiveCacheLocations
+    ) {
+        this.cache = classpathTransformerCacheFactory.createCache(cacheRepository, fileAccessTimeJournal);
+        FileAccessTracker fileAccessTracker = classpathTransformerCacheFactory.createFileAccessTracker(fileAccessTimeJournal);
+        this.jarFileTransformer = new FileAccessTrackingJarFileTransformer(new CachedJarFileTransformer(jarCache, additiveCacheLocations), fileAccessTracker);
     }
 
     @Override
@@ -60,69 +57,65 @@ public class DefaultCachedClasspathTransformer implements CachedClasspathTransfo
 
     @Override
     public Collection<URL> transform(Collection<URL> urls) {
-        return CollectionUtils.collect(urls, new Transformer<URL, URL>() {
-            @Override
-            public URL transform(URL url) {
-                if (url.getProtocol().equals("file")) {
-                    try {
-                        return jarFileTransformer.transform(new File(url.toURI())).toURI().toURL();
-                    } catch (URISyntaxException e) {
-                        throw UncheckedException.throwAsUncheckedException(e);
-                    } catch (MalformedURLException e) {
-                        throw UncheckedException.throwAsUncheckedException(e);
-                    }
-                } else {
-                    return url;
+        return CollectionUtils.collect(urls, url -> {
+            if (url.getProtocol().equals("file")) {
+                try {
+                    return jarFileTransformer.transform(new File(url.toURI())).toURI().toURL();
+                } catch (URISyntaxException | MalformedURLException e) {
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
+            } else {
+                return url;
             }
         });
     }
 
-    @Override
-    public void close() throws IOException {
-        cache.close();
-    }
-
-    private static class CachedJarFileTransformer implements Transformer<File, File> {
+    private class CachedJarFileTransformer implements Transformer<File, File> {
         private final JarCache jarCache;
-        private final PersistentCache cache;
-        private final List<String> prefixes;
+        private final AdditiveCacheLocations additiveCacheLocations;
 
-        CachedJarFileTransformer(JarCache jarCache, PersistentCache cache, List<CachedJarFileStore> fileStores) {
+        CachedJarFileTransformer(JarCache jarCache, AdditiveCacheLocations additiveCacheLocations) {
             this.jarCache = jarCache;
-            this.cache = cache;
-            prefixes = new ArrayList<String>(fileStores.size() + 1);
-            prefixes.add(cache.getBaseDir().getAbsolutePath() + File.separator);
-            for (CachedJarFileStore fileStore : fileStores) {
-                for (File rootDir : fileStore.getFileStoreRoots()) {
-                    prefixes.add(rootDir.getAbsolutePath() + File.separator);
-                }
-            }
+            this.additiveCacheLocations = additiveCacheLocations;
         }
 
         @Override
         public File transform(final File original) {
             if (shouldUseFromCache(original)) {
-                return cache.useCache(new Factory<File>() {
-                    public File create() {
-                        return jarCache.getCachedJar(original, Factories.constant(cache.getBaseDir()));
-                    }
-                });
-            } else {
-                return original;
+                return cache.useCache(() -> jarCache.getCachedJar(original, cache.getBaseDir()));
             }
+            return original;
         }
 
         private boolean shouldUseFromCache(File original) {
             if (!original.isFile()) {
                 return false;
             }
-            for (String prefix : prefixes) {
-                if (original.getAbsolutePath().startsWith(prefix)) {
-                    return false;
-                }
-            }
-            return true;
+            String absolutePath = original.getAbsolutePath();
+            return !additiveCacheLocations.isInsideAdditiveCache(absolutePath);
         }
+    }
+
+    private static class FileAccessTrackingJarFileTransformer implements Transformer<File, File> {
+
+        private final Transformer<File, File> delegate;
+        private final FileAccessTracker fileAccessTracker;
+
+        FileAccessTrackingJarFileTransformer(Transformer<File, File> delegate, FileAccessTracker fileAccessTracker) {
+            this.delegate = delegate;
+            this.fileAccessTracker = fileAccessTracker;
+        }
+
+        @Override
+        public File transform(File file) {
+            File result = delegate.transform(file);
+            fileAccessTracker.markAccessed(result);
+            return result;
+        }
+    }
+
+    @Override
+    public void close() {
+        cache.close();
     }
 }

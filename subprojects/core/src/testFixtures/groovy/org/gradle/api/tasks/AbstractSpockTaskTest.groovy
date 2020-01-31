@@ -21,31 +21,26 @@ import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.internal.AbstractTask
-import org.gradle.api.internal.AsmBackedClassGenerator
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.project.taskfactory.AnnotationProcessingTaskFactory
 import org.gradle.api.internal.project.taskfactory.DefaultTaskClassInfoStore
-import org.gradle.api.internal.project.taskfactory.ITaskFactory
 import org.gradle.api.internal.project.taskfactory.TaskFactory
-import org.gradle.api.internal.tasks.TaskExecuter
-import org.gradle.api.internal.tasks.TaskExecutionContext
-import org.gradle.api.internal.tasks.TaskStateInternal
+import org.gradle.api.internal.project.taskfactory.TaskInstantiator
 import org.gradle.api.specs.Spec
+import org.gradle.cache.internal.TestCrossBuildInMemoryCacheFactory
 import org.gradle.internal.Actions
+import org.gradle.internal.MutableBoolean
 import org.gradle.internal.reflect.DirectInstantiator
 import org.gradle.test.fixtures.AbstractProjectBuilderSpec
-import org.gradle.util.GUtil
 import org.gradle.util.TestUtil
-
-import java.util.concurrent.atomic.AtomicBoolean
 
 import static org.junit.Assert.assertFalse
 
 abstract class AbstractSpockTaskTest extends AbstractProjectBuilderSpec {
     public static final String TEST_TASK_NAME = "taskname"
 
-    def taskClassInfoStore = new DefaultTaskClassInfoStore()
-    private final ITaskFactory taskFactory = new AnnotationProcessingTaskFactory(taskClassInfoStore, new TaskFactory(new AsmBackedClassGenerator()))
+    def taskClassInfoStore = new DefaultTaskClassInfoStore(new TestCrossBuildInMemoryCacheFactory())
+    def taskFactory = new AnnotationProcessingTaskFactory(DirectInstantiator.INSTANCE, taskClassInfoStore, new TaskFactory())
 
     abstract AbstractTask getTask()
 
@@ -53,14 +48,12 @@ abstract class AbstractSpockTaskTest extends AbstractProjectBuilderSpec {
         return createTask(type, project, TEST_TASK_NAME)
     }
 
-    Task createTask(Project project, String name) {
+    Task createTask(ProjectInternal project, String name) {
         return createTask(getTask().getClass(), project, name)
     }
 
-    def <T extends AbstractTask> T createTask(Class<T> type, Project project, String name) {
-        Task task = taskFactory.createChild(project, DirectInstantiator.INSTANCE).createTask(
-                GUtil.map(Task.TASK_TYPE, type,
-                        Task.TASK_NAME, name))
+    def <T extends AbstractTask> T createTask(Class<T> type, ProjectInternal project, String name) {
+        Task task = new TaskInstantiator(taskFactory.createChild(project, TestUtil.instantiatorFactory().decoratingLenientScheme), project).create(name, type)
         assert type.isAssignableFrom(task.getClass())
         return type.cast(task)
     }
@@ -126,18 +119,6 @@ abstract class AbstractSpockTaskTest extends AbstractProjectBuilderSpec {
         "task '" + getTask().getPath() + "'" ==  getTask().toString()
     }
 
-    def testDeleteAllActions() {
-        when:
-        Action action1 = Actions.doNothing()
-        Action action2 = Actions.doNothing()
-        getTask().doLast(action1)
-        getTask().doLast(action2)
-
-        then:
-        getTask().is( getTask().deleteAllActions())
-        new ArrayList() ==  getTask().getActions()
-    }
-
     def testSetActions() {
         when:
         Action action1 = Actions.doNothing()
@@ -156,19 +137,6 @@ abstract class AbstractSpockTaskTest extends AbstractProjectBuilderSpec {
 
         then:
         thrown(InvalidUserDataException)
-    }
-
-    def testExecuteDelegatesToTaskExecuter() {
-        final AbstractTask task = getTask()
-        TaskExecuter executer = Mock()
-        task.setExecuter(executer)
-
-        when:
-        task.execute()
-
-        then:
-        1 * executer.execute(task, _ as TaskStateInternal, _ as TaskExecutionContext)
-
     }
 
     def setGetDescription() {
@@ -209,8 +177,8 @@ abstract class AbstractSpockTaskTest extends AbstractProjectBuilderSpec {
     }
 
     def onlyIfPredicateIsTrueWhenTaskIsEnabledAndAllPredicatesAreTrue() {
-        final AtomicBoolean condition1 = new AtomicBoolean(true)
-        final AtomicBoolean condition2 = new AtomicBoolean(true)
+        final MutableBoolean condition1 = new MutableBoolean(true)
+        final MutableBoolean condition2 = new MutableBoolean(true)
 
         AbstractTask task = getTask()
         task.onlyIf {
@@ -251,7 +219,7 @@ abstract class AbstractSpockTaskTest extends AbstractProjectBuilderSpec {
     }
 
     def canReplaceOnlyIfSpec() {
-        final AtomicBoolean condition1 = new AtomicBoolean(true)
+        final MutableBoolean condition1 = new MutableBoolean(true)
         AbstractTask task = getTask()
         task.onlyIf(Mock(Spec))
         task.setOnlyIf {
@@ -280,19 +248,4 @@ abstract class AbstractSpockTaskTest extends AbstractProjectBuilderSpec {
         then:
         task.getOnlyIf().isSatisfiedBy(task)
     }
-
-    def testDependentTaskDidWork() {
-        Task task1 = Mock()
-        Task task2 = Mock()
-        TaskDependency dependencyMock = Mock()
-        getTask().dependsOn(dependencyMock)
-        dependencyMock.getDependencies(getTask()) >> [task1, task2]
-        task1.getDidWork() >> false
-        task2.getDidWork() >>> [false, true]
-
-        expect:
-        !getTask().dependsOnTaskDidWork()
-        getTask().dependsOnTaskDidWork()
-    }
-
 }

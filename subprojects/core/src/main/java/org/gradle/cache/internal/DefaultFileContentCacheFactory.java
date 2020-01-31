@@ -16,45 +16,44 @@
 
 package org.gradle.cache.internal;
 
-import org.gradle.api.internal.changedetection.state.FileSnapshot;
-import org.gradle.api.internal.changedetection.state.FileSystemSnapshotter;
-import org.gradle.api.internal.changedetection.state.InMemoryCacheDecoratorFactory;
-import org.gradle.api.internal.tasks.execution.TaskOutputChangesListener;
-import org.gradle.api.invocation.Gradle;
 import org.gradle.cache.CacheRepository;
 import org.gradle.cache.FileLockManager;
 import org.gradle.cache.PersistentCache;
 import org.gradle.cache.PersistentIndexedCache;
 import org.gradle.cache.PersistentIndexedCacheParameters;
 import org.gradle.internal.event.ListenerManager;
-import org.gradle.internal.file.FileType;
+import org.gradle.internal.execution.OutputChangeListener;
 import org.gradle.internal.hash.HashCode;
 import org.gradle.internal.serialize.HashCodeSerializer;
 import org.gradle.internal.serialize.Serializer;
+import org.gradle.internal.vfs.VirtualFileSystem;
 
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import static org.gradle.cache.internal.filelock.LockOptionsBuilder.mode;
 
 public class DefaultFileContentCacheFactory implements FileContentCacheFactory, Closeable {
     private final ListenerManager listenerManager;
-    private final FileSystemSnapshotter fileSystemSnapshotter;
+    private final VirtualFileSystem virtualFileSystem;
     private final InMemoryCacheDecoratorFactory inMemoryCacheDecoratorFactory;
     private final PersistentCache cache;
     private final HashCodeSerializer hashCodeSerializer = new HashCodeSerializer();
+    private final ConcurrentMap<String, DefaultFileContentCache<?>> caches = new ConcurrentHashMap<>();
 
-    public DefaultFileContentCacheFactory(ListenerManager listenerManager, FileSystemSnapshotter fileSystemSnapshotter, CacheRepository cacheRepository, InMemoryCacheDecoratorFactory inMemoryCacheDecoratorFactory, Gradle gradle) {
+    public DefaultFileContentCacheFactory(ListenerManager listenerManager, VirtualFileSystem virtualFileSystem, CacheRepository cacheRepository, InMemoryCacheDecoratorFactory inMemoryCacheDecoratorFactory, @Nullable Object scope) {
         this.listenerManager = listenerManager;
-        this.fileSystemSnapshotter = fileSystemSnapshotter;
+        this.virtualFileSystem = virtualFileSystem;
         this.inMemoryCacheDecoratorFactory = inMemoryCacheDecoratorFactory;
         cache = cacheRepository
-            .cache(gradle, "fileContent")
+            .cache(scope, "fileContent")
             .withDisplayName("file content cache")
-            .withLockOptions(mode(FileLockManager.LockMode.None)) // Lock on demand
+            .withLockOptions(mode(FileLockManager.LockMode.OnDemand)) // Lock on demand
             .open();
     }
 
@@ -65,12 +64,22 @@ public class DefaultFileContentCacheFactory implements FileContentCacheFactory, 
 
     @Override
     public <V> FileContentCache<V> newCache(String name, int normalizedCacheSize, final Calculator<? extends V> calculator, Serializer<V> serializer) {
-        PersistentIndexedCacheParameters<HashCode, V> parameters = new PersistentIndexedCacheParameters<HashCode, V>(name, hashCodeSerializer, serializer)
-                .cacheDecorator(inMemoryCacheDecoratorFactory.decorator(normalizedCacheSize, true));
+        PersistentIndexedCacheParameters<HashCode, V> parameters = PersistentIndexedCacheParameters.of(name, hashCodeSerializer, serializer)
+            .withCacheDecorator(inMemoryCacheDecoratorFactory.decorator(normalizedCacheSize, true));
         PersistentIndexedCache<HashCode, V> store = cache.createCache(parameters);
 
-        DefaultFileContentCache<V> cache = new DefaultFileContentCache<V>(name, fileSystemSnapshotter, store, calculator);
-        listenerManager.addListener(cache);
+        DefaultFileContentCache<V> cache = (DefaultFileContentCache<V>) caches.get(name);
+        if (cache == null) {
+            cache = new DefaultFileContentCache<>(name, virtualFileSystem, store, calculator);
+            DefaultFileContentCache<V> existing = (DefaultFileContentCache<V>) caches.putIfAbsent(name, cache);
+            if (existing == null) {
+                listenerManager.addListener(cache);
+            } else {
+                cache = existing;
+            }
+        }
+
+        cache.assertStoredIn(store);
         return cache;
     }
 
@@ -79,46 +88,46 @@ public class DefaultFileContentCacheFactory implements FileContentCacheFactory, 
      *
      * The second level indexes on the hash of file content and contains the value that was calculated from a file with the given hash.
      */
-    private static class DefaultFileContentCache<V> implements FileContentCache<V>, TaskOutputChangesListener {
-        private final Map<File, V> cache = new ConcurrentHashMap<File, V>();
-        private final FileSystemSnapshotter fileSystemSnapshotter;
-        private final PersistentIndexedCache<HashCode, V> contentCache;
+    private static class DefaultFileContentCache<V> implements FileContentCache<V>, OutputChangeListener {
+        private final Map<File, V> locationCache = new ConcurrentHashMap<>();
         private final String name;
+        private final VirtualFileSystem virtualFileSystem;
+        private final PersistentIndexedCache<HashCode, V> contentCache;
         private final Calculator<? extends V> calculator;
 
-        DefaultFileContentCache(String name, FileSystemSnapshotter fileSystemSnapshotter, PersistentIndexedCache<HashCode, V> contentCache, Calculator<? extends V> calculator) {
+        DefaultFileContentCache(String name, VirtualFileSystem virtualFileSystem, PersistentIndexedCache<HashCode, V> contentCache, Calculator<? extends V> calculator) {
             this.name = name;
-            this.fileSystemSnapshotter = fileSystemSnapshotter;
+            this.virtualFileSystem = virtualFileSystem;
             this.contentCache = contentCache;
             this.calculator = calculator;
         }
 
         @Override
-        public void beforeTaskOutputChanged() {
+        public void beforeOutputChange() {
             // A very dumb strategy for invalidating cache
-            cache.clear();
+            locationCache.clear();
+        }
+
+        @Override
+        public void beforeOutputChange(Iterable<String> affectedOutputPaths) {
+            beforeOutputChange();
         }
 
         @Override
         public V get(File file) {
-            // TODO - don't calculate the same value concurrently
-            V value = cache.get(file);
-            if (value == null) {
-                FileSnapshot fileSnapshot = fileSystemSnapshotter.snapshotSelf(file);
-                FileType fileType = fileSnapshot.getType();
-                if (fileType == FileType.RegularFile) {
-                    HashCode hashCode = fileSnapshot.getContent().getContentMd5();
-                    value = contentCache.get(hashCode);
-                    if (value == null) {
-                        value = calculator.calculate(file, fileType);
-                        contentCache.put(hashCode, value);
-                    }
-                } else {
-                    value = calculator.calculate(file, fileType);
-                }
-                cache.put(file, value);
+            return locationCache.computeIfAbsent(file,
+                location -> virtualFileSystem.readRegularFileContentHash(
+                    location.getAbsolutePath(),
+                    contentHash -> contentCache.get(contentHash, key -> calculator.calculate(location, true))
+                ).orElseGet(
+                    () -> calculator.calculate(location, false)
+                ));
+        }
+
+        private void assertStoredIn(PersistentIndexedCache<HashCode, V> store) {
+            if (this.contentCache != store) {
+                throw new IllegalStateException("Cache " + name + " cannot be recreated with different parameters");
             }
-            return value;
         }
     }
 }

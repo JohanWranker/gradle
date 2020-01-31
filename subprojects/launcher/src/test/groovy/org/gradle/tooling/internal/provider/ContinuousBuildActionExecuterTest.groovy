@@ -18,15 +18,13 @@ package org.gradle.tooling.internal.provider
 
 import org.gradle.api.execution.internal.DefaultTaskInputsListener
 import org.gradle.api.internal.TaskInternal
-import org.gradle.api.internal.file.collections.SimpleFileCollection
+import org.gradle.api.internal.file.collections.ImmutableFileCollection
 import org.gradle.deployment.internal.DeploymentRegistryInternal
 import org.gradle.initialization.BuildRequestMetaData
 import org.gradle.initialization.DefaultBuildCancellationToken
 import org.gradle.initialization.DefaultBuildRequestContext
 import org.gradle.initialization.NoOpBuildEventConsumer
-import org.gradle.initialization.ReportedException
 import org.gradle.internal.buildevents.BuildStartedTime
-import org.gradle.internal.concurrent.DefaultExecutorFactory
 import org.gradle.internal.event.ListenerManager
 import org.gradle.internal.filewatch.FileSystemChangeWaiter
 import org.gradle.internal.filewatch.FileSystemChangeWaiterFactory
@@ -38,16 +36,15 @@ import org.gradle.internal.time.Clock
 import org.gradle.internal.time.Time
 import org.gradle.launcher.exec.BuildActionExecuter
 import org.gradle.launcher.exec.BuildActionParameters
+import org.gradle.test.fixtures.concurrent.ConcurrentSpec
 import org.gradle.util.DisconnectableInputStream
 import org.gradle.util.RedirectStdIn
 import org.junit.Rule
-import spock.lang.AutoCleanup
-import spock.lang.Specification
 import spock.lang.Timeout
 
 import java.util.concurrent.TimeUnit
 
-class ContinuousBuildActionExecuterTest extends Specification {
+class ContinuousBuildActionExecuterTest extends ConcurrentSpec {
 
     @Rule
     RedirectStdIn redirectStdIn = new RedirectStdIn()
@@ -62,8 +59,6 @@ class ContinuousBuildActionExecuterTest extends Specification {
     def waiterFactory = Mock(FileSystemChangeWaiterFactory)
     def waiter = Mock(FileSystemChangeWaiter)
     def inputsListener = new DefaultTaskInputsListener()
-    @AutoCleanup("stop")
-    def executorFactory = new DefaultExecutorFactory()
     def buildSessionScopeServices = Stub(ServiceRegistry)
     def listenerManager = Stub(ListenerManager)
     def pendingChangesListener = Mock(PendingChangesListener)
@@ -145,61 +140,12 @@ class ContinuousBuildActionExecuterTest extends Specification {
         0 * waiter.wait(_, _)
     }
 
-    def "throws exception if last build fails in continous mode"() {
-        when:
-        continuousBuild()
-        1 * delegate.execute(action, requestContext, actionParameters, _) >> {
-            declareInput(file)
-            throw new ReportedException(new Exception("!"))
-        }
-        executeBuild()
-
-        then:
-        1 * waiter.wait(_, _) >> {
-            cancellationToken.cancel()
-        }
-        thrown(ReportedException)
-    }
-
-    def "keeps running after failures when continuous"() {
-        when:
-        continuousBuild()
-        executeBuild()
-
-        then:
-        1 * delegate.execute(action, requestContext, actionParameters, _) >> {
-            declareInput(file)
-        }
-
-        and:
-        1 * waiter.wait(_, _)
-
-        and:
-        1 * delegate.execute(action, requestContext, actionParameters, _) >> {
-            declareInput(file)
-            throw new ReportedException(new Exception("!"))
-        }
-
-        and:
-        1 * waiter.wait(_, _)
-
-        and:
-        1 * delegate.execute(action, requestContext, actionParameters, _) >> {
-            declareInput(file)
-        }
-
-        and:
-        1 * waiter.wait(_, _) >> {
-            cancellationToken.cancel()
-        }
-    }
-
     private void singleBuild() {
         actionParameters.continuous >> false
     }
 
     private void interactiveBuild() {
-        actionParameters.interactive >> true
+        requestMetadata.interactive >> true
     }
 
     private void continuousBuild() {
@@ -211,7 +157,7 @@ class ContinuousBuildActionExecuterTest extends Specification {
     }
 
     private void declareInput(File file) {
-        inputsListener.onExecute(Mock(TaskInternal), new SimpleFileCollection(file))
+        inputsListener.onExecute(Mock(TaskInternal), ImmutableFileCollection.of(file))
     }
 
     private ContinuousBuildActionExecuter executer() {

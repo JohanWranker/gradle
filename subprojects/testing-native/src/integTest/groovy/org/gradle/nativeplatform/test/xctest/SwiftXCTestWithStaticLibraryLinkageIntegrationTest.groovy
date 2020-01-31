@@ -21,7 +21,7 @@ import org.gradle.nativeplatform.fixtures.app.XCTestSourceElement
 
 class SwiftXCTestWithStaticLibraryLinkageIntegrationTest extends AbstractSwiftXCTestWithComponentIntegrationTest {
     @Override
-    protected String[] getTaskToAssembleComponentUnderTest() {
+    protected String[] getTasksToAssembleComponentUnderTest() {
         return [":createDebug"]
     }
 
@@ -47,5 +47,10 @@ class SwiftXCTestWithStaticLibraryLinkageIntegrationTest extends AbstractSwiftXC
             apply plugin: 'swift-library'
             library.linkage = [Linkage.STATIC]
         """
+    }
+
+    @Override
+    protected String getComponentUnderTestDsl() {
+        return "library"
     }
 }

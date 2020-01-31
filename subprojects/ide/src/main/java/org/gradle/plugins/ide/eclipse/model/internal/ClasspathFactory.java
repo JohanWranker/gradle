@@ -17,12 +17,15 @@
 package org.gradle.plugins.ide.eclipse.model.internal;
 
 import com.google.common.collect.Lists;
+import org.gradle.api.internal.project.ProjectStateRegistry;
 import org.gradle.plugins.ide.eclipse.model.AbstractClasspathEntry;
 import org.gradle.plugins.ide.eclipse.model.ClasspathEntry;
 import org.gradle.plugins.ide.eclipse.model.Container;
 import org.gradle.plugins.ide.eclipse.model.EclipseClasspath;
 import org.gradle.plugins.ide.eclipse.model.Output;
 import org.gradle.plugins.ide.eclipse.model.SourceFolder;
+import org.gradle.plugins.ide.internal.IdeArtifactRegistry;
+import org.gradle.plugins.ide.internal.resolver.GradleApiSourcesResolver;
 
 import java.util.Collections;
 import java.util.List;
@@ -32,9 +35,9 @@ public class ClasspathFactory {
     private final EclipseClasspath classpath;
     private final EclipseDependenciesCreator dependenciesCreator;
 
-    public ClasspathFactory(EclipseClasspath classpath) {
+    public ClasspathFactory(EclipseClasspath classpath, IdeArtifactRegistry ideArtifactRegistry, ProjectStateRegistry projectRegistry, GradleApiSourcesResolver gradleApiSourcesResolver) {
         this.classpath = classpath;
-        this.dependenciesCreator = new EclipseDependenciesCreator(classpath);
+        this.dependenciesCreator = new EclipseDependenciesCreator(classpath, ideArtifactRegistry, projectRegistry, gradleApiSourcesResolver);
     }
 
     public List<ClasspathEntry> createEntries() {

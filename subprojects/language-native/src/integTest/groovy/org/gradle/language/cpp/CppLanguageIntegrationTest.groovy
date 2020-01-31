@@ -16,10 +16,15 @@
 
 package org.gradle.language.cpp
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.language.AbstractNativeLanguageIntegrationTest
+import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
+import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.CppCompilerDetectingTestApp
 import org.gradle.nativeplatform.fixtures.app.CppHelloWorldApp
 import org.gradle.nativeplatform.fixtures.app.HelloWorldApp
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 import org.junit.Assume
 
 import static org.gradle.util.Matchers.containsText
@@ -28,6 +33,7 @@ class CppLanguageIntegrationTest extends AbstractNativeLanguageIntegrationTest {
 
     HelloWorldApp helloWorldApp = new CppHelloWorldApp()
 
+    @ToBeFixedForInstantExecution
     def "build fails when compilation fails"() {
         given:
         buildFile << """
@@ -52,6 +58,7 @@ model {
         failure.assertThatCause(containsText("C++ compiler failed while compiling broken.cpp"))
     }
 
+    @ToBeFixedForInstantExecution
     def "finds C and C++ standard library headers"() {
         // https://github.com/gradle/gradle-native/issues/282
         Assume.assumeFalse(toolChain.id == "gcccygwin")
@@ -78,6 +85,38 @@ model {
         output.contains("Found all include files for ':compileMainSharedLibraryMainCpp'")
     }
 
+    @Requires(TestPrecondition.MAC_OS_X)
+    @ToBeFixedForInstantExecution
+    def "can compile and link C++ code using standard macOS framework"() {
+        given:
+        buildFile << """
+            model {
+                components {
+                    main(NativeLibrarySpec) {
+                        binaries.all {
+                            linker.args "-framework", "CoreFoundation"
+                        }
+                    }
+                }
+            }
+         """
+
+        and:
+        file("src/main/cpp/includeFramework.cpp") << """
+            #include <CoreFoundation/CoreFoundation.h>
+
+            void sayHelloFoundation() {
+                CFShow(CFSTR("Hello"));
+            }
+        """
+
+        expect:
+        succeeds 'mainSharedLibrary'
+        result.assertTasksExecuted(":compileMainSharedLibraryMainCpp", ":linkMainSharedLibrary", ":mainSharedLibrary")
+        result.assertTasksNotSkipped(":compileMainSharedLibraryMainCpp", ":linkMainSharedLibrary", ":mainSharedLibrary")
+    }
+
+    @ToBeFixedForInstantExecution
     def "sources are compiled with C++ compiler"() {
         def app = new CppCompilerDetectingTestApp()
 
@@ -98,6 +137,7 @@ model {
         executable("build/exe/main/main").exec().out == app.expectedOutput(toolChain)
     }
 
+    @ToBeFixedForInstantExecution
     def "can manually define C++ source sets"() {
         given:
         helloWorldApp.library.headerFiles.each { it.writeToDir(file("src/shared")) }
@@ -145,5 +185,30 @@ model {
         mainExecutable.exec().out == helloWorldApp.englishOutput
     }
 
+    @RequiresInstalledToolChain(ToolChainRequirement.GCC_COMPATIBLE)
+    @ToBeFixedForInstantExecution
+    def "system headers are not evaluated when compiler warnings are enabled"() {
+        def app = new CppCompilerDetectingTestApp()
+
+        given:
+        app.writeSources(file('src/main'))
+
+        and:
+        buildFile << """
+model {
+    components {
+        main(NativeExecutableSpec) {
+            binaries.all {
+                cppCompiler.args "-Wall", "-Werror"
+            }
+        }
+    }
+}
+         """
+
+        expect:
+        succeeds "mainExecutable"
+        executable("build/exe/main/main").exec().out == app.expectedOutput(toolChain)
+    }
 }
 

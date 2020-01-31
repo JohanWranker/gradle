@@ -18,8 +18,8 @@ package org.gradle.integtests.tooling.fixture
 
 import groovy.transform.stc.ClosureParams
 import groovy.transform.stc.SimpleType
+import org.apache.commons.io.output.TeeOutputStream
 import org.gradle.integtests.fixtures.RepoScriptBlockUtil
-import org.gradle.integtests.fixtures.RetryRuleUtil
 import org.gradle.integtests.fixtures.build.BuildTestFile
 import org.gradle.integtests.fixtures.build.BuildTestFixture
 import org.gradle.integtests.fixtures.daemon.DaemonsFixture
@@ -30,16 +30,20 @@ import org.gradle.test.fixtures.file.CleanupTestDirectory
 import org.gradle.test.fixtures.file.TestDistributionDirectoryProvider
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
-import org.gradle.testing.internal.util.RetryRule
 import org.gradle.tooling.GradleConnectionException
 import org.gradle.tooling.GradleConnector
+import org.gradle.tooling.LongRunningOperation
 import org.gradle.tooling.ProjectConnection
 import org.gradle.util.GradleVersion
 import org.gradle.util.SetSystemProperties
 import org.junit.Rule
 import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
+import spock.lang.Retry
 import spock.lang.Specification
+
+import static org.gradle.integtests.fixtures.RetryConditions.onIssueWithReleasedGradleVersion
+import static spock.lang.Retry.Mode.SETUP_FEATURE_CLEANUP
 
 /**
  * A spec that executes tests against all compatible versions of tooling API consumer and testDirectoryProvider, including the current Gradle version under test.
@@ -53,18 +57,18 @@ import spock.lang.Specification
  * </ul>
  */
 @CleanupTestDirectory
-@ToolingApiVersion('>=2.0')
-@TargetGradleVersion('>=1.2')
+@ToolingApiVersion('>=3.0')
+@TargetGradleVersion('>=2.6')
 @RunWith(ToolingApiCompatibilitySuiteRunner)
+@Retry(condition = { onIssueWithReleasedGradleVersion(instance, failure) }, mode = SETUP_FEATURE_CLEANUP, count = 2)
 abstract class ToolingApiSpecification extends Specification {
 
     @Rule
     public final SetSystemProperties sysProperties = new SetSystemProperties()
 
     GradleConnectionException caughtGradleConnectionException
-
-    @Rule
-    RetryRule retryRule = RetryRuleUtil.retryCrossVersionTestOnIssueWithReleasedGradleVersion(this)
+    TestOutputStream stderr = new TestOutputStream()
+    TestOutputStream stdout = new TestOutputStream()
 
     String getReleasedGradleVersion() {
         return targetDist.version.baseVersion.version
@@ -81,12 +85,19 @@ abstract class ToolingApiSpecification extends Specification {
     @Rule
     public RuleChain chain = RuleChain.outerRule(temporaryFolder).around(temporaryDistributionFolder).around(toolingApi)
 
+    // reflectively invoked by ToolingApiCompatibilitySuiteRunner
     static void selectTargetDist(GradleDistribution version) {
         VERSION.set(version)
     }
 
     static GradleDistribution getTargetDist() {
         VERSION.get()
+    }
+
+    def setup() {
+        // this is to avoid the working directory to be the Gradle directory itself
+        // which causes isolation problems for tests. This one is for _embedded_ mode
+        System.setProperty("user.dir", temporaryFolder.testDirectory.absolutePath)
     }
 
     DaemonsFixture getDaemonsFixture() {
@@ -134,19 +145,34 @@ abstract class ToolingApiSpecification extends Specification {
     }
 
     public void withConnector(@DelegatesTo(GradleConnector) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.GradleConnector"]) Closure cl) {
-        toolingApi.withConnector(cl)
+        try {
+            toolingApi.withConnector(cl)
+        } catch (GradleConnectionException e) {
+            caughtGradleConnectionException = e
+            throw e
+        }
     }
 
     public <T> T withConnection(GradleConnector connector, @DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
-        toolingApi.withConnection(connector, cl)
+        try {
+            return toolingApi.withConnection(connector, cl)
+        } catch (GradleConnectionException e) {
+            caughtGradleConnectionException = e
+            throw e
+        }
     }
 
-    def connector() {
+    GradleConnector connector() {
         toolingApi.connector()
     }
 
     public <T> T withConnection(@DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
-        toolingApi.withConnection(cl)
+        try {
+            toolingApi.withConnection(cl)
+        } catch (GradleConnectionException e) {
+            caughtGradleConnectionException = e
+            throw e
+        }
     }
 
     public ConfigurableOperation withModel(Class modelType, Closure cl = {}) {
@@ -167,78 +193,99 @@ abstract class ToolingApiSpecification extends Specification {
         }
     }
 
+    void collectOutputs(LongRunningOperation op) {
+        op.setStandardOutput(new TeeOutputStream(stdout, System.out))
+        op.setStandardError(new TeeOutputStream(stderr, System.err))
+    }
+
     /**
-     * Returns the set of implicit task names expected for a non-root project for the target Gradle version.
+     * Returns the set of implicit task names expected for any project for the target Gradle version.
      */
     Set<String> getImplicitTasks() {
-        if (targetVersion > GradleVersion.version("3.1")) {
+        if (targetVersion >= GradleVersion.version("6.0")) {
+            return ['buildEnvironment', 'components', 'dependencies', 'dependencyInsight', 'dependentComponents', 'help', 'projects', 'properties', 'tasks', 'model', 'outgoingVariants', 'prepareKotlinBuildScriptModel']
+        } else if (targetVersion >= GradleVersion.version("5.3")) {
+            return ['buildEnvironment', 'components', 'dependencies', 'dependencyInsight', 'dependentComponents', 'help', 'projects', 'properties', 'tasks', 'model', 'prepareKotlinBuildScriptModel']
+        } else if (targetVersion > GradleVersion.version("3.1")) {
             return ['buildEnvironment', 'components', 'dependencies', 'dependencyInsight', 'dependentComponents', 'help', 'projects', 'properties', 'tasks', 'model']
-        } else if (GradleVersion.version(targetDist.version.baseVersion.version) >= GradleVersion.version("2.10")) {
+        } else if (targetVersion >= GradleVersion.version("2.10")) {
             return ['buildEnvironment', 'components', 'dependencies', 'dependencyInsight', 'help', 'projects', 'properties', 'tasks', 'model']
-        } else if (GradleVersion.version(targetDist.version.baseVersion.version) >= GradleVersion.version("2.4")) {
-            return ['components', 'dependencies', 'dependencyInsight', 'help', 'projects', 'properties', 'tasks', 'model']
-        } else if (GradleVersion.version(targetDist.version.baseVersion.version) >= GradleVersion.version("2.1")) {
-            return ['components', 'dependencies', 'dependencyInsight', 'help', 'projects', 'properties', 'tasks']
         } else {
-            return ['dependencies', 'dependencyInsight', 'help', 'projects', 'properties', 'tasks']
+            return ['components', 'dependencies', 'dependencyInsight', 'help', 'projects', 'properties', 'tasks', 'model']
         }
     }
 
     /**
-     * Returns the set of implicit selector names expected for a non-root project for the target Gradle version.
+     * Returns the set of implicit selector names expected for any project for the target Gradle version.
      *
      * <p>Note that in some versions the handling of implicit selectors was broken, so this method may return a different value
      * to {@link #getImplicitTasks()}.
      */
     Set<String> getImplicitSelectors() {
-        if (targetVersion <= GradleVersion.version("2.0")) {
-            // Implicit tasks were ignored
-            return []
-        }
         return getImplicitTasks()
+    }
+
+    /**
+     * Returns the set of invisible implicit task names expected for any project for the target Gradle version.
+     */
+    Set<String> getImplicitInvisibleTasks() {
+        return targetVersion >= GradleVersion.version("5.3") ? ['prepareKotlinBuildScriptModel'] : []
+    }
+
+    /**
+     * Returns the set of invisible implicit selector names expected for any project for the target Gradle version.
+     *
+     * See {@link #getImplicitInvisibleTasks}.
+     */
+    Set<String> getImplicitInvisibleSelectors() {
+        return implicitInvisibleTasks
     }
 
     /**
      * Returns the set of implicit task names expected for a root project for the target Gradle version.
      */
     Set<String> getRootProjectImplicitTasks() {
-        if (targetVersion == GradleVersion.version("1.6")) {
-            return implicitTasks + ['setupBuild']
-        }
         return implicitTasks + ['init', 'wrapper']
     }
 
     /**
      * Returns the set of implicit selector names expected for a root project for the target Gradle version.
-     *
-     * <p>Note that in some versions the handling of implicit selectors was broken, so this method may return a different value
-     * to {@link #getRootProjectImplicitTasks()}.
      */
     Set<String> getRootProjectImplicitSelectors() {
-        if (targetVersion == GradleVersion.version("1.6")) {
-            // Implicit tasks were ignored, and setupBuild was added as a regular task
-            return ['setupBuild']
-        }
-        if (targetVersion <= GradleVersion.version("2.0")) {
-            // Implicit tasks were ignored
-            return []
-        }
         return rootProjectImplicitTasks
     }
 
     /**
      * Returns the set of implicit tasks returned by GradleProject.getTasks()
-     *
-     * <p>Note that in some versions the handling of implicit tasks was broken, so this method may return a different value
-     * to {@link #getRootProjectImplicitTasks()}.
      */
     Set<String> getRootProjectImplicitTasksForGradleProjectModel() {
-        if (targetVersion == GradleVersion.version("1.6")) {
-            // Implicit tasks were ignored, and setupBuild was added as a regular task
-            return ['setupBuild']
-        }
+        rootProjectImplicitTasks
+    }
 
-        targetVersion < GradleVersion.version("2.3") ? [] : rootProjectImplicitTasks
+    void assertHasBuildSuccessfulLogging() {
+        assert stdout.toString().contains("BUILD SUCCESSFUL")
+    }
+
+    void assertHasBuildFailedLogging() {
+        def failureOutput = targetDist.selectOutputWithFailureLogging(stdout, stderr).toString()
+        assert failureOutput.contains("BUILD FAILED")
+    }
+
+    void assertHasConfigureSuccessfulLogging() {
+        if (targetDist.isToolingApiLogsConfigureSummary()) {
+            assert stdout.toString().contains("CONFIGURE SUCCESSFUL")
+        } else {
+            assert stdout.toString().contains("BUILD SUCCESSFUL")
+        }
+    }
+
+    void assertHasConfigureFailedLogging() {
+        def failureOutput = targetDist.selectOutputWithFailureLogging(stdout, stderr).toString()
+        if (targetDist.isToolingApiLogsConfigureSummary()) {
+            assert failureOutput.contains("CONFIGURE FAILED")
+        } else {
+            assert failureOutput.contains("BUILD FAILED")
+        }
     }
 
     public <T> T loadToolingModel(Class<T> modelClass) {

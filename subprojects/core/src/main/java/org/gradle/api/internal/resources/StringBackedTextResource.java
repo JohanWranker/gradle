@@ -18,7 +18,7 @@ package org.gradle.api.internal.resources;
 import com.google.common.io.Files;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.file.TemporaryFileProvider;
-import org.gradle.api.internal.tasks.TaskDependencies;
+import org.gradle.api.internal.tasks.TaskDependencyInternal;
 import org.gradle.api.resources.ResourceException;
 import org.gradle.api.resources.internal.TextResourceInternal;
 import org.gradle.api.tasks.TaskDependency;
@@ -48,14 +48,17 @@ public class StringBackedTextResource implements TextResourceInternal {
         return getDisplayName();
     }
 
+    @Override
     public String asString() {
         return string;
     }
 
+    @Override
     public Reader asReader() {
         return new StringReader(string);
     }
 
+    @Override
     public File asFile(String charset) {
         File file = tempFileProvider.createTemporaryFile("string", ".txt", "resource");
         try {
@@ -66,18 +69,22 @@ public class StringBackedTextResource implements TextResourceInternal {
         return file;
     }
 
+    @Override
     public File asFile() {
         return asFile(Charset.defaultCharset().name());
     }
 
+    @Override
     public TaskDependency getBuildDependencies() {
-        return TaskDependencies.EMPTY;
+        return TaskDependencyInternal.EMPTY;
     }
 
+    @Override
     public Object getInputProperties() {
         return string;
     }
 
+    @Override
     public FileCollection getInputFiles() {
         return null;
     }

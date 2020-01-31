@@ -38,8 +38,8 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
         wtpPlugin.apply(project)
 
         then:
-        wtpPlugin.lifecycleTask.description
-        wtpPlugin.cleanTask.description
+        wtpPlugin.lifecycleTask.get().description
+        wtpPlugin.cleanTask.get().description
     }
 
     def "does not break when eclipse and eclipseWtp applied"() {
@@ -53,8 +53,8 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
         wtpPlugin.apply(project)
 
         then:
-        project.tasks.eclipse.dependsOn.contains(project.eclipseWtp)
-        project.tasks.cleanEclipse.dependsOn.contains(project.cleanEclipseWtp)
+        project.tasks.eclipse.taskDependencies.getDependencies(null).contains(project.eclipseWtp)
+        project.tasks.cleanEclipse.taskDependencies.getDependencies(null).contains(project.cleanEclipseWtp)
     }
 
     def applyToJavaProject_shouldHaveWebProjectAndClasspathTask() {
@@ -65,7 +65,7 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         [project.tasks.cleanEclipseWtpComponent, project.tasks.cleanEclipseWtpFacet].each {
-            assert project.tasks.cleanEclipseWtp.dependsOn.contains(it)
+            assert project.tasks.cleanEclipseWtp.dependsOn*.get().contains(it)
         }
         checkEclipseClasspath([project.configurations.compileClasspath, project.configurations.runtimeClasspath, project.configurations.testCompileClasspath, project.configurations.testRuntimeClasspath])
         checkEclipseWtpComponentForJava()
@@ -83,7 +83,7 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         [project.tasks.cleanEclipseWtpComponent, project.tasks.cleanEclipseWtpFacet].each {
-            assert project.tasks.cleanEclipseWtp.dependsOn.contains(it)
+            assert project.tasks.cleanEclipseWtp.dependsOn*.get().contains(it)
         }
         checkEclipseClasspath([project.configurations.compileClasspath, project.configurations.runtimeClasspath, project.configurations.testCompileClasspath, project.configurations.testRuntimeClasspath])
         checkEclipseWtpComponentForJava()
@@ -121,7 +121,7 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         [project.cleanEclipseWtpComponent, project.cleanEclipseWtpFacet].each {
-            assert project.tasks.cleanEclipseWtp.dependsOn.contains(it)
+            assert project.tasks.cleanEclipseWtp.dependsOn*.get().contains(it)
         }
 
         checkEclipseClasspath([project.configurations.compileClasspath, project.configurations.runtimeClasspath, project.configurations.testCompileClasspath, project.configurations.testRuntimeClasspath])
@@ -141,7 +141,7 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         [project.cleanEclipseWtpComponent, project.cleanEclipseWtpFacet].each {
-            assert project.tasks.cleanEclipseWtp.dependsOn.contains(it)
+            assert project.tasks.cleanEclipseWtp.dependsOn*.get().contains(it)
         }
 
         checkEclipseClasspath([project.configurations.compileClasspath, project.configurations.runtimeClasspath, project.configurations.testCompileClasspath, project.configurations.testRuntimeClasspath])
@@ -214,7 +214,7 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
 
         then:
         [project.cleanEclipseWtpComponent, project.cleanEclipseWtpFacet].each {
-            assert project.cleanEclipseWtp.dependsOn.contains(it)
+            assert project.cleanEclipseWtp.dependsOn*.get().contains(it)
         }
 
         if (plugs.contains('java')) {
@@ -222,7 +222,7 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
             checkEclipseWtpComponentForEar(project.sourceSets.main.allSource.srcDirs)
         } else {
             checkEclipseClasspath([])
-            checkEclipseWtpComponentForEar(project.files(project.appDirName) as Set)
+            checkEclipseWtpComponentForEar(project.layout.files(project.appDirName) as Set)
         }
         checkEclipseWtpFacet([
                 new Facet(FacetType.fixed, "jst.ear", null),
@@ -316,7 +316,7 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
         def wtp = checkAndGetEclipseWtpComponent()
         assert wtp.sourceDirs == project.sourceSets.main.allSource.srcDirs
         assert wtp.rootConfigurations == [] as Set
-        assert wtp.libConfigurations == [project.configurations.runtime] as Set
+        assert wtp.libConfigurations == [project.configurations.runtimeClasspath] as Set
         assert wtp.minusConfigurations == [] as Set
         assert wtp.deployName == project.name
         assert wtp.contextPath == null
@@ -329,7 +329,7 @@ class EclipseWtpPluginTest extends AbstractProjectBuilderSpec {
         def wtp = checkAndGetEclipseWtpComponent()
         assert wtp.sourceDirs == project.sourceSets.main.allSource.srcDirs
         assert wtp.rootConfigurations == [] as Set
-        assert wtp.libConfigurations == [project.configurations.runtime] as Set
+        assert wtp.libConfigurations == [project.configurations.runtimeClasspath] as Set
         assert wtp.minusConfigurations == [project.configurations.providedRuntime] as Set
         assert wtp.deployName == project.name
         assert wtp.contextPath == project.war.baseName

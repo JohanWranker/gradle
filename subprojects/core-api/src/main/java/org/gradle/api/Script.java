@@ -23,7 +23,6 @@ import org.gradle.api.file.FileTree;
 import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.LoggingManager;
-import org.gradle.api.provider.PropertyState;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.resources.ResourceHandler;
 import org.gradle.api.tasks.WorkResult;
@@ -257,7 +256,7 @@ public interface Script {
      * is then used to copy the files. Example:
      * <pre>
      * copy {
-     *    from configurations.runtime
+     *    from configurations.runtimeClasspath
      *    into 'build/deploy/lib'
      * }
      * </pre>
@@ -372,20 +371,5 @@ public interface Script {
      * @see org.gradle.api.provider.ProviderFactory#provider(Callable)
      * @since 4.0
      */
-    @Incubating
     <T> Provider<T> provider(Callable<T> value);
-
-    /**
-     * Creates a {@code PropertyState} implementation based on the provided class.
-     *
-     * @param clazz The class to be used for property state.
-     * @return The property state. Never returns null.
-     * @throws org.gradle.api.InvalidUserDataException If the provided class is null.
-     * @see org.gradle.api.provider.ProviderFactory#property(Class)
-     * @since 4.0
-     * @deprecated Use {@link org.gradle.api.model.ObjectFactory#property(Class)} instead.
-     */
-    @Incubating
-    @Deprecated
-    <T> PropertyState<T> property(Class<T> clazz);
 }

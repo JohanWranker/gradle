@@ -18,6 +18,7 @@ package org.gradle.jvm.plugins;
 import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.jvm.test.JUnitTestSuiteBinarySpec;
 import org.gradle.jvm.test.JUnitTestSuiteSpec;
 import org.gradle.jvm.test.JvmTestSuiteSpec;
@@ -26,8 +27,16 @@ import org.gradle.jvm.test.internal.DefaultJUnitTestSuiteSpec;
 import org.gradle.jvm.test.internal.JvmTestSuiteBinarySpecInternal;
 import org.gradle.jvm.test.internal.JvmTestSuiteRules;
 import org.gradle.jvm.toolchain.JavaToolChainRegistry;
-import org.gradle.model.*;
-import org.gradle.platform.base.*;
+import org.gradle.model.Defaults;
+import org.gradle.model.Each;
+import org.gradle.model.ModelMap;
+import org.gradle.model.RuleSource;
+import org.gradle.model.Validate;
+import org.gradle.platform.base.BinarySpec;
+import org.gradle.platform.base.ComponentBinaries;
+import org.gradle.platform.base.ComponentType;
+import org.gradle.platform.base.InvalidModelException;
+import org.gradle.platform.base.TypeBuilder;
 import org.gradle.platform.base.internal.DefaultModuleDependencySpec;
 import org.gradle.platform.base.internal.HasIntermediateOutputsComponentSpec;
 import org.gradle.platform.base.internal.PlatformResolvers;
@@ -39,10 +48,12 @@ import org.gradle.testing.base.plugins.TestingModelBasePlugin;
  * @since 2.11
  */
 @Incubating
+@Deprecated
 public class JUnitTestSuitePlugin implements Plugin<Project> {
 
     @Override
     public void apply(Project project) {
+        DeprecationLogger.deprecatePlugin("junit-test-suite").withUpgradeGuideSection(6, "upgrading_jvm_plugins").nagUser();
         project.getPluginManager().apply(TestingModelBasePlugin.class);
         project.getPluginManager().apply(JvmComponentPlugin.class);
         project.getPluginManager().apply(JvmTestSuiteBasePlugin.class);

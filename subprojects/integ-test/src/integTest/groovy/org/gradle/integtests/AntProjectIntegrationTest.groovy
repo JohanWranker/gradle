@@ -16,29 +16,31 @@
 package org.gradle.integtests
 
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.executer.ExecutionFailure
 import org.gradle.test.fixtures.file.TestFile
 import org.junit.Test
 
 import static org.gradle.integtests.fixtures.executer.TaskOrderSpecs.*
-import static org.hamcrest.Matchers.startsWith
+import static org.hamcrest.CoreMatchers.startsWith
 
-public class AntProjectIntegrationTest extends AbstractIntegrationTest {
+class AntProjectIntegrationTest extends AbstractIntegrationTest {
     @Test
-    public void antTargetsAndGradleTasksCanDependOnEachOther() {
+    @ToBeFixedForInstantExecution
+    void antTargetsAndGradleTasksCanDependOnEachOther() {
         testFile('build.xml') << """
 <project>
-    <target name='target1' depends='target2,init'>
+    <target name='target1' depends='target2,initialize'>
         <touch file='build/target1.txt'/>
     </target>
-    <target name='target2' depends='init'>
+    <target name='target2' depends='initialize'>
         <touch file='build/target2.txt'/>
     </target>
 </project>
 """
         testFile('build.gradle') << """
 ant.importBuild(file('build.xml'))
-task init { doLast { buildDir.mkdirs() } }
+task initialize { doLast { buildDir.mkdirs() } }
 task ant(dependsOn: target1)
 """
         TestFile target1File = testFile('build/target1.txt')
@@ -46,14 +48,15 @@ task ant(dependsOn: target1)
         target1File.assertDoesNotExist()
         target2File.assertDoesNotExist()
 
-        inTestDirectory().withTasks('ant').run().assertTasksExecutedInOrder(':init', ':target2', ':target1', ':ant')
+        inTestDirectory().withTasks('ant').run().assertTasksExecutedInOrder(':initialize', ':target2', ':target1', ':ant')
 
         target1File.assertExists()
         target2File.assertExists()
     }
 
     @Test
-    public void canImportMultipleBuildFilesWithDifferentBaseDirs() {
+    @ToBeFixedForInstantExecution
+    void canImportMultipleBuildFilesWithDifferentBaseDirs() {
         testFile('project1/build.xml') << """
 <project>
     <target name='target1'>
@@ -87,7 +90,8 @@ task ant(dependsOn: [target1, target2])
     }
 
     @Test
-    public void handlesAntImportsOk() {
+    @ToBeFixedForInstantExecution
+    void handlesAntImportsOk() {
         testFile('imported.xml') << """
 <project>
     <target name='target1'>
@@ -121,7 +125,7 @@ task ant(dependsOn: [target1, target2])
     }
 
     @Test
-    public void reportsAntBuildParseFailure() {
+    void reportsAntBuildParseFailure() {
         TestFile antBuildFile = testFile('build.xml')
         antBuildFile << """
 <project>
@@ -141,7 +145,8 @@ ant.importBuild('build.xml')
     }
 
     @Test
-    public void reportsAntTaskExecutionFailure() {
+    @ToBeFixedForInstantExecution
+    void reportsAntTaskExecutionFailure() {
         testFile('build.xml') << """
 <project>
     <target name='target1'>
@@ -159,7 +164,8 @@ ant.importBuild('build.xml')
     }
 
     @Test
-    public void targetDependenciesAreOrderedBasedOnDeclarationSequence() {
+    @ToBeFixedForInstantExecution
+    void targetDependenciesAreOrderedBasedOnDeclarationSequence() {
         testFile('build.xml') << """
 <project>
     <target name='a' depends='d,c,b'/>
@@ -185,7 +191,8 @@ ant.importBuild('build.xml')
     }
 
     @Test
-    public void targetDependenciesOrderDoesNotCreateCycle() {
+    @ToBeFixedForInstantExecution
+    void targetDependenciesOrderDoesNotCreateCycle() {
         testFile('build.xml') << """
 <project>
     <target name='a' depends='c,b'/>
@@ -200,7 +207,7 @@ ant.importBuild('build.xml')
     }
 
     @Test
-    public void unknownDependencyProducesUsefulMessage() {
+    void unknownDependencyProducesUsefulMessage() {
         testFile('build.xml') << """
 <project>
     <target name='a' depends='b'/>
@@ -213,7 +220,7 @@ ant.importBuild('build.xml')
     }
 
     @Test
-    public void canHandleDependencyOrderingBetweenNonExistentTasks() {
+    void canHandleDependencyOrderingBetweenNonExistentTasks() {
         testFile('build.xml') << """
 <project>
     <target name='a' depends='b,c'/>
@@ -227,7 +234,8 @@ ant.importBuild('build.xml')
     }
 
     @Test
-    public void canApplyJavaPluginWithAntBuild() {
+    @ToBeFixedForInstantExecution
+    void canApplyJavaPluginWithAntBuild() {
         testFile('build.xml') << """
 <project>
     <target name='clean'>
@@ -250,7 +258,8 @@ task ant(dependsOn: 'ant-target1')
     }
 
     @Test
-    public void canRenameAntDelegateTask() {
+    @ToBeFixedForInstantExecution
+    void canRenameAntDelegateTask() {
         testFile('build.xml') << """
 <project>
     <target name='c'/>

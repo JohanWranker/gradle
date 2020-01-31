@@ -55,6 +55,7 @@ public class RepositoryChainComponentMetaDataResolver implements ComponentMetaDa
         repositoryNames.add(repository.getName());
     }
 
+    @Override
     public void resolve(ComponentIdentifier identifier, ComponentOverrideMetadata componentOverrideMetadata, BuildableComponentResolveResult result) {
         if (!(identifier instanceof ModuleComponentIdentifier)) {
             throw new UnsupportedOperationException("Can resolve meta-data for module components only.");
@@ -91,7 +92,7 @@ public class RepositoryChainComponentMetaDataResolver implements ComponentMetaDa
 
         final RepositoryChainModuleResolution latestResolved = findBestMatch(resolveStates, errors);
         if (latestResolved != null) {
-            LOGGER.debug("Using {} from {}", latestResolved.module.getId(), latestResolved.repository);
+            LOGGER.debug("Using {} from {}", latestResolved.module.getModuleVersionId(), latestResolved.repository);
             for (Throwable error : errors) {
                 LOGGER.debug("Discarding resolve failure.", error);
             }

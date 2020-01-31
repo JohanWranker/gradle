@@ -28,10 +28,10 @@ class FinalizeBuildCacheConfigurationBuildOperationIntegrationTest extends Abstr
         def cacheDir = temporaryFolder.file("cache-dir").createDir()
         settingsFile << """
             buildCache {
-                local(DirectoryBuildCache) {
-                    enabled = true 
+                local {
+                    enabled = true
                     directory = '${cacheDir.absoluteFile.toURI().toString()}'
-                    push = true 
+                    push = true
                 }
             }
         """
@@ -68,16 +68,16 @@ class FinalizeBuildCacheConfigurationBuildOperationIntegrationTest extends Abstr
             }
             class CustomBuildCache extends AbstractBuildCache {}
             class CustomBuildCacheFactory implements BuildCacheServiceFactory<CustomBuildCache> {
-                @Override BuildCacheService createBuildCacheService(CustomBuildCache configuration, Describer describer) { 
+                @Override BuildCacheService createBuildCacheService(CustomBuildCache configuration, Describer describer) {
                     describer.type('$type').config('directory', '$directory')
-                    new VisibleNoOpBuildCacheService() 
+                    new VisibleNoOpBuildCacheService()
                 }
             }
-            
+
             buildCache {
                 registerBuildCacheService(CustomBuildCache, CustomBuildCacheFactory)
-                
-                local(CustomBuildCache)
+
+                remote(CustomBuildCache)
             }
         """
         executer.withBuildCacheEnabled()
@@ -89,43 +89,52 @@ class FinalizeBuildCacheConfigurationBuildOperationIntegrationTest extends Abstr
         def result = result()
 
         result.enabled
-        result.localEnabled
-        !result.remoteEnabled
+        result.remoteEnabled
 
-        result.local.className == 'CustomBuildCache'
-        result.local.config.directory == directory
-        result.local.type == type
+        result.remote.className == 'CustomBuildCache'
+        result.remote.config.directory == directory
+        result.remote.type == type
 
     }
 
     def "build cache configurations are not exposed when build cache is not enabled"() {
         when:
         def cacheDir = temporaryFolder.file("cache-dir").createDir()
-        def url = "http://locahost:8080/cache/"
+        def url = "http://localhost:8080/cache/"
         settingsFile << """
-            import org.gradle.caching.internal.NoOpBuildCacheService
+            class NoOpBuildCacheService implements BuildCacheService {
+                @Override
+                boolean load(BuildCacheKey key, BuildCacheEntryReader reader) { false }
+
+                @Override
+                void store(BuildCacheKey key, BuildCacheEntryWriter writer) {}
+
+                @Override
+                void close() {}
+            }
+
             class CustomBuildCache extends AbstractBuildCache {
                 private URI url
                 URI getUrl() {}
                 void setUrl(String url) { this.url = URI.create(url) }
             }
-            
+
             class CustomBuildCacheFactory implements BuildCacheServiceFactory<CustomBuildCache> {
-                @Override BuildCacheService createBuildCacheService(CustomBuildCache configuration, Describer describer) { 
+                @Override BuildCacheService createBuildCacheService(CustomBuildCache configuration, Describer describer) {
                     describer.config('url', '$url')
-                    new NoOpBuildCacheService() 
+                    new NoOpBuildCacheService()
                 }
             }
             buildCache {
                 registerBuildCacheService(CustomBuildCache, CustomBuildCacheFactory)
 
-                local(DirectoryBuildCache) {
-                    enabled = true 
+                local {
+                    enabled = true
                     directory = '${cacheDir.absoluteFile.toURI().toString()}'
                 }
                 remote(CustomBuildCache) {
-                    enabled = true 
-                    url = "$url"   
+                    enabled = true
+                    url = "$url"
                 }
             }
         """
@@ -147,10 +156,10 @@ class FinalizeBuildCacheConfigurationBuildOperationIntegrationTest extends Abstr
         def cacheDir = temporaryFolder.file("cache-dir").createDir()
         settingsFile << """
             buildCache {
-                local(DirectoryBuildCache) {
+                local {
                     enabled = false
                     directory = '${cacheDir.absoluteFile.toURI().toString()}'
-                    push = true 
+                    push = true
                 }
             }
         """

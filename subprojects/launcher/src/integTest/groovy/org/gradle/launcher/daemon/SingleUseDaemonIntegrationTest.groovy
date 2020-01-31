@@ -30,6 +30,7 @@ import java.nio.charset.Charset
 class SingleUseDaemonIntegrationTest extends AbstractIntegrationSpec {
 
     def setup() {
+        executer.withArgument("--no-daemon")
         executer.requireIsolatedDaemons()
     }
 
@@ -37,6 +38,21 @@ class SingleUseDaemonIntegrationTest extends AbstractIntegrationSpec {
         requireJvmArg('-Xmx64m')
 
         file('build.gradle') << "println 'hello world'"
+
+        when:
+        succeeds()
+
+        then:
+        wasForked()
+
+        and:
+        daemons.daemon.stops()
+    }
+
+    def "forks build when default client VM memory is used and user didn't specify a different limit"() {
+        executer.withCommandLineGradleOpts('-Xmx64m')
+        executer.useOnlyRequestedJvmOpts()
+        executer.requireGradleDistribution()
 
         when:
         succeeds()
@@ -72,7 +88,7 @@ class SingleUseDaemonIntegrationTest extends AbstractIntegrationSpec {
 
         file('build.gradle') << """
 println 'javaHome=' + org.gradle.internal.jvm.Jvm.current().javaHome.absolutePath
-assert java.lang.management.ManagementFactory.runtimeMXBean.inputArguments.contains('-Xmx1024m')
+assert java.lang.management.ManagementFactory.runtimeMXBean.inputArguments.contains('-Xmx512m')
 assert java.lang.management.ManagementFactory.runtimeMXBean.inputArguments.contains('-XX:+HeapDumpOnOutOfMemoryError')
 """
 
@@ -81,7 +97,7 @@ assert java.lang.management.ManagementFactory.runtimeMXBean.inputArguments.conta
 
         then:
         wasForked()
-        output.contains("javaHome=${javaHome}")
+        outputContains("javaHome=${javaHome}")
         daemons.daemon.stops()
     }
 
@@ -148,7 +164,7 @@ assert System.getProperty('some-prop') == 'some-value'
         run "encoding", "-Dfile.encoding=$encoding"
 
         then:
-        output.contains "encoding = $encoding"
+        outputContains "encoding = $encoding"
 
         and:
         wasNotForked()
@@ -162,7 +178,7 @@ assert System.getProperty('some-prop') == 'some-value'
         succeeds()
 
         then:
-        !output.contains(DaemonStartupMessage.STARTING_DAEMON_MESSAGE)
+        outputDoesNotContain(DaemonStartupMessage.STARTING_DAEMON_MESSAGE)
         wasForked()
         daemons.daemon.stops()
     }
@@ -176,12 +192,12 @@ assert System.getProperty('some-prop') == 'some-value'
     }
 
     private void wasForked() {
-        assert result.output.contains(SingleUseDaemonClient.MESSAGE)
+        outputContains(SingleUseDaemonClient.MESSAGE)
         assert daemons.daemons.size() == 1
     }
 
     private void wasNotForked() {
-        assert !result.output.contains(SingleUseDaemonClient.MESSAGE)
+        outputDoesNotContain(SingleUseDaemonClient.MESSAGE)
         assert daemons.daemons.size() == 0
     }
 

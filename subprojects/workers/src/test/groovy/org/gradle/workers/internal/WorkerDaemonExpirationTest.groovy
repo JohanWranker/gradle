@@ -16,15 +16,18 @@
 
 package org.gradle.workers.internal
 
+import org.gradle.api.Action
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.internal.event.ListenerManager
 import org.gradle.internal.jvm.Jvm
 import org.gradle.internal.logging.LoggingManagerInternal
 import org.gradle.process.JavaForkOptions
-import org.gradle.process.internal.DefaultJavaForkOptions
 import org.gradle.process.internal.health.memory.JvmMemoryStatus
+import org.gradle.process.internal.health.memory.MBeanOsMemoryInfo
 import org.gradle.process.internal.health.memory.MaximumHeapHelper
 import org.gradle.process.internal.health.memory.MemoryAmount
+import org.gradle.process.internal.health.memory.MemoryManager
+import org.gradle.process.internal.worker.WorkerProcess
 import spock.lang.Specification
 
 import static org.gradle.api.internal.file.TestFiles.systemSpecificAbsolutePath
@@ -32,14 +35,13 @@ import static org.gradle.api.internal.file.TestFiles.systemSpecificAbsolutePath
 class WorkerDaemonExpirationTest extends Specification {
     static final int OS_MEMORY_GB = 6
 
-    def workingDir = new File("some-dir")
     def defaultOptions = daemonForkOptions(null, null, ['default-options'])
     def oneGbOptions = daemonForkOptions('1g', '1g', ['one-gb-options'])
     def twoGbOptions = daemonForkOptions('2g', '2g', ['two-gb-options'])
     def threeGbOptions = daemonForkOptions('3g', '3g', ['three-gb-options'])
     def reportsMemoryUsage = true
     def daemonStarter = Mock(WorkerDaemonStarter) {
-        startDaemon(_, _) >> { Class<? extends WorkerProtocol> impl, DaemonForkOptions forkOptions ->
+        startDaemon(_, _, _) >> { Class<? extends WorkerProtocol> impl, DaemonForkOptions forkOptions, Action<WorkerProcess> cleanupAction ->
             Mock(WorkerDaemonClient) {
                 getForkOptions() >> forkOptions
                 isCompatibleWith(_) >> { DaemonForkOptions otherForkOptions ->
@@ -57,7 +59,7 @@ class WorkerDaemonExpirationTest extends Specification {
             }
         }
     }
-    def clientsManager = new WorkerDaemonClientsManager(daemonStarter, Mock(ListenerManager), Mock(LoggingManagerInternal))
+    def clientsManager = new WorkerDaemonClientsManager(daemonStarter, Mock(ListenerManager), Mock(LoggingManagerInternal), Mock(MemoryManager), new MBeanOsMemoryInfo())
     def expiration = new WorkerDaemonExpiration(clientsManager, MemoryAmount.ofGigaBytes(OS_MEMORY_GB).bytes)
 
     def "expires least recently used idle worker daemon to free system memory when requested to release some memory"() {
@@ -202,7 +204,7 @@ class WorkerDaemonExpirationTest extends Specification {
     }
 
     private JavaForkOptions javaForkOptions(String minHeap, String maxHeap, List<String> jvmArgs) {
-        JavaForkOptions options = new DefaultJavaForkOptions(TestFiles.resolver())
+        def options = TestFiles.execFactory().newJavaForkOptions()
         options.workingDir = systemSpecificAbsolutePath("foo")
         options.minHeapSize = minHeap
         options.maxHeapSize = maxHeap
@@ -211,7 +213,7 @@ class WorkerDaemonExpirationTest extends Specification {
     }
 
     private DaemonForkOptions daemonForkOptions(String minHeap, String maxHeap, List<String> jvmArgs) {
-        return new DaemonForkOptionsBuilder(TestFiles.resolver())
+        return new DaemonForkOptionsBuilder(TestFiles.execFactory())
             .javaForkOptions(javaForkOptions(minHeap, maxHeap, jvmArgs))
             .keepAliveMode(KeepAliveMode.SESSION)
             .build()

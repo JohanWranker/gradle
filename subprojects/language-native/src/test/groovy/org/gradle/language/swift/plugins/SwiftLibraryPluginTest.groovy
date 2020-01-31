@@ -97,7 +97,7 @@ class SwiftLibraryPluginTest extends Specification {
 
         then:
         project.components.main == project.library
-        project.library.binaries.get().name == ['mainDebugShared', 'mainReleaseShared', 'mainDebugStatic', 'mainReleaseStatic']
+        project.library.binaries.get().name as Set == ['mainDebugShared', 'mainReleaseShared', 'mainDebugStatic', 'mainReleaseStatic'] as Set
         project.components.containsAll(project.library.binaries.get())
 
         and:
@@ -120,7 +120,7 @@ class SwiftLibraryPluginTest extends Specification {
         project.evaluate()
 
         then:
-        project.tasks.withType(SwiftCompile).name == ['compileDebugSwift', 'compileReleaseSwift']
+        project.tasks.withType(SwiftCompile)*.name == ['compileDebugSwift', 'compileReleaseSwift']
         project.tasks.withType(CreateStaticLibrary).empty
 
         and:
@@ -134,7 +134,7 @@ class SwiftLibraryPluginTest extends Specification {
 
         def linkDebug = project.tasks.linkDebug
         linkDebug instanceof LinkSharedLibrary
-        linkDebug.binaryFile.get().asFile == projectDir.file("build/lib/main/debug/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
+        linkDebug.linkedFile.get().asFile == projectDir.file("build/lib/main/debug/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
         linkDebug.debuggable
 
         def compileRelease = project.tasks.compileReleaseSwift
@@ -147,7 +147,7 @@ class SwiftLibraryPluginTest extends Specification {
 
         def linkRelease = project.tasks.linkRelease
         linkRelease instanceof LinkSharedLibrary
-        linkRelease.binaryFile.get().asFile == projectDir.file("build/lib/main/release/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
+        linkRelease.linkedFile.get().asFile == projectDir.file("build/lib/main/release/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
         linkRelease.debuggable
     }
 
@@ -171,7 +171,7 @@ class SwiftLibraryPluginTest extends Specification {
 
         def linkDebug = project.tasks.linkDebugShared
         linkDebug instanceof LinkSharedLibrary
-        linkDebug.binaryFile.get().asFile == projectDir.file("build/lib/main/debug/shared/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
+        linkDebug.linkedFile.get().asFile == projectDir.file("build/lib/main/debug/shared/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
         linkDebug.debuggable
 
         def compileRelease = project.tasks.compileReleaseSharedSwift
@@ -184,7 +184,7 @@ class SwiftLibraryPluginTest extends Specification {
 
         def linkRelease = project.tasks.linkReleaseShared
         linkRelease instanceof LinkSharedLibrary
-        linkRelease.binaryFile.get().asFile == projectDir.file("build/lib/main/release/shared/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
+        linkRelease.linkedFile.get().asFile == projectDir.file("build/lib/main/release/shared/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
         linkRelease.debuggable
 
         and:
@@ -223,7 +223,7 @@ class SwiftLibraryPluginTest extends Specification {
         project.evaluate()
 
         then:
-        project.tasks.withType(SwiftCompile).name == ['compileDebugSwift', 'compileReleaseSwift']
+        project.tasks.withType(SwiftCompile)*.name == ['compileDebugSwift', 'compileReleaseSwift']
         project.tasks.withType(LinkSharedLibrary).empty
 
         and:
@@ -266,7 +266,7 @@ class SwiftLibraryPluginTest extends Specification {
         then:
         def e = thrown(ProjectConfigurationException)
         e.cause instanceof IllegalStateException
-        e.cause.message == 'This property is locked and cannot be changed.'
+        e.cause.message == "The value for Swift library 'main' property 'linkage' is final and cannot be changed any further."
     }
 
     def "output file names are calculated from module name defined on extension"() {
@@ -281,6 +281,23 @@ class SwiftLibraryPluginTest extends Specification {
         compileSwift.moduleFile.get().asFile == projectDir.file("build/modules/main/debug/Lib.swiftmodule")
 
         def link = project.tasks.linkDebug
-        link.binaryFile.get().asFile == projectDir.file("build/lib/main/debug/" + OperatingSystem.current().getSharedLibraryName("Lib"))
+        link.linkedFile.get().asFile == projectDir.file("build/lib/main/debug/" + OperatingSystem.current().getSharedLibraryName("Lib"))
+    }
+
+    def "output locations reflects changes to buildDir"() {
+        given:
+        project.pluginManager.apply(SwiftLibraryPlugin)
+        project.evaluate()
+
+        when:
+        project.buildDir = "output"
+
+        then:
+        def compileSwift = project.tasks.compileDebugSwift
+        compileSwift.objectFileDir.get().asFile == project.file("output/obj/main/debug")
+        compileSwift.moduleFile.get().asFile == projectDir.file("output/modules/main/debug/TestLib.swiftmodule")
+
+        def link = project.tasks.linkDebug
+        link.linkedFile.get().asFile == projectDir.file("output/lib/main/debug/" + OperatingSystem.current().getSharedLibraryName("TestLib"))
     }
 }

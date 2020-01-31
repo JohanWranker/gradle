@@ -15,24 +15,27 @@
  */
 package org.gradle.performance.regression.inception
 
+import org.gradle.api.internal.tasks.DefaultTaskContainer
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
 import org.gradle.performance.categories.PerformanceRegressionTest
-import org.gradle.performance.fixture.BuildExperimentRunner
 import org.gradle.performance.fixture.BuildExperimentSpec
-import org.gradle.performance.fixture.CrossBuildPerformanceTestRunner
+import org.gradle.performance.fixture.CrossBuildGradleInternalPerformanceTestRunner
+import org.gradle.performance.fixture.GradleBuildExperimentSpec
+import org.gradle.performance.fixture.GradleInternalBuildExperimentRunner
 import org.gradle.performance.fixture.GradleSessionProvider
-import org.gradle.performance.fixture.PerformanceTestRetryRule
 import org.gradle.performance.results.BaselineVersion
 import org.gradle.performance.results.CrossBuildPerformanceResults
 import org.gradle.performance.results.CrossBuildResultsStore
+import org.gradle.test.fixtures.file.CleanupTestDirectory
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
-import org.gradle.testing.internal.util.RetryRule
 import org.junit.Rule
 import org.junit.experimental.categories.Category
 import org.junit.rules.TestName
 import spock.lang.AutoCleanup
 import spock.lang.Shared
 import spock.lang.Specification
+
+import static org.gradle.performance.regression.inception.GradleInceptionPerformanceTest.extraGradleBuildArguments
 
 /**
  * Test Gradle's build performance against current Gradle.
@@ -48,13 +51,11 @@ import spock.lang.Specification
  * - be careful when rebasing/squashing/merging
  */
 @Category(PerformanceRegressionTest)
+@CleanupTestDirectory
 class GradleBuildPerformanceTest extends Specification {
 
     @Rule
-    RetryRule retry = new PerformanceTestRetryRule()
-
-    @Rule
-    TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
+    TestNameTestDirectoryProvider temporaryFolder = new TestNameTestDirectoryProvider()
 
     @Rule
     TestName testName = new TestName()
@@ -65,28 +66,31 @@ class GradleBuildPerformanceTest extends Specification {
     @Shared
     def resultStore = new CrossBuildResultsStore()
 
-    CrossBuildPerformanceTestRunner runner
+    CrossBuildGradleInternalPerformanceTestRunner runner
 
     def warmupBuilds = 20
-    def measuredBuilds = 40
+    def measuredBuilds = 20
 
     def setup() {
-        runner = new CrossBuildPerformanceTestRunner(
-            new BuildExperimentRunner(new GradleSessionProvider(buildContext)),
+        runner = new CrossBuildGradleInternalPerformanceTestRunner(
+            new GradleInternalBuildExperimentRunner(new GradleSessionProvider(buildContext)),
+            resultStore,
             resultStore,
             buildContext) {
 
             @Override
             protected void defaultSpec(BuildExperimentSpec.Builder builder) {
                 super.defaultSpec(builder)
-                builder.workingDirectory = tmpDir.testDirectory
+                builder.workingDirectory = temporaryFolder.testDirectory
+                if (builder instanceof GradleBuildExperimentSpec.GradleBuilder) {
+                    builder.invocation.args(extraGradleBuildArguments() as String[])
+                }
             }
         }
         runner.testGroup = 'gradle build'
     }
 
     def "help on the gradle build comparing the build"() {
-
         given:
         runner.testId = testName.methodName
 
@@ -102,7 +106,6 @@ class GradleBuildPerformanceTest extends Specification {
             invocationCount measuredBuilds
             invocation {
                 tasksToRun("help")
-                useDaemon()
             }
         }
 
@@ -114,7 +117,6 @@ class GradleBuildPerformanceTest extends Specification {
             invocationCount measuredBuilds
             invocation {
                 tasksToRun("help")
-                useDaemon()
             }
         }
 
@@ -122,16 +124,60 @@ class GradleBuildPerformanceTest extends Specification {
         def results = runner.run()
 
         then:
-        results.assertEveryBuildSucceeds()
-
-        and:
         def baselineResults = buildBaselineResults(results, baselineBuildName)
         def currentResults = results.buildResult(currentBuildName)
 
         then:
         def speedStats = baselineResults.getSpeedStatsAgainst(currentResults.name, currentResults)
         println(speedStats)
-        if (baselineResults.fasterThan(currentResults)) {
+        if (baselineResults.significantlyFasterThan(currentResults)) {
+            throw new AssertionError(speedStats)
+        }
+    }
+
+    def "eager vs lazy on the gradle build"() {
+        given:
+        runner.testId = testName.methodName
+
+        and:
+        def eagerBuildName = 'eager build'
+        def lazyBuildName = 'lazy build'
+
+        and:
+        runner.baseline {
+            displayName eagerBuildName
+            projectName 'gradleBuildCurrent'
+            warmUpCount warmupBuilds
+            invocationCount measuredBuilds
+            invocation {
+                // Force tasks to be realized even if they were created with the lazy API.
+                args("-D" + DefaultTaskContainer.EAGERLY_CREATE_LAZY_TASKS_PROPERTY + "=true")
+                tasksToRun("help")
+            }
+        }
+
+        and:
+        runner.buildSpec {
+            displayName lazyBuildName
+            projectName 'gradleBuildCurrent'
+            warmUpCount warmupBuilds
+            invocationCount measuredBuilds
+            invocation {
+                tasksToRun("help")
+            }
+        }
+
+        when:
+        def results = runner.run()
+
+        then:
+        def baselineResults = buildBaselineResults(results, eagerBuildName)
+        def currentResults = results.buildResult(lazyBuildName)
+
+        then:
+        def speedStats = baselineResults.getSpeedStatsAgainst(currentResults.name, currentResults)
+        println(speedStats)
+        if (baselineResults.significantlyFasterThan(currentResults)) {
             throw new AssertionError(speedStats)
         }
     }

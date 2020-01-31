@@ -17,92 +17,49 @@
 package org.gradle.api.tasks
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.hamcrest.Matchers
 import spock.lang.Unroll
 
 class TaskRemovalIntegrationTest extends AbstractIntegrationSpec {
-
-    def "can remove task"() {
-        given:
-        buildScript """
-            task foo {}
-            tasks.remove(foo)
-            task foo {}
-            tasks.remove(foo)
-        """
-
-        when:
-        fails "foo"
-
-        then:
-        failure.assertThatDescription(Matchers.startsWith("Task 'foo' not found in root project"))
-    }
-
-    def "can remove task in after evaluate"() {
-        given:
-        buildScript """
-            task foo {}
-            afterEvaluate {
-                tasks.remove(foo)
-            }
-        """
-
-        when:
-        fails "foo"
-
-        then:
-        failure.assertThatDescription(Matchers.startsWith("Task 'foo' not found in root project"))
-    }
-
     @Unroll
-    def "can remove task in after evaluate if task is used by unbound #annotationClass rule"() {
+    def "throws exception when removing a task with #description"() {
         given:
-        buildScript """
-            task foo {}
+        buildFile << """
+            task foo(type: Zip) {}
+            ${code}
 
-            afterEvaluate {
-                tasks.remove(foo)
-            }
-
-            class Rules extends RuleSource {
-                @$annotationClass
-                void linkFooToBar(String bar, @Path("tasks.foo") Task foo) {
-                   // do nothing
-                }
-            }
-
-            apply plugin: Rules
+            // need at least one task to execute anything
+            task dummy
         """
 
         when:
-        fails "dependencies"
+        fails ("dummy")
 
         then:
-        failure.assertThatCause(Matchers.startsWith("The following model rules could not be applied"))
+        failure.assertHasCause("Removing tasks from the task container is not supported.  Disable the tasks or use replace() instead.")
 
         where:
-        annotationClass << ["Defaults", "Mutate", "Finalize", "Validate"]
+        description                                | code
+        "TaskContainer.remove(Object)"             | "tasks.remove(foo)"
+        "TaskContainer.removeAll(Collection)"      | "tasks.removeAll([foo])"
+        "TaskContainer.clear()"                    | "tasks.clear()"
+        "TaskContainer.retainAll(Collection)"      | "tasks.retainAll([foo])"
+        "TaskContainer.iterator()#remove()"        | "def it = tasks.iterator(); it.next(); it.remove()"
     }
 
-    def "cant remove task if used by rule"() {
-        when:
-        buildScript """
-            task foo {}
-            task bar { doLast { tasks.remove(foo) } }
+    def "throws exception when using whenObjectRemoved"() {
+        given:
+        buildFile << """
+            task foo(type: Zip) {}
+            tasks.whenObjectRemoved new Action<Task>() { void execute(Task t) {} }
 
-            class Rules extends RuleSource {
-                @Mutate
-                void linkFooToBar(@Path("tasks.bar") Task bar, @Path("tasks.foo") Task foo) {
-                   // do nothing
-                }
-            }
-
-            apply plugin: Rules
+            // need at least one task to execute anything
+            task dummy
         """
 
-        then:
-        fails ":bar"
-        failure.assertThatCause(Matchers.startsWith("Tried to remove model 'tasks.foo' but it is depended on by: 'tasks.bar'"))
+        when:
+        fails ("dummy")
 
+        then:
+        failure.assertHasCause("Registering actions on task removal is not supported.")
     }
 }

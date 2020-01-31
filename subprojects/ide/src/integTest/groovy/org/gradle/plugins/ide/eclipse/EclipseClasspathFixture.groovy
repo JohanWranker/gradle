@@ -93,6 +93,10 @@ class EclipseClasspathFixture {
         void assertHasAttribute(String key, String value) {
             assert entry.attributes.attribute.find { it.@name == key && it.@value == value }
         }
+
+        void assertHasNoAttribute(String key, String value) {
+            assert !entry.attributes.attribute.find { it.@name == key && it.@value == value }
+        }
     }
 
     class EclipseSourceDir extends EclipseClasspathEntry {
@@ -125,7 +129,7 @@ class EclipseClasspathFixture {
         }
 
         void assertHasJar(File jar) {
-            assert entry.@path == jar.absolutePath.replace(File.separator, '/')
+            assert entry.@path == jar.path.replace(File.separator, '/')
         }
 
         void assertHasJar(String jar) {
@@ -137,7 +141,7 @@ class EclipseClasspathFixture {
         }
 
         void assertHasSource(File jar) {
-            assert entry.@sourcepath == jar.absolutePath.replace(File.separator, '/')
+            assert entry.@sourcepath == jar.path.replace(File.separator, '/')
         }
 
         String getSourcePath() {
@@ -153,7 +157,7 @@ class EclipseClasspathFixture {
         }
 
         private String cachePath(String group, String module, String version) {
-            return Pattern.quote("${userHomeDir.absolutePath.replace(File.separator, '/')}") + "/caches/${CacheLayout.ROOT.getKey()}/${CacheLayout.FILE_STORE.getKey()}/" + Pattern.quote("${group}/${module}/${version}/") + "\\w+/"
+            return Pattern.quote("${userHomeDir.path.replace(File.separator, '/')}") + "/caches/${CacheLayout.ROOT.getKey()}/${CacheLayout.FILE_STORE.getKey()}/" + Pattern.quote("${group}/${module}/${version}/") + "\\w+/"
         }
 
         void assertHasNoSource() {
@@ -189,8 +193,8 @@ class EclipseClasspathFixture {
             assert entry.attributes[0].find { it.@name == 'org.eclipse.jst.component.nondependency' && it.@value == '' }
         }
 
-        void assertHasNoDeploymentAttributes() {
-            assert entry.attributes.isEmpty()
+        void assertHasNoAttribute(String key, String value) {
+            assert !entry.attributes.attribute.find { it.@name == key && it.@value == value }
         }
 
         void assertExported() {

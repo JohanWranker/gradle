@@ -15,8 +15,6 @@
  */
 package org.gradle.api.attributes;
 
-import org.gradle.api.Incubating;
-
 import javax.annotation.Nullable;
 import java.util.Set;
 
@@ -27,7 +25,6 @@ import java.util.Set;
  * @param <T> the concrete type of the attribute
  * @since 3.3
  */
-@Incubating
 public interface MultipleCandidatesDetails<T> {
     /**
      * Returns the value of the attribute specified by the consumer.

@@ -15,6 +15,7 @@
  */
 package org.gradle.api.internal.notations;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.gradle.api.artifacts.SelfResolvingDependency;
 import org.gradle.api.file.FileCollection;
@@ -22,8 +23,8 @@ import org.gradle.api.internal.ClassPathRegistry;
 import org.gradle.api.internal.artifacts.dependencies.DefaultSelfResolvingDependency;
 import org.gradle.api.internal.artifacts.dsl.dependencies.DependencyFactory;
 import org.gradle.api.internal.file.CompositeFileCollection;
+import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileCollectionInternal;
-import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.collections.BuildDependenciesOnlyFileCollectionResolveContext;
 import org.gradle.api.internal.file.collections.FileCollectionAdapter;
 import org.gradle.api.internal.file.collections.FileCollectionResolveContext;
@@ -42,31 +43,30 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.ConcurrentMap;
 
-import static org.gradle.api.internal.artifacts.dsl.dependencies.DependencyFactory.ClassPathNotation.*;
+import static org.gradle.api.internal.artifacts.dsl.dependencies.DependencyFactory.ClassPathNotation.GRADLE_API;
+import static org.gradle.api.internal.artifacts.dsl.dependencies.DependencyFactory.ClassPathNotation.GRADLE_TEST_KIT;
+import static org.gradle.api.internal.artifacts.dsl.dependencies.DependencyFactory.ClassPathNotation.LOCAL_GROOVY;
 
 public class DependencyClassPathNotationConverter implements NotationConverter<DependencyFactory.ClassPathNotation, SelfResolvingDependency> {
 
     private final ClassPathRegistry classPathRegistry;
     private final Instantiator instantiator;
-    private final FileResolver fileResolver;
+    private final FileCollectionFactory fileCollectionFactory;
     private final RuntimeShadedJarFactory runtimeShadedJarFactory;
     private final CurrentGradleInstallation currentGradleInstallation;
-    private final Map<DependencyFactory.ClassPathNotation, SelfResolvingDependency> internCache = Maps.newEnumMap(DependencyFactory.ClassPathNotation.class);
-    private final Lock internCacheWriteLock = new ReentrantLock();
+    private final ConcurrentMap<DependencyFactory.ClassPathNotation, SelfResolvingDependency> internCache = Maps.newConcurrentMap();
 
     public DependencyClassPathNotationConverter(
         Instantiator instantiator,
         ClassPathRegistry classPathRegistry,
-        FileResolver fileResolver,
+        FileCollectionFactory fileCollectionFactory,
         RuntimeShadedJarFactory runtimeShadedJarFactory,
         CurrentGradleInstallation currentGradleInstallation) {
         this.instantiator = instantiator;
         this.classPathRegistry = classPathRegistry;
-        this.fileResolver = fileResolver;
+        this.fileCollectionFactory = fileCollectionFactory;
         this.runtimeShadedJarFactory = runtimeShadedJarFactory;
         this.currentGradleInstallation = currentGradleInstallation;
     }
@@ -76,83 +76,80 @@ public class DependencyClassPathNotationConverter implements NotationConverter<D
         visitor.candidate("ClassPathNotation").example("gradleApi()");
     }
 
+    @Override
     public void convert(DependencyFactory.ClassPathNotation notation, NotationConvertResult<? super SelfResolvingDependency> result) throws TypeConversionException {
         SelfResolvingDependency dependency = internCache.get(notation);
         if (dependency == null) {
-            dependency = maybeCreateUnderLock(notation);
+            dependency = create(notation);
         }
-
         result.converted(dependency);
     }
 
-    private SelfResolvingDependency maybeCreateUnderLock(final DependencyFactory.ClassPathNotation notation) {
-        SelfResolvingDependency dependency = internCache.get(notation);
-        if (dependency == null) {
-            final Collection<File> classpath = classPathRegistry.getClassPath(notation.name()).getAsFiles();
-            boolean runningFromInstallation = currentGradleInstallation.getInstallation() != null;
-            FileCollectionInternal fileCollectionInternal;
-            if (runningFromInstallation && notation.equals(GRADLE_API)) {
-                fileCollectionInternal = new GeneratedFileCollection(notation.displayName) {
-                    @Override
-                    FileCollection generateFileCollection() {
-                        try {
-                            internCacheWriteLock.lock();
-                            return gradleApiFileCollection(classpath);
-                        } finally {
-                            internCacheWriteLock.unlock();
-                        }
-                    }
-                };
-            } else if (runningFromInstallation && notation.equals(GRADLE_TEST_KIT)) {
-                fileCollectionInternal = new GeneratedFileCollection(notation.displayName) {
-                    @Override
-                    FileCollection generateFileCollection() {
-                        try {
-                            internCacheWriteLock.lock();
-                            return gradleTestKitFileCollection(classpath);
-                        } finally {
-                            internCacheWriteLock.unlock();
-                        }
-                    }
-                };
-            } else {
-                fileCollectionInternal = fileResolver.resolveFiles(classpath);
-            }
-            dependency = instantiator.newInstance(DefaultSelfResolvingDependency.class, new OpaqueComponentIdentifier(notation.displayName), fileCollectionInternal);
-            internCache.put(notation, dependency);
+    private SelfResolvingDependency create(final DependencyFactory.ClassPathNotation notation) {
+        boolean runningFromInstallation = currentGradleInstallation.getInstallation() != null;
+        FileCollectionInternal fileCollectionInternal;
+        if (runningFromInstallation && notation.equals(GRADLE_API)) {
+            fileCollectionInternal = new GeneratedFileCollection(notation.displayName) {
+                @Override
+                FileCollection generateFileCollection() {
+                    return gradleApiFileCollection(getClassPath(notation));
+                }
+            };
+        } else if (runningFromInstallation && notation.equals(GRADLE_TEST_KIT)) {
+            fileCollectionInternal = new GeneratedFileCollection(notation.displayName) {
+                @Override
+                FileCollection generateFileCollection() {
+                    return gradleTestKitFileCollection(getClassPath(notation));
+                }
+            };
+        } else {
+            fileCollectionInternal = fileCollectionFactory.resolving(getClassPath(notation));
         }
-        return dependency;
+        SelfResolvingDependency dependency = instantiator.newInstance(DefaultSelfResolvingDependency.class, new OpaqueComponentIdentifier(notation.displayName), fileCollectionInternal);
+        SelfResolvingDependency alreadyPresent = internCache.putIfAbsent(notation, dependency);
+        return alreadyPresent != null ? alreadyPresent : dependency;
     }
 
+    private List<File> getClassPath(DependencyFactory.ClassPathNotation notation) {
+        return Lists.newArrayList(classPathRegistry.getClassPath(notation.name()).getAsFiles());
+    }
 
     private FileCollectionInternal gradleApiFileCollection(Collection<File> apiClasspath) {
         // Don't inline the Groovy jar as the Groovy “tools locator” searches for it by name
         List<File> groovyImpl = classPathRegistry.getClassPath(LOCAL_GROOVY.name()).getAsFiles();
+        List<File> kotlinImpl = kotlinImplFrom(apiClasspath);
         List<File> installationBeacon = classPathRegistry.getClassPath("GRADLE_INSTALLATION_BEACON").getAsFiles();
         apiClasspath.removeAll(groovyImpl);
         apiClasspath.removeAll(installationBeacon);
-        removeGradleScriptKotlin(apiClasspath);
+        // Remove Kotlin DSL and Kotlin jars
+        removeKotlin(apiClasspath);
 
         return (FileCollectionInternal) relocatedDepsJar(apiClasspath, "gradleApi()", RuntimeShadedJarType.API)
-            .plus(fileResolver.resolveFiles(groovyImpl, installationBeacon));
+            .plus(fileCollectionFactory.resolving(groovyImpl, kotlinImpl, installationBeacon));
     }
 
-    /**
-     * Gradle script kotlin should not be part of the public Gradle API
-     * We remove this in a very hacky way for 3.0. Going forward, there
-     * will be a cleaner solution
-     */
-    private void removeGradleScriptKotlin(Collection<File> apiClasspath) {
+    private void removeKotlin(Collection<File> apiClasspath) {
         for (File file : new ArrayList<File>(apiClasspath)) {
-            // TODO: replace by something cleaner
+            String name = file.getName();
             if (file.getName().contains("kotlin")) {
                 apiClasspath.remove(file);
             }
         }
     }
 
+    private List<File> kotlinImplFrom(Collection<File> classPath) {
+        ArrayList<File> files = new ArrayList<>();
+        for (File file : classPath) {
+            String name = file.getName();
+            if (name.startsWith("kotlin-stdlib-") || name.startsWith("kotlin-reflect-")) {
+                files.add(file);
+            }
+        }
+        return files;
+    }
+
     private FileCollectionInternal gradleTestKitFileCollection(Collection<File> testKitClasspath) {
-        List<File> gradleApi = classPathRegistry.getClassPath(GRADLE_API.name()).getAsFiles();
+        List<File> gradleApi = getClassPath(GRADLE_API);
         testKitClasspath.removeAll(gradleApi);
 
         return (FileCollectionInternal) relocatedDepsJar(testKitClasspath, "gradleTestKit()", RuntimeShadedJarType.TEST_KIT)
@@ -164,9 +161,10 @@ public class DependencyClassPathNotationConverter implements NotationConverter<D
         return new FileCollectionAdapter(new SingletonFileSet(gradleImplDepsJar, displayName));
     }
 
-    abstract class GeneratedFileCollection extends CompositeFileCollection {
+    abstract static class GeneratedFileCollection extends CompositeFileCollection {
 
         private final String displayName;
+        private FileCollection generatedCollection;
 
         public GeneratedFileCollection(String notation) {
             this.displayName = notation + " files";
@@ -183,7 +181,10 @@ public class DependencyClassPathNotationConverter implements NotationConverter<D
             if (context instanceof BuildDependenciesOnlyFileCollectionResolveContext) {
                 return;
             }
-            context.add(generateFileCollection());
+            if (generatedCollection == null) {
+                generatedCollection = generateFileCollection();
+            }
+            context.add(generatedCollection);
         }
 
         abstract FileCollection generateFileCollection();

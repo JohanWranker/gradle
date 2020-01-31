@@ -17,64 +17,94 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.result;
 
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.artifacts.ModuleVersionSelector;
+import org.gradle.api.artifacts.UnresolvedDependency;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
+import org.gradle.api.artifacts.component.ModuleComponentSelector;
+import org.gradle.api.artifacts.result.ComponentSelectionCause;
 import org.gradle.api.artifacts.result.ComponentSelectionReason;
+import org.gradle.api.artifacts.result.DependencyResult;
 import org.gradle.api.artifacts.result.ResolutionResult;
 import org.gradle.api.artifacts.result.ResolvedComponentResult;
 import org.gradle.api.artifacts.result.ResolvedDependencyResult;
 import org.gradle.api.artifacts.result.ResolvedVariantResult;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.ComponentResult;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyResult;
+import org.gradle.api.attributes.AttributeContainer;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.ResolvedGraphComponent;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.ResolvedGraphDependency;
 import org.gradle.api.internal.artifacts.result.DefaultResolutionResult;
 import org.gradle.api.internal.artifacts.result.DefaultResolvedComponentResult;
-import org.gradle.api.internal.artifacts.result.DefaultResolvedVariantResult;
-import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.internal.Describables;
 import org.gradle.internal.Factory;
+import org.gradle.internal.component.external.model.DefaultModuleComponentSelector;
+import org.gradle.internal.resolve.ModuleVersionResolveException;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class DefaultResolutionResultBuilder {
     private final Map<Long, DefaultResolvedComponentResult> modules = new HashMap<Long, DefaultResolvedComponentResult>();
     private final CachingDependencyResultFactory dependencyResultFactory = new CachingDependencyResultFactory();
+    private AttributeContainer requestedAttributes;
 
-    public static ResolutionResult empty(ModuleVersionIdentifier id, ComponentIdentifier componentIdentifier) {
+    public static ResolutionResult empty(ModuleVersionIdentifier id, ComponentIdentifier componentIdentifier, AttributeContainer attributes) {
         DefaultResolutionResultBuilder builder = new DefaultResolutionResultBuilder();
-        builder.visitComponent(new DefaultComponentResult(0L, id, VersionSelectionReasons.root(), componentIdentifier, "<empty>", ImmutableAttributes.EMPTY));
+        builder.setRequestedAttributes(attributes);
+        builder.visitComponent(new DetachedComponentResult(0L, id, ComponentSelectionReasons.root(), componentIdentifier, Collections.emptyList(), null));
         return builder.complete(0L);
     }
 
+    public void setRequestedAttributes(AttributeContainer attributes) {
+        requestedAttributes = attributes;
+    }
+
     public ResolutionResult complete(Long rootId) {
-        return new DefaultResolutionResult(new RootFactory(modules.get(rootId)));
+        return new DefaultResolutionResult(new RootFactory(modules.get(rootId)), requestedAttributes);
     }
 
-    public void visitComponent(ComponentResult component) {
-        create(component.getResultId(), component.getModuleVersion(), component.getSelectionReason(), component.getComponentId(), variantDetails(component));
+    public void visitComponent(ResolvedGraphComponent component) {
+        create(component.getResultId(), component.getModuleVersion(), component.getSelectionReason(), component.getComponentId(), component.getResolvedVariants(), component.getRepositoryName());
     }
 
-    private static ResolvedVariantResult variantDetails(ComponentResult component) {
-        return new DefaultResolvedVariantResult(component.getVariantName(), component.getVariantAttributes());
-    }
-
-    public void visitOutgoingEdges(Long fromComponent, Collection<? extends DependencyResult> dependencies) {
-        for (DependencyResult d : dependencies) {
-            DefaultResolvedComponentResult from = modules.get(fromComponent);
-            org.gradle.api.artifacts.result.DependencyResult dependency;
+    public void visitOutgoingEdges(Long fromComponent, Collection<? extends ResolvedGraphDependency> dependencies) {
+        DefaultResolvedComponentResult from = modules.get(fromComponent);
+        for (ResolvedGraphDependency d : dependencies) {
+            DependencyResult dependencyResult;
+            ResolvedVariantResult fromVariant = d.getFromVariant();
             if (d.getFailure() != null) {
-                dependency = dependencyResultFactory.createUnresolvedDependency(d.getRequested(), from, d.getReason(), d.getFailure());
+                dependencyResult = dependencyResultFactory.createUnresolvedDependency(d.getRequested(), from, d.isConstraint(), d.getReason(), d.getFailure());
             } else {
                 DefaultResolvedComponentResult selected = modules.get(d.getSelected());
-                dependency = dependencyResultFactory.createResolvedDependency(d.getRequested(), from, selected);
-                selected.addDependent((ResolvedDependencyResult) dependency);
+                if (selected == null) {
+                    throw new IllegalStateException("Corrupt serialized resolution result. Cannot find selected module (" + d.getSelected() + ") for " + (d.isConstraint() ? "constraint " : "") + fromVariant + " -> " + d.getRequested().getDisplayName());
+                }
+                dependencyResult = dependencyResultFactory.createResolvedDependency(d.getRequested(), from, selected, d.getSelectedVariant(), d.isConstraint());
+                selected.addDependent((ResolvedDependencyResult) dependencyResult);
             }
-            from.addDependency(dependency);
+            from.addDependency(dependencyResult);
+            if (fromVariant != null) {
+                from.associateDependencyToVariant(dependencyResult, fromVariant);
+            }
         }
     }
 
-    private void create(Long id, ModuleVersionIdentifier moduleVersion, ComponentSelectionReason selectionReason, ComponentIdentifier componentId, ResolvedVariantResult variant) {
+    private void create(Long id, ModuleVersionIdentifier moduleVersion, ComponentSelectionReason selectionReason, ComponentIdentifier componentId, List<ResolvedVariantResult> variants, String repoName) {
         if (!modules.containsKey(id)) {
-            modules.put(id, new DefaultResolvedComponentResult(moduleVersion, selectionReason, componentId, variant));
+            modules.put(id, new DefaultResolvedComponentResult(moduleVersion, selectionReason, componentId, variants, repoName));
+        }
+    }
+
+    public void addExtraFailures(Long rootId, Set<UnresolvedDependency> extraFailures) {
+        DefaultResolvedComponentResult root = modules.get(rootId);
+        for (UnresolvedDependency failure : extraFailures) {
+            ModuleVersionSelector failureSelector = failure.getSelector();
+            ModuleComponentSelector failureComponentSelector = DefaultModuleComponentSelector.newSelector(failureSelector.getModule(), failureSelector.getVersion());
+            root.addDependency(dependencyResultFactory.createUnresolvedDependency(failureComponentSelector, root, true,
+                    ComponentSelectionReasons.of(new DefaultComponentSelectionDescriptor(ComponentSelectionCause.CONSTRAINT, Describables.of("Dependency locking"))),
+                new ModuleVersionResolveException(failureComponentSelector, () -> "Dependency lock state out of date", failure.getProblem())));
         }
     }
 
@@ -85,6 +115,7 @@ public class DefaultResolutionResultBuilder {
             this.rootModule = rootModule;
         }
 
+        @Override
         public ResolvedComponentResult create() {
             return rootModule;
         }

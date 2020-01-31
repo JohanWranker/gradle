@@ -20,6 +20,12 @@ import com.google.common.base.Objects;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
+import org.gradle.api.attributes.AttributeContainer;
+import org.gradle.api.capabilities.Capability;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
+
+import java.util.Collections;
+import java.util.List;
 
 class UnversionedModuleComponentSelector implements ComponentSelector {
     private final ModuleIdentifier moduleIdentifier;
@@ -40,6 +46,16 @@ class UnversionedModuleComponentSelector implements ComponentSelector {
     @Override
     public boolean matchesStrictly(ComponentIdentifier identifier) {
         return false;
+    }
+
+    @Override
+    public AttributeContainer getAttributes() {
+        return ImmutableAttributes.EMPTY;
+    }
+
+    @Override
+    public List<Capability> getRequestedCapabilities() {
+        return Collections.emptyList();
     }
 
     @Override

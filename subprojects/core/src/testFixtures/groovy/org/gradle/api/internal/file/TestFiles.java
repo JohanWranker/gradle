@@ -15,31 +15,48 @@
  */
 package org.gradle.api.internal.file;
 
+import org.gradle.api.internal.cache.StringInterner;
 import org.gradle.api.internal.file.collections.DefaultDirectoryFileTreeFactory;
 import org.gradle.api.internal.file.collections.DirectoryFileTreeFactory;
+import org.gradle.api.internal.resources.ApiTextResourceAdapter;
+import org.gradle.api.internal.resources.DefaultResourceHandler;
+import org.gradle.api.internal.tasks.DefaultTaskDependencyFactory;
 import org.gradle.api.tasks.util.PatternSet;
 import org.gradle.api.tasks.util.internal.PatternSets;
 import org.gradle.internal.Factory;
-import org.gradle.internal.hash.DefaultContentHasherFactory;
+import org.gradle.internal.concurrent.DefaultExecutorFactory;
+import org.gradle.internal.file.Deleter;
+import org.gradle.internal.file.PathToFileResolver;
+import org.gradle.internal.file.impl.DefaultDeleter;
+import org.gradle.internal.fingerprint.GenericFileTreeSnapshotter;
+import org.gradle.internal.fingerprint.impl.DefaultFileCollectionSnapshotter;
+import org.gradle.internal.fingerprint.impl.DefaultGenericFileTreeSnapshotter;
 import org.gradle.internal.hash.DefaultFileHasher;
 import org.gradle.internal.hash.DefaultStreamHasher;
 import org.gradle.internal.nativeintegration.filesystem.FileSystem;
-import org.gradle.internal.reflect.DirectInstantiator;
 import org.gradle.internal.resource.local.FileResourceConnector;
 import org.gradle.internal.resource.local.FileResourceRepository;
+import org.gradle.internal.time.Time;
+import org.gradle.internal.vfs.VirtualFileSystem;
+import org.gradle.internal.vfs.impl.DefaultVirtualFileSystem;
 import org.gradle.process.internal.DefaultExecActionFactory;
 import org.gradle.process.internal.ExecActionFactory;
 import org.gradle.process.internal.ExecFactory;
 import org.gradle.process.internal.ExecHandleFactory;
 import org.gradle.process.internal.JavaExecHandleFactory;
 import org.gradle.testfixtures.internal.NativeServicesTestFixture;
+import org.gradle.util.TestUtil;
 
+import javax.annotation.Nullable;
 import java.io.File;
+
+import static org.gradle.internal.snapshot.CaseSensitivity.CASE_INSENSITIVE;
+import static org.gradle.internal.snapshot.CaseSensitivity.CASE_SENSITIVE;
 
 public class TestFiles {
     private static final FileSystem FILE_SYSTEM = NativeServicesTestFixture.getInstance().get(FileSystem.class);
-    private static final DefaultFileLookup FILE_LOOKUP = new DefaultFileLookup(FILE_SYSTEM, PatternSets.getNonCachingPatternSetFactory());
-    private static final DefaultExecActionFactory EXEC_FACTORY = new DefaultExecActionFactory(resolver());
+    private static final DefaultFileLookup FILE_LOOKUP = new DefaultFileLookup(PatternSets.getNonCachingPatternSetFactory());
+    private static final DefaultExecActionFactory EXEC_FACTORY = DefaultExecActionFactory.of(resolver(), fileCollectionFactory(), new DefaultExecutorFactory());
 
     public static FileLookup fileLookup() {
         return FILE_LOOKUP;
@@ -61,42 +78,110 @@ public class TestFiles {
     }
 
     /**
+     * Returns a resolver with no base directory.
+     */
+    public static PathToFileResolver pathToFileResolver() {
+        return FILE_LOOKUP.getPathToFileResolver();
+    }
+
+    /**
      * Returns a resolver with the given base directory.
      */
     public static FileResolver resolver(File baseDir) {
         return FILE_LOOKUP.getFileResolver(baseDir);
     }
 
+    /**
+     * Returns a resolver with the given base directory.
+     */
+    public static PathToFileResolver pathToFileResolver(File baseDir) {
+        return FILE_LOOKUP.getPathToFileResolver(baseDir);
+    }
+
     public static DirectoryFileTreeFactory directoryFileTreeFactory() {
         return new DefaultDirectoryFileTreeFactory(getPatternSetFactory(), fileSystem());
     }
 
+    public static Deleter deleter() {
+        return new DefaultDeleter(Time.clock()::getCurrentTime, fileSystem()::isSymlink, false);
+    }
+
+    public static FileFactory fileFactory() {
+        return new DefaultFilePropertyFactory(resolver(), fileCollectionFactory());
+    }
+
     public static FileOperations fileOperations(File basedDir) {
-        return new DefaultFileOperations(resolver(basedDir), null, null, DirectInstantiator.INSTANCE, fileLookup(), directoryFileTreeFactory(), streamHasher(), fileHasher(), execFactory());
+        return fileOperations(basedDir, null);
+    }
+
+    public static FileOperations fileOperations(File basedDir, @Nullable TemporaryFileProvider temporaryFileProvider) {
+        FileResolver fileResolver = resolver(basedDir);
+        FileSystem fileSystem = fileSystem();
+
+        DefaultResourceHandler.Factory resourceHandlerFactory = DefaultResourceHandler.Factory.from(
+            fileResolver,
+            fileSystem,
+            temporaryFileProvider,
+            textResourceAdapterFactory(temporaryFileProvider)
+        );
+
+        return new DefaultFileOperations(
+            fileResolver,
+            temporaryFileProvider,
+            TestUtil.instantiatorFactory().inject(),
+            directoryFileTreeFactory(),
+            streamHasher(),
+            fileHasher(),
+            resourceHandlerFactory,
+            fileCollectionFactory(basedDir),
+            fileSystem,
+            deleter()
+        );
+    }
+
+    public static ApiTextResourceAdapter.Factory textResourceAdapterFactory(@Nullable TemporaryFileProvider temporaryFileProvider) {
+        return new ApiTextResourceAdapter.Factory(
+            __ -> {
+                throw new IllegalStateException("Can't create TextUriResourceLoader");
+            },
+            temporaryFileProvider
+        );
     }
 
     public static DefaultStreamHasher streamHasher() {
-        return new DefaultStreamHasher(new DefaultContentHasherFactory());
+        return new DefaultStreamHasher();
     }
 
     public static DefaultFileHasher fileHasher() {
         return new DefaultFileHasher(streamHasher());
     }
 
+    public static GenericFileTreeSnapshotter genericFileTreeSnapshotter() {
+        return new DefaultGenericFileTreeSnapshotter(fileHasher(), new StringInterner());
+    }
+
+    public static DefaultFileCollectionSnapshotter fileCollectionSnapshotter() {
+        return new DefaultFileCollectionSnapshotter(virtualFileSystem(), genericFileTreeSnapshotter(), fileSystem());
+    }
+
+    public static VirtualFileSystem virtualFileSystem() {
+        return new DefaultVirtualFileSystem(fileHasher(), new StringInterner(), fileSystem(), fileSystem().isCaseSensitive() ? CASE_SENSITIVE : CASE_INSENSITIVE);
+    }
+
     public static FileCollectionFactory fileCollectionFactory() {
-        return new DefaultFileCollectionFactory();
+        return new DefaultFileCollectionFactory(pathToFileResolver(), DefaultTaskDependencyFactory.withNoAssociatedProject(), directoryFileTreeFactory(), getPatternSetFactory());
     }
 
-    public static SourceDirectorySetFactory sourceDirectorySetFactory() {
-        return new DefaultSourceDirectorySetFactory(resolver(), new DefaultDirectoryFileTreeFactory());
-    }
-
-    public static SourceDirectorySetFactory sourceDirectorySetFactory(File baseDir) {
-        return new DefaultSourceDirectorySetFactory(resolver(baseDir), new DefaultDirectoryFileTreeFactory());
+    public static FileCollectionFactory fileCollectionFactory(File baseDir) {
+        return new DefaultFileCollectionFactory(pathToFileResolver(baseDir), DefaultTaskDependencyFactory.withNoAssociatedProject(), directoryFileTreeFactory(), getPatternSetFactory());
     }
 
     public static ExecFactory execFactory() {
         return EXEC_FACTORY;
+    }
+
+    public static ExecFactory execFactory(File baseDir) {
+        return execFactory().forContext(resolver(baseDir), fileCollectionFactory(baseDir), TestUtil.instantiatorFactory().inject(), TestUtil.objectFactory());
     }
 
     public static ExecActionFactory execActionFactory() {
@@ -108,11 +193,11 @@ public class TestFiles {
     }
 
     public static ExecHandleFactory execHandleFactory(File baseDir) {
-        return execFactory().forContext(resolver(baseDir), DirectInstantiator.INSTANCE);
+        return execFactory(baseDir);
     }
 
     public static JavaExecHandleFactory javaExecHandleFactory(File baseDir) {
-        return execFactory().forContext(resolver(baseDir), DirectInstantiator.INSTANCE);
+        return execFactory(baseDir);
     }
 
     public static Factory<PatternSet> getPatternSetFactory() {

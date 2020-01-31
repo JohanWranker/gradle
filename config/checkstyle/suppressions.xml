@@ -7,6 +7,8 @@
 <suppressions>
     <!-- These packages are duplicated in core-api, don't require a package-info.java in each place -->
     <suppress checks="JavadocPackage"
+              files=".*[/\\]subprojects[/\\]base-annotations[/\\]src[/\\]main[/\\]java[/\\]org[/\\]gradle[/\\]api[/\\][^/\\]+"/>
+    <suppress checks="JavadocPackage"
               files=".*[/\\]subprojects[/\\]model-core[/\\]src[/\\]main[/\\]java[/\\]org[/\\]gradle[/\\]api[/\\][^/\\]+"/>
     <suppress checks="JavadocPackage"
               files=".*[/\\]subprojects[/\\]core[/\\]src[/\\]main[/\\]java[/\\]org[/\\]gradle[/\\]api[/\\][^/\\]+"/>
@@ -52,8 +54,6 @@
               files=".*[/\\]subprojects[/\\]testing-jvm[/\\]src[/\\]main[/\\]java[/\\]org[/\\]gradle[/\\]jvm[/\\]plugins[/\\][^/\\]+"/>
     <suppress checks="JavadocPackage"
               files=".*[/\\]subprojects[/\\]testing-jvm[/\\]src[/\\]main[/\\]java[/\\]org[/\\]gradle[/\\]api[/\\]tasks[/\\]testing[/\\][^/\\]+"/>
-    <suppress checks="JavadocPackage"
-              files=".*[/\\]subprojects[/\\]build-comparison[/\\]src[/\\]main[/\\]groovy[/\\]org[/\\]gradle[/\\]api[/\\]plugins[/\\]buildcomparison[/\\]gradle[/\\][^/\\]+"/>
 
     <!-- These packages are duplicated in ide-native from ide, don't require a package-info.java in each place -->
     <suppress checks="JavadocPackage"
@@ -81,4 +81,16 @@
     <suppress checks="ExplicitInitializationCheck"
               files=".*"/>
 
+    <!-- Ignore code from maven subproject under org.apache -->
+    <suppress checks="RegexpSingleline"
+              files=".*[/\\]subprojects[/\\]maven[/\\]src[/\\]main[/\\]java[/\\]org[/\\]apache[/\\].+"/>
+    <suppress checks="RegexpHeader"
+              files=".*[/\\]subprojects[/\\]maven[/\\]src[/\\]main[/\\]java[/\\]org[/\\]apache[/\\].+"/>
+
+    <!-- Ignore constant name for architecture tests since we want to use snake case there -->
+    <suppress checks="ConstantName"
+              files=".*[/\\]subprojects[/\\]architecture-test[/\\]src[/\\]test[/\\]java[/\\]org[/\\]gradle[/\\].+" />
+
+    <!-- Ignore all checks for the generated sources of org.gradle.samples plugin -->
+    <suppress checks=".*" files=".*[/\\]subprojects[/\\]docs[/\\]build[/\\]generated-source-sets[/\\].+" />
 </suppressions>

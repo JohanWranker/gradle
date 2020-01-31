@@ -16,11 +16,7 @@
 
 package org.gradle.nativeplatform.test.cpp.plugins
 
-import org.gradle.nativeplatform.fixtures.app.CppHelloWorldApp
-import org.gradle.nativeplatform.test.AbstractNativeUnitTestIntegrationTest
-import spock.lang.Unroll
-
-class CppUnitTestWithLibraryIntegrationTest extends AbstractNativeUnitTestIntegrationTest {
+class CppUnitTestWithLibraryIntegrationTest extends AbstractCppUnitTestIntegrationTest {
     @Override
     protected void makeSingleProject() {
         buildFile << """
@@ -29,29 +25,54 @@ class CppUnitTestWithLibraryIntegrationTest extends AbstractNativeUnitTestIntegr
         """
     }
 
-    @Unroll
-    def "can run test executable using lifecycle task #task"() {
-        def app = new CppHelloWorldApp()
-        makeSingleProject()
-
-        app.library.writeSources(file("src/main"))
-        app.simpleTestExecutable.writeSources(file("src/test"))
-
-        when:
-        succeeds(task)
-
-        then:
-        result.assertTasksExecuted(tasksToBuildAndRunUnitTest, expectedLifecycleTasks)
-
-        where:
-        task    | expectedLifecycleTasks
-        "test"  | [":test"]
-        "check" | [":test", ":check"]
-        "build" | [":test", ":check", ":build", ":linkDebug", ":assemble"]
+    @Override
+    protected void writeTests() {
+        file("src/main/cpp/lib.cpp") << """
+            #include <lib.h>
+            int lib() {
+                return 0;
+            }
+        """
+        file("src/main/headers/lib.h") << """
+            extern int lib();
+        """
+        file("src/test/headers/tests.h") << """
+        """
+        file("src/test/cpp/test_lib.cpp") << """
+            #include <lib.h>
+            #include <tests.h>
+            int main() {
+                return lib();
+            }
+        """
     }
 
     @Override
-    String[] getTasksToBuildAndRunUnitTest() {
-        return [":compileDebugCpp", ":compileTestCpp", ":linkTest", ":installTest", ":runTest"]
+    protected void changeTestImplementation() {
+        file("src/test/cpp/test_lib.cpp") << """
+            void test_func() { }
+        """
+    }
+
+    @Override
+    protected void assertTestCasesRan() {
+        // ok
+    }
+
+    @Override
+    protected String[] getTasksToCompileComponentUnderTest(String architecture) {
+        def debugTasks = tasks.withArchitecture(architecture).debug
+        return [debugTasks.compile]
+    }
+
+    @Override
+    protected String[] getTasksToAssembleComponentUnderTest(String architecture) {
+        def debugTasks = tasks.withArchitecture(architecture).debug
+        return [debugTasks.link]
+    }
+
+    @Override
+    protected String getComponentUnderTestDsl() {
+        return "library"
     }
 }

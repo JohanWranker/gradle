@@ -17,7 +17,7 @@ package org.gradle.integtests.fixtures
 
 import org.gradle.test.fixtures.file.TestFile
 
-import static org.hamcrest.Matchers.*
+import static org.hamcrest.CoreMatchers.*
 import static org.hamcrest.core.StringStartsWith.startsWith
 import static org.junit.Assert.assertThat
 
@@ -48,6 +48,11 @@ class JUnitXmlTestExecutionResult implements TestExecutionResult {
     String fromFileToTestClass(File junitXmlFile) {
         def xml = new XmlSlurper().parse(junitXmlFile)
         xml.@'name'.text()
+    }
+
+    boolean testClassExists(String testClass) {
+        def classes = findClasses()
+        return (classes.keySet().contains(testClass))
     }
 
     TestClassExecutionResult testClass(String testClass) {

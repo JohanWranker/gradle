@@ -16,42 +16,63 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder;
 
 import com.google.common.collect.Sets;
+import org.gradle.api.artifacts.ModuleIdentifier;
 
-import java.util.Collections;
 import java.util.Set;
 
 public class PendingDependencies {
-    private boolean noLongerPending;
+    private final ModuleIdentifier moduleIdentifier;
     private final Set<NodeState> affectedComponents;
+    private int hardEdges;
+    private boolean reportActivePending;
 
-    public static PendingDependencies pending() {
-        return new PendingDependencies(Sets.<NodeState>newLinkedHashSet(), false);
+    PendingDependencies(ModuleIdentifier moduleIdentifier) {
+        this.moduleIdentifier = moduleIdentifier;
+        this.affectedComponents = Sets.newLinkedHashSet();
+        this.hardEdges = 0;
+        this.reportActivePending = true;
     }
 
-    public static PendingDependencies notPending() {
-        return new PendingDependencies(Collections.<NodeState>emptySet(), true);
-    }
-
-    private PendingDependencies(Set<NodeState> nodeStates, boolean noLongerPending) {
-        this.affectedComponents = nodeStates;
-        this.noLongerPending = noLongerPending;
+    ModuleIdentifier getModuleIdentifier() {
+        return moduleIdentifier;
     }
 
     void addNode(NodeState state) {
-        if (noLongerPending) {
+        if (hardEdges != 0) {
             throw new IllegalStateException("Cannot add a pending node for a dependency which is not pending");
         }
         affectedComponents.add(state);
-    }
-
-    void turnIntoHardDependencies() {
-        noLongerPending = true;
-        for (NodeState affectedComponent : affectedComponents) {
-            affectedComponent.resetSelectionState();
+        if (state.getComponent().getModule().isVirtualPlatform()) {
+            reportActivePending = false;
         }
     }
 
+    void turnIntoHardDependencies() {
+        for (NodeState affectedComponent : affectedComponents) {
+            affectedComponent.prepareForConstraintNoLongerPending(moduleIdentifier);
+        }
+        affectedComponents.clear();
+        reportActivePending = true;
+    }
+
     public boolean isPending() {
-        return !noLongerPending;
+        return hardEdges == 0;
+    }
+
+    boolean hasPendingComponents() {
+        return !affectedComponents.isEmpty();
+    }
+
+    void increaseHardEdgeCount() {
+        hardEdges++;
+    }
+
+    void decreaseHardEdgeCount() {
+        assert hardEdges > 0 : "Cannot remove a hard edge when none recorded";
+        hardEdges--;
+    }
+
+    public boolean shouldReportActivatePending() {
+        return reportActivePending;
     }
 }

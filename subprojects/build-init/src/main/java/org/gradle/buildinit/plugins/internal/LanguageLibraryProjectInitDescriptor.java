@@ -16,53 +16,19 @@
 
 package org.gradle.buildinit.plugins.internal;
 
-import org.gradle.api.internal.file.FileResolver;
-import org.gradle.buildinit.plugins.internal.modifiers.BuildInitDsl;
-import org.gradle.internal.Factory;
+import java.util.Optional;
 
-public abstract class LanguageLibraryProjectInitDescriptor implements ProjectInitDescriptor {
-
-    protected final String language;
-    protected final FileResolver fileResolver;
-    protected final TemplateOperationFactory templateOperationFactory;
-    protected final TemplateLibraryVersionProvider libraryVersionProvider;
-    protected final ProjectInitDescriptor globalSettingsDescriptor;
-
-    public LanguageLibraryProjectInitDescriptor(String language, TemplateOperationFactory templateOperationFactory, FileResolver fileResolver,
-                                                TemplateLibraryVersionProvider libraryVersionProvider, ProjectInitDescriptor globalSettingsDescriptor){
-        this.language = language;
-        this.fileResolver = fileResolver;
-        this.templateOperationFactory = templateOperationFactory;
-        this.libraryVersionProvider = libraryVersionProvider;
-        this.globalSettingsDescriptor = globalSettingsDescriptor;
+public abstract class LanguageLibraryProjectInitDescriptor implements LanguageSpecificProjectGenerator {
+    protected String withPackage(InitSettings settings, String className) {
+        if (settings.getPackageName().isEmpty()) {
+            return className;
+        } else {
+            return settings.getPackageName() + "." + className;
+        }
     }
 
     @Override
-    public boolean supports(BuildInitDsl dsl) {
-        return true;
-    }
-
-    protected TemplateOperation whenNoSourcesAvailable(TemplateOperation... operations) {
-        return new ConditionalTemplateOperation(new Factory<Boolean>() {
-            public Boolean create() {
-                return fileResolver.resolveFilesAsTree("src/main/" + language).isEmpty() || fileResolver.resolveFilesAsTree("src/test/" + language).isEmpty();
-            }
-        }, operations);
-    }
-
-    protected TemplateOperation fromClazzTemplate(String clazzTemplate, String sourceSetName) {
-        return fromClazzTemplate(clazzTemplate, sourceSetName, this.language);
-    }
-
-    protected TemplateOperation fromClazzTemplate(String clazzTemplate, String sourceSetName, String language) {
-        String targetFileName = clazzTemplate.substring(clazzTemplate.lastIndexOf("/") + 1).replace(".template", "");
-        return fromClazzTemplate(clazzTemplate, sourceSetName, language, targetFileName);
-    }
-
-    protected TemplateOperation fromClazzTemplate(String clazzTemplate, String sourceSetName, String language, String targetFileName) {
-        return templateOperationFactory.newTemplateOperation()
-                .withTemplate(clazzTemplate)
-                .withTarget("src/" + sourceSetName + "/" + language + "/" + targetFileName)
-                .create();
+    public Optional<String> getFurtherReading() {
+        return Optional.empty();
     }
 }

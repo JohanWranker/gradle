@@ -19,12 +19,13 @@ package org.gradle.internal.typeconversion;
 import org.gradle.internal.exceptions.DiagnosticsVisitor;
 
 public class NotationConverterToNotationParserAdapter<N, T> implements NotationParser<N, T> {
-    private final NotationConverter<N, ? extends T> converter;
+    private final NotationConverter<? super N, ? extends T> converter;
 
-    public NotationConverterToNotationParserAdapter(NotationConverter<N, ? extends T> converter) {
+    public NotationConverterToNotationParserAdapter(NotationConverter<? super N, ? extends T> converter) {
         this.converter = converter;
     }
 
+    @Override
     public T parseNotation(N notation) throws TypeConversionException {
         ResultImpl<T> result = new ResultImpl<T>();
         converter.convert(notation, result);
@@ -43,10 +44,12 @@ public class NotationConverterToNotationParserAdapter<N, T> implements NotationP
         private boolean hasResult;
         private T result;
 
+        @Override
         public boolean hasResult() {
             return hasResult;
         }
 
+        @Override
         public void converted(T result) {
             hasResult = true;
             this.result = result;

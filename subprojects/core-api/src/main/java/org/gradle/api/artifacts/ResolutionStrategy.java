@@ -83,6 +83,47 @@ public interface ResolutionStrategy {
     ResolutionStrategy failOnVersionConflict();
 
     /**
+     * If this method is called, Gradle will make sure that no dynamic version was used in the resulting dependency graph.
+     * In practice, it means that if the resolved dependency graph contains a module and that the versions participating
+     * in the selection of that module contain at least one dynamic version, then resolution will fail if the resolution
+     * result can change because of this version selector.
+     *
+     * This can be used in cases you want to make sure your build is reproducible, <i>without</i> relying on
+     * dependency locking.
+     *
+     * @return this resolution strategy
+     * @since 6.1
+     */
+    @Incubating
+    ResolutionStrategy failOnDynamicVersions();
+
+    /**
+     * If this method is called, Gradle will make sure that no changing version participates in resolution.
+     *
+     * This can be used in cases you want to make sure your build is reproducible, <i>without</i> relying on
+     * dependency locking.
+     *
+     * @return this resolution strategy
+     * @since 6.1
+     */
+    @Incubating
+    ResolutionStrategy failOnChangingVersions();
+
+    /**
+     * Configures Gradle to fail the build is the resolution result is expected to be unstable, that is to say that
+     * it includes dynamic versions or changing versions and therefore the result may change depending
+     * on when the build is executed.
+     *
+     * This method is equivalent to calling both {@link #failOnDynamicVersions()} and
+     * {@link #failOnChangingVersions()}.
+     *
+     * @return this resolution strategy
+     * @since 6.1
+     */
+    @Incubating
+    ResolutionStrategy failOnNonReproducibleResolution();
+
+    /**
      * Gradle can resolve conflicts purely by version number or prioritize project dependencies over binary.
      * The default is <b>by version number</b>.<p>
      * This applies to both first level and transitive dependencies. See example below:
@@ -97,8 +138,46 @@ public interface ResolutionStrategy {
      *
      * @since 3.2
      */
-    @Incubating
     void preferProjectModules();
+
+    /**
+     * Activates dependency locking support in Gradle.
+     * Once turned on on a configuration, resolution result can be saved and then reused for subsequent builds.
+     * This enables reproducible builds when using dynamic versions.
+     *
+     * @return this resolution strategy instance
+     * @since 4.8
+     */
+    ResolutionStrategy activateDependencyLocking();
+
+    /**
+     * Deactivates dependency locking support in Gradle.
+     *
+     * @return this resolution strategy instance
+     * @since 6.0
+     */
+    @Incubating
+    ResolutionStrategy deactivateDependencyLocking();
+
+
+    /**
+     * Deactivates dependency verification for this configuration.
+     * You should always be careful when disabling verification, and in particular avoid
+     * disabling it for verification of plugins, because a plugin could use this to disable
+     * verification itself.
+     *
+     * @since 6.2
+     */
+    @Incubating
+    ResolutionStrategy disableDependencyVerification();
+
+    /**
+     * Enabled dependency verification for this configuration.
+     *
+     * @since 6.2
+     */
+    @Incubating
+    ResolutionStrategy enableDependencyVerification();
 
     /**
      * Allows forcing certain versions of dependencies, including transitive dependencies.
@@ -161,7 +240,7 @@ public interface ResolutionStrategy {
      * Example:
      * <pre class='autoTested'>
      * configurations {
-     *   compile.resolutionStrategy {
+     *   compileClasspath.resolutionStrategy {
      *     eachDependency { DependencyResolveDetails details -&gt;
      *       //specifying a fixed version for all libraries with 'org.gradle' group
      *       if (details.requested.group == 'org.gradle') {
@@ -184,7 +263,6 @@ public interface ResolutionStrategy {
      * @return this
      * @since 1.4
      */
-    @Incubating
     ResolutionStrategy eachDependency(Action<? super DependencyResolveDetails> rule);
 
     /**
@@ -192,6 +270,7 @@ public interface ResolutionStrategy {
      *
      * <p>A convenience method for {@link #cacheDynamicVersionsFor(int, java.util.concurrent.TimeUnit)} with units expressed as a String.
      * Units are resolved by calling the {@code valueOf(String)} method of {@link java.util.concurrent.TimeUnit} with the upper-cased string value.</p>
+     *
      * @param value The number of time units
      * @param units The units
      * @since 1.0-milestone-6
@@ -204,6 +283,7 @@ public interface ResolutionStrategy {
      * <p>Gradle keeps a cache of dynamic version =&gt; resolved version (ie 2.+ =&gt; 2.3). By default, these cached values are kept for 24 hours, after which the cached entry is expired
      * and the dynamic version is resolved again.</p>
      * <p>Use this method to provide a custom expiry time after which the cached value for any dynamic version will be expired.</p>
+     *
      * @param value The number of time units
      * @param units The units
      * @since 1.0-milestone-6
@@ -215,6 +295,7 @@ public interface ResolutionStrategy {
      *
      * <p>A convenience method for {@link #cacheChangingModulesFor(int, java.util.concurrent.TimeUnit)} with units expressed as a String.
      * Units are resolved by calling the {@code valueOf(String)} method of {@link java.util.concurrent.TimeUnit} with the upper-cased string value.</p>
+     *
      * @param value The number of time units
      * @param units The units
      * @since 1.0-milestone-6
@@ -227,6 +308,7 @@ public interface ResolutionStrategy {
      * <p>Gradle caches the contents and artifacts of changing modules. By default, these cached values are kept for 24 hours,
      * after which the cached entry is expired and the module is resolved again.</p>
      * <p>Use this method to provide a custom expiry time after which the cached entries for any changing module will be expired.</p>
+     *
      * @param value The number of time units
      * @param units The units
      * @since 1.0-milestone-6
@@ -239,7 +321,6 @@ public interface ResolutionStrategy {
      * @return the version selection rules
      * @since 2.2
      */
-    @Incubating
     ComponentSelectionRules getComponentSelection();
 
     /**
@@ -249,7 +330,6 @@ public interface ResolutionStrategy {
      * @return this ResolutionStrategy instance
      * @since 2.2
      */
-    @Incubating
     ResolutionStrategy componentSelection(Action<? super ComponentSelectionRules> action);
 
     /**
@@ -257,7 +337,6 @@ public interface ResolutionStrategy {
      *
      * @since 2.5
      */
-    @Incubating
     DependencySubstitutions getDependencySubstitution();
 
     /**
@@ -282,15 +361,14 @@ public interface ResolutionStrategy {
      * @see DependencySubstitutions
      * @since 2.5
      */
-    @Incubating
     ResolutionStrategy dependencySubstitution(Action<? super DependencySubstitutions> action);
 
     /**
      * Specifies the ordering for resolved artifacts. Options are:
      * <ul>
      * <li>{@link SortOrder#DEFAULT} : Don't specify the sort order. Gradle will provide artifacts in the default order.</li>
-     * <li>{@link SortOrder#CONSUMER_FIRST} : Artifacts for a consuming component should appear <em>before</em> artifacts for it's dependencies.</li>
-     * <li>{@link SortOrder#DEPENDENCY_FIRST} : Artifacts for a consuming component should appear <em>after</em> artifacts for it's dependencies.</li>
+     * <li>{@link SortOrder#CONSUMER_FIRST} : Artifacts for a consuming component should appear <em>before</em> artifacts for its dependencies.</li>
+     * <li>{@link SortOrder#DEPENDENCY_FIRST} : Artifacts for a consuming component should appear <em>after</em> artifacts for its dependencies.</li>
      * </ul>
      * A best attempt will be made to sort artifacts according the supplied {@link SortOrder}, but no guarantees will be made in the presence of dependency cycles.
      *
@@ -299,8 +377,25 @@ public interface ResolutionStrategy {
      *
      * @since 3.5
      */
-    @Incubating
     void sortArtifacts(SortOrder sortOrder);
+
+    /**
+     * Configures the capabilities resolution strategy.
+     *
+     * @param action the configuration action.
+     * @return this resolution strategy
+     * @since 5.6
+     */
+    @Incubating
+    ResolutionStrategy capabilitiesResolution(Action<? super CapabilitiesResolution> action);
+
+    /**
+     * Returns the capabilities resolution strategy.
+     *
+     * @since 5.6
+     */
+    @Incubating
+    CapabilitiesResolution getCapabilitiesResolution();
 
     /**
      * Defines the sort order for components and artifacts produced by the configuration.
@@ -308,7 +403,6 @@ public interface ResolutionStrategy {
      * @see #sortArtifacts(SortOrder)
      * @since 3.5
      */
-    @Incubating
     enum SortOrder {
         DEFAULT, CONSUMER_FIRST, DEPENDENCY_FIRST
     }

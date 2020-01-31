@@ -17,40 +17,59 @@
 package org.gradle.buildinit.plugins.internal;
 
 import org.gradle.api.internal.DocumentationRegistry;
-import org.gradle.api.internal.file.FileResolver;
-import org.gradle.buildinit.plugins.internal.modifiers.BuildInitTestFramework;
+import org.gradle.buildinit.plugins.internal.modifiers.ComponentType;
+import org.gradle.buildinit.plugins.internal.modifiers.Language;
 
 public class JavaApplicationProjectInitDescriptor extends JavaProjectInitDescriptor {
-    public JavaApplicationProjectInitDescriptor(TemplateOperationFactory templateOperationFactory, FileResolver fileResolver, TemplateLibraryVersionProvider libraryVersionProvider, ProjectInitDescriptor projectInitDescriptor, DocumentationRegistry documentationRegistry) {
-        super(templateOperationFactory, fileResolver, libraryVersionProvider, projectInitDescriptor, documentationRegistry);
+    private final TemplateLibraryVersionProvider libraryVersionProvider;
+
+    public JavaApplicationProjectInitDescriptor(TemplateLibraryVersionProvider libraryVersionProvider, DocumentationRegistry documentationRegistry) {
+        super(libraryVersionProvider, documentationRegistry);
+        this.libraryVersionProvider = libraryVersionProvider;
     }
 
     @Override
-    protected void configureBuildScript(BuildScriptBuilder buildScriptBuilder) {
-        super.configureBuildScript(buildScriptBuilder);
+    public String getId() {
+        return "java-application";
+    }
+
+    @Override
+    public ComponentType getComponentType() {
+        return ComponentType.APPLICATION;
+    }
+
+    @Override
+    protected void configureBuildScript(InitSettings settings, BuildScriptBuilder buildScriptBuilder) {
+        super.configureBuildScript(settings, buildScriptBuilder);
         buildScriptBuilder
             .plugin(
-                "Apply the application plugin to add support for building an application",
+                "Apply the application plugin to add support for building a CLI application.",
                 "application")
-            .conventionPropertyAssignment(
-                "Define the main class for the application",
-                "application", "mainClassName", "App");
+            .implementationDependency("This dependency is used by the application.",
+                "com.google.guava:guava:" + libraryVersionProvider.getVersion("guava"))
+            .block(null, "application", b -> {
+                b.propertyAssignment("Define the main class for the application.", "mainClassName", withPackage(settings, "App"));
+            });
     }
 
     @Override
-    protected TemplateOperation sourceTemplateOperation() {
-        return fromClazzTemplate("javaapp/App.java.template", "main");
+    protected TemplateOperation sourceTemplateOperation(InitSettings settings, TemplateFactory templateFactory) {
+        return templateFactory.fromSourceTemplate("javaapp/App.java.template", "main");
     }
 
     @Override
-    protected TemplateOperation testTemplateOperation(BuildInitTestFramework testFramework) {
-        switch (testFramework) {
+    protected TemplateOperation testTemplateOperation(InitSettings settings, TemplateFactory templateFactory) {
+        switch (settings.getTestFramework()) {
             case SPOCK:
-                return fromClazzTemplate("javaapp/AppTest.groovy.template", "test", "groovy");
+                return templateFactory.fromSourceTemplate("groovyapp/AppTest.groovy.template", "test", Language.GROOVY);
             case TESTNG:
-                return fromClazzTemplate("javaapp/AppTestNG.java.template", "test", "java", "AppTest.java");
+                return templateFactory.fromSourceTemplate("javaapp/testng/AppTest.java.template", "test");
+            case JUNIT:
+                return templateFactory.fromSourceTemplate("javaapp/AppTest.java.template", "test");
+            case JUNIT_JUPITER:
+                return templateFactory.fromSourceTemplate("javaapp/junitjupiter/AppTest.java.template", "test");
             default:
-                return fromClazzTemplate("javaapp/AppTest.java.template", "test");
+                throw new IllegalArgumentException();
         }
     }
 }

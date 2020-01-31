@@ -17,28 +17,22 @@
 package org.gradle.internal.resource.local;
 
 import org.gradle.api.Action;
+import org.gradle.internal.hash.ChecksumService;
 
 import java.io.File;
 import java.util.Set;
 
 public class PathNormalisingKeyFileStore implements FileStore<String>, FileStoreSearcher<String> {
 
-    private final PathKeyFileStore delegate;
+    private final DefaultPathKeyFileStore delegate;
 
-    public PathNormalisingKeyFileStore(File baseDir) {
-        this(new DefaultPathKeyFileStore(baseDir));
+    public PathNormalisingKeyFileStore(File baseDir, ChecksumService checksumService) {
+        this.delegate = new DefaultPathKeyFileStore(checksumService, baseDir);
     }
 
-    public PathNormalisingKeyFileStore(PathKeyFileStore delegate) {
-        this.delegate = delegate;
-    }
-
+    @Override
     public LocallyAvailableResource move(String key, File source) {
         return delegate.move(normalizePath(key), source);
-    }
-
-    public LocallyAvailableResource copy(String key, File source) {
-        return delegate.copy(key, source);
     }
 
     protected String normalizePath(String path) {
@@ -49,14 +43,12 @@ public class PathNormalisingKeyFileStore implements FileStore<String>, FileStore
         return path.replaceAll("[^\\d\\w\\.\\*/]", "_");
     }
 
-    public void moveFilestore(File destination) {
-        delegate.moveFilestore(destination);
-    }
-
+    @Override
     public LocallyAvailableResource add(String key, Action<File> addAction) {
         return delegate.add(normalizePath(key), addAction);
     }
 
+    @Override
     public Set<? extends LocallyAvailableResource> search(String key) {
         return delegate.search(normalizeSearchPath(key));
     }

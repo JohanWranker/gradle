@@ -16,26 +16,25 @@
 package org.gradle.integtests.fixtures.publish.maven
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.FeaturePreviewsFixture
-import org.gradle.integtests.fixtures.GradleMetadataResolveRunner
 import org.gradle.test.fixtures.ArtifactResolutionExpectationSpec
 import org.gradle.test.fixtures.GradleMetadataAwarePublishingSpec
 import org.gradle.test.fixtures.ModuleArtifact
 import org.gradle.test.fixtures.SingleArtifactResolutionResultSpec
 import org.gradle.test.fixtures.maven.MavenFileModule
-import org.gradle.test.fixtures.maven.MavenModule
 import org.gradle.test.fixtures.maven.MavenJavaModule
+import org.gradle.test.fixtures.maven.MavenJavaPlatformModule
+import org.gradle.test.fixtures.maven.MavenModule
 
 import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.mavenCentralRepositoryDefinition
 
 abstract class AbstractMavenPublishIntegTest extends AbstractIntegrationSpec implements GradleMetadataAwarePublishingSpec {
 
-    def setup() {
-        prepare()
+    protected static MavenJavaModule javaLibrary(MavenFileModule mavenFileModule, List<String> features = [MavenJavaModule.MAIN_FEATURE], boolean withDocumentation = false) {
+        return new MavenJavaModule(mavenFileModule, features, withDocumentation)
     }
 
-    protected static MavenJavaModule javaLibrary(MavenFileModule mavenFileModule) {
-        return new MavenJavaModule(mavenFileModule)
+    protected static MavenJavaPlatformModule javaPlatform(MavenFileModule mavenFileModule) {
+        return new MavenJavaPlatformModule(mavenFileModule)
     }
 
     void resolveArtifacts(Object dependencyNotation, @DelegatesTo(value = MavenArtifactResolutionExpectation, strategy = Closure.DELEGATE_FIRST) Closure<?> expectationSpec) {
@@ -68,8 +67,6 @@ abstract class AbstractMavenPublishIntegTest extends AbstractIntegrationSpec imp
     private def doResolveArtifacts(ResolveParams params) {
         // Replace the existing buildfile with one for resolving the published module
         settingsFile.text = "rootProject.name = 'resolve'"
-        FeaturePreviewsFixture.enableGradleMetadata(propertiesFile)
-        FeaturePreviewsFixture.enableAdvancedPomSupport(propertiesFile)
         def attributes = params.variant == null ?
             "" :
             """ 
@@ -105,8 +102,11 @@ abstract class AbstractMavenPublishIntegTest extends AbstractIntegrationSpec imp
         }
 
         def externalRepo = requiresExternalDependencies?mavenCentralRepositoryDefinition():''
-
+        def optional = params.optionalFeatureCapabilities.collect {
+            "resolve($dependencyNotation) { capabilities { requireCapability('$it') } }"
+        }.join('\n')
         buildFile.text = """
+            apply plugin: 'java-base' // to get the standard Java library derivation strategy
             configurations {
                 resolve {
                     ${attributes}
@@ -117,6 +117,7 @@ abstract class AbstractMavenPublishIntegTest extends AbstractIntegrationSpec imp
                     url "${mavenRepo.uri}"
                     metadataSources {
                         ${params.resolveModuleMetadata?'gradleMetadata':'mavenPom'}()
+                        ${params.resolveModuleMetadata?'':'ignoreGradleMetadataRedirection()'}
                     }
                 }
                 ${externalRepo}
@@ -124,6 +125,7 @@ abstract class AbstractMavenPublishIntegTest extends AbstractIntegrationSpec imp
 
             dependencies {
                resolve($dependencyNotation) $extraArtifacts
+               $optional
             }
 
             task resolveArtifacts(type: Sync) {
@@ -151,8 +153,10 @@ abstract class AbstractMavenPublishIntegTest extends AbstractIntegrationSpec imp
         String classifier
         String ext
         String variant
-        boolean resolveModuleMetadata = GradleMetadataResolveRunner.isExperimentalResolveBehaviorEnabled()
+        boolean resolveModuleMetadata
         boolean expectFailure
+
+        List<String> optionalFeatureCapabilities = []
     }
 
     class MavenArtifactResolutionExpectation extends ResolveParams implements ArtifactResolutionExpectationSpec<MavenModule> {
@@ -169,8 +173,8 @@ abstract class AbstractMavenPublishIntegTest extends AbstractIntegrationSpec imp
         }
 
         void validate() {
-            singleValidation(true, withModuleMetadataSpec)
             singleValidation(false, withoutModuleMetadataSpec)
+            singleValidation(true, withModuleMetadataSpec)
         }
 
         void singleValidation(boolean withModuleMetadata, SingleArtifactResolutionResultSpec expectationSpec) {
@@ -182,7 +186,8 @@ abstract class AbstractMavenPublishIntegTest extends AbstractIntegrationSpec imp
                 additionalArtifacts: additionalArtifacts?.asImmutable(),
                 variant: variant,
                 resolveModuleMetadata: withModuleMetadata,
-                expectFailure: !expectationSpec.expectSuccess
+                expectFailure: !expectationSpec.expectSuccess,
+                optionalFeatureCapabilities: optionalFeatureCapabilities,
             )
             println "Checking ${additionalArtifacts?'additional artifacts':'artifacts'} when resolving ${withModuleMetadata?'with':'without'} Gradle module metadata"
             def resolutionResult = doResolveArtifacts(params)

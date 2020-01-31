@@ -17,13 +17,17 @@ package org.gradle.test.fixtures.ivy
 
 import groovy.xml.MarkupBuilder
 import org.gradle.api.Action
+import org.gradle.api.attributes.Category
+import org.gradle.api.attributes.LibraryElements
 import org.gradle.api.attributes.Usage
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MetaDataParser
 import org.gradle.internal.xml.XmlTransformer
 import org.gradle.test.fixtures.AbstractModule
 import org.gradle.test.fixtures.GradleModuleMetadata
 import org.gradle.test.fixtures.Module
 import org.gradle.test.fixtures.ModuleArtifact
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.fixtures.gradle.ArtifactSelectorSpec
 import org.gradle.test.fixtures.gradle.DependencyConstraintSpec
 import org.gradle.test.fixtures.gradle.DependencySpec
 import org.gradle.test.fixtures.gradle.FileSpec
@@ -38,17 +42,20 @@ class IvyFileModule extends AbstractModule implements IvyModule {
     final String module
     final String revision
     final boolean m2Compatible
-    final List dependencies = []
+    final List<Map<String, ?>> dependencies = []
     final List dependencyConstraints = []
     final Map<String, Map> configurations = [:]
     final List artifacts = []
     final Map extendsFrom = [:]
     final Map extraAttributes = [:]
     final Map extraInfo = [:]
-    private final List<VariantMetadataSpec> variants = [new VariantMetadataSpec("api", [(Usage.USAGE_ATTRIBUTE.name): Usage.JAVA_API]), new VariantMetadataSpec("runtime", [(Usage.USAGE_ATTRIBUTE.name): Usage.JAVA_RUNTIME])]
+    private final List<VariantMetadataSpec> variants = [new VariantMetadataSpec("api", [(Usage.USAGE_ATTRIBUTE.name): Usage.JAVA_API, (LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE.name): LibraryElements.JAR, (Category.CATEGORY_ATTRIBUTE.name): Category.LIBRARY]),
+                                                        new VariantMetadataSpec("runtime", [(Usage.USAGE_ATTRIBUTE.name): Usage.JAVA_RUNTIME, (LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE.name): LibraryElements.JAR, (Category.CATEGORY_ATTRIBUTE.name): Category.LIBRARY])]
     String branch = null
     String status = "integration"
     MetadataPublish metadataPublish = MetadataPublish.ALL
+    boolean writeGradleMetadataRedirection = false
+    private boolean withExtraChecksums = true
 
     int publishCount = 1
     XmlTransformer transformer = new XmlTransformer()
@@ -91,7 +98,7 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         this.m2Compatible = m2Compatible
         configurations['runtime'] = [extendsFrom: [], transitive: true, visibility: 'public']
         configurations['compile'] = [extendsFrom: [], transitive: true, visibility: 'public']
-        configurations['default'] = [extendsFrom: ['compile,runtime'], transitive: true, visibility: 'public']
+        configurations['default'] = [extendsFrom: ['runtime'], transitive: true, visibility: 'public']
     }
 
     @Override
@@ -123,11 +130,11 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         def variantMetadata = new VariantMetadataSpec(variant, attributes)
         variants.add(variantMetadata)
         configuration(variant) //add variant also as configuration for plain ivy publishing
-        return variantMetadata;
+        return variantMetadata
     }
 
     @Override
-    void withVariant(String name, @DelegatesTo(value = VariantMetadataSpec, strategy = Closure.DELEGATE_FIRST) Closure<?> action) {
+    IvyModule withVariant(String name, @DelegatesTo(value = VariantMetadataSpec, strategy = Closure.DELEGATE_FIRST) Closure<?> action) {
         def variant = variants.find { it.name == name }
         if (variant == null) {
             variant = createVariant(name, [:])
@@ -135,6 +142,13 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         action.resolveStrategy = Closure.DELEGATE_FIRST
         action.delegate = variant
         action()
+        return this
+    }
+
+    @Override
+    IvyModule withoutDefaultVariants() {
+        variants.clear()
+        return this
     }
 
     IvyFileModule withXml(Closure action) {
@@ -161,7 +175,7 @@ class IvyFileModule extends AbstractModule implements IvyModule {
     Map<String, ?> toArtifact(Map<String, ?> options = [:]) {
         def type = notNullOr(options.type, 'jar')
         return [name: options.name ?: module, type: type,
-                ext: notNullOr(options.ext, type), classifier: options.classifier ?: null, conf: options.conf ?: '*']
+                ext: notNullOr(options.ext, type), classifier: options.classifier ?: null, conf: options.conf ?: null]
     }
 
     def notNullOr(def value, def defaultValue) {
@@ -218,6 +232,31 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         this.extendsFrom.clear()
         this.extendsFrom.putAll(attributes)
         return this
+    }
+
+    @Override
+    IvyModule withModuleMetadata() {
+        writeGradleMetadataRedirection = true
+        super.withModuleMetadata()
+        this
+    }
+
+    @Override
+    IvyModule withoutGradleMetadataRedirection() {
+        writeGradleMetadataRedirection = false
+        return this
+    }
+
+    @Override
+    IvyModule withoutExtraChecksums() {
+        withExtraChecksums = false
+        this
+    }
+
+    @Override
+    IvyModule withExtraChecksums() {
+        withExtraChecksums = true
+        this
     }
 
     IvyFileModule nonTransitive(String config) {
@@ -317,6 +356,11 @@ class IvyFileModule extends AbstractModule implements IvyModule {
             Map<String, String> getIvyTokens() {
                 toTokens(options)
             }
+
+            @Override
+            String getName() {
+                return file.name
+            }
         }
     }
 
@@ -349,7 +393,7 @@ class IvyFileModule extends AbstractModule implements IvyModule {
     IvyFileModule publish() {
         moduleDir.createDir()
 
-        if (artifacts.empty) {
+        if (artifacts.findAll { !it.undeclared }.empty) {
             artifact([:])
         }
 
@@ -361,7 +405,7 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         }
 
         variants.each {
-            it.artifacts.each {
+            it.artifacts.findAll { it.name }.each {
                 def variantArtifact = moduleDir.file(it.name)
                 publish (variantArtifact) { Writer writer ->
                     writer << "${it.name} : Variant artifact $it.name"
@@ -388,27 +432,37 @@ class IvyFileModule extends AbstractModule implements IvyModule {
     }
 
     private void publishModuleMetadata() {
-        def defaultArtifacts = artifacts.collect { moduleArtifact(it) }.collect {
+        def defaultArtifacts = artifacts.findAll {!it.undeclared}.collect { moduleArtifact(it) }.collect {
             new FileSpec(it.file.name, it.file.name)
         }
-        GradleFileModuleAdapter adapter = new GradleFileModuleAdapter(organisation, module, revision,
+        GradleFileModuleAdapter adapter = new GradleFileModuleAdapter(organisation, module, revision, revision,
             variants.collect { v ->
+                def artifacts = v.artifacts
+                if (!artifacts && v.useDefaultArtifacts) {
+                    artifacts = defaultArtifacts
+                }
                 new VariantMetadataSpec(
                     v.name,
                     v.attributes,
                     v.dependencies + dependencies.collect { d ->
-                        new DependencySpec(d.organisation, d.module, d.revision, d.rejects, d.exclusions, d.reason)
+                        new DependencySpec(d.organisation, d.module, d.revision, d.prefers, d.strictly,d.rejects, d.exclusions, d.endorseStrictVersions, d.reason, d.attributes,
+                            d.classifier ? new ArtifactSelectorSpec(d.module, 'jar', 'jar', d.classifier) : null, d.requireCapability)
                     },
                     v.dependencyConstraints + dependencyConstraints.collect { d ->
-                        new DependencyConstraintSpec(d.organisation, d.module, d.revision, d.rejects, d.reason)
+                        new DependencyConstraintSpec(d.organisation, d.module, d.revision, d.prefers, d.strictly, d.rejects, d.reason, d.attributes)
                     },
-                    v.artifacts ?: defaultArtifacts
+                    artifacts,
+                    v.capabilities,
+                    v.availableAt
                 )
             },
             attributes + ['org.gradle.status': status]
         )
 
-        adapter.publishTo(moduleDir)
+        def moduleFile = moduleDir.file("$module-${revision}.module")
+        publish(moduleFile) {
+            adapter.publishTo(it, publishCount)
+        }
     }
 
 
@@ -426,6 +480,9 @@ class IvyFileModule extends AbstractModule implements IvyModule {
             infoAttrs.branch = branch
         }
         infoAttrs += extraAttributes.collectEntries { key, value -> ["e:$key", value] }
+        if (writeGradleMetadataRedirection) {
+            ivyFileWriter << "<!-- ${MetaDataParser.GRADLE_6_METADATA_MARKER} -->"
+        }
         builder.info(infoAttrs) {
             if (extendsFrom) {
                 "extends"(extendsFrom)
@@ -449,7 +506,18 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         builder.publications {
             artifacts.each { art ->
                 if (!art.undeclared) {
-                    def attrs = [name: art.name, type: art.type, ext: art.ext, conf: art.conf]
+                    Set<String> confs = []
+                    if (art.conf) {
+                        confs = [art.conf]
+                    } else {
+                        variants.each {
+                            confs += it.name == 'api' ? 'compile' : it.name
+                        }
+                        configurations.keySet().each {
+                            confs += it
+                        }
+                    }
+                    def attrs = [name: art.name, type: art.type, ext: art.ext, conf: confs.join(',')]
                     if (art.classifier) {
                         attrs["m:classifier"] = art.classifier
                     }
@@ -459,39 +527,27 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         }
         builder.dependencies {
             dependencies.each { dep ->
-                def depAttrs = [org: dep.organisation, name: dep.module, rev: dep.revision]
                 if (dep.conf) {
-                    depAttrs.conf = dep.conf
-                }
-                if (dep.revConstraint) {
-                    depAttrs.revConstraint = dep.revConstraint
-                }
-                builder.dependency(depAttrs) {
-                    if (dep.exclusions) {
-                        for (exc in dep.exclusions) {
-                            def excludeAttrs = [:]
-                            if (exc.group) {
-                                excludeAttrs.org = exc.group
-                            }
-                            if (exc.module) {
-                                excludeAttrs.module = exc.module
-                            }
-                            builder.exclude(excludeAttrs)
-                        }
+                    addDependencyToBuilder(builder, dep, dep.conf as String)
+                } else {
+                    variants.each {
+                        String conf = it.name == 'api' ? 'compile' : it.name
+                        addDependencyToBuilder(builder, dep, "$conf->default")
                     }
+
                 }
             }
             def compileDependencies = variants.find{ it.name == 'api' }?.dependencies
             def runtimeDependencies = variants.find{ it.name == 'runtime' }?.dependencies
             if (compileDependencies) {
                 compileDependencies.each { dep ->
-                    def depAttrs = [org: dep.group, name: dep.module, rev: dep.prefers, conf: 'compile->default']
+                    def depAttrs = [org: dep.group, name: dep.module, rev: dep.version, conf: 'compile->default']
                     builder.dependency(depAttrs)
                 }
             }
             if (runtimeDependencies) {
-                (runtimeDependencies - compileDependencies).each { dep ->
-                    def depAttrs = [org: dep.group, name: dep.module, rev: dep.prefers, conf: 'runtime->default']
+                runtimeDependencies.each { dep ->
+                    def depAttrs = [org: dep.group, name: dep.module, rev: dep.version, conf: 'runtime->default']
                     builder.dependency(depAttrs)
                 }
             }
@@ -500,9 +556,40 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         ivyFileWriter << '</ivy-module>'
     }
 
+    private static addDependencyToBuilder(MarkupBuilder builder, Map<String, ?> dep, String conf) {
+        def classifier = dep.classifier
+        def depAttrs = [org: dep.organisation, name: dep.module, rev: dep.revision, conf: conf]
+        if (dep.revConstraint) {
+            depAttrs.revConstraint = dep.revConstraint
+        }
+        builder.dependency(depAttrs) {
+            if (dep.exclusions) {
+                for (exc in dep.exclusions) {
+                    def excludeAttrs = [:]
+                    if (exc.group) {
+                        excludeAttrs.org = exc.group
+                    }
+                    if (exc.module) {
+                        excludeAttrs.module = exc.module
+                    }
+                    builder.exclude(excludeAttrs)
+                }
+            }
+            if (classifier) {
+                def depArtifactAttrs = [:]
+                depArtifactAttrs.name = dep.module
+                depArtifactAttrs.type = 'jar'
+                depArtifactAttrs.ext = 'jar'
+                depArtifactAttrs.'m:classifier' = classifier
+                builder.artifact(depArtifactAttrs)
+            }
+        }
+    }
+
     @Override
     protected onPublish(TestFile file) {
         sha1File(file)
+        postPublish(file)
     }
 
     private String getArtifactContent() {
@@ -517,6 +604,9 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         def expectedArtifacts = [] as Set
         for (name in names) {
             expectedArtifacts.addAll([name, "${name}.sha1"])
+            if (withExtraChecksums) {
+                expectedArtifacts.addAll(["${name}.sha256", "${name}.sha512"])
+            }
         }
 
         List<String> publishedArtifacts = moduleDir.list().sort()
@@ -556,8 +646,12 @@ class IvyFileModule extends AbstractModule implements IvyModule {
 
     void assertPublishedAsJavaModule() {
         assertPublished()
-        assertArtifactsPublished("${module}-${revision}.jar", "ivy-${revision}.xml")
-        parsedIvy.expectArtifact(module, "jar").hasAttributes("jar", "jar", ["compile"], null)
+        def expectedArtifacts = ["${module}-${revision}.jar", "ivy-${revision}.xml"]
+        if (hasModuleMetadata) {
+            expectedArtifacts << "${module}-${revision}.module"
+        }
+        assertArtifactsPublished(*expectedArtifacts)
+        parsedIvy.expectArtifact(module, "jar").hasAttributes("jar", "jar", ["compile", "runtime"], null)
     }
 
     void assertPublishedAsWebModule() {
@@ -570,6 +664,17 @@ class IvyFileModule extends AbstractModule implements IvyModule {
         assertPublished()
         assertArtifactsPublished("${module}-${revision}.ear", "ivy-${revision}.xml")
         parsedIvy.expectArtifact(module, "ear").hasAttributes("ear", "ear", ["master"])
+    }
+
+    IvyFileModule removeGradleMetadataRedirection() {
+        if (ivyFile.exists() && ivyFile.text.contains(MetaDataParser.GRADLE_6_METADATA_MARKER)) {
+            ivyFile.replace(MetaDataParser.GRADLE_6_METADATA_MARKER, '')
+        }
+        this
+    }
+
+    boolean hasGradleMetadataRedirectionMarker() {
+        ivyFile.exists() && ivyFile.text.contains(MetaDataParser.GRADLE_6_METADATA_MARKER)
     }
 
     interface IvyModuleArtifact extends ModuleArtifact {

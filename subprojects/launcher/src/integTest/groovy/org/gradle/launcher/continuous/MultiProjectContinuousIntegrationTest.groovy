@@ -16,9 +16,11 @@
 
 package org.gradle.launcher.continuous
 
+import org.gradle.integtests.fixtures.AbstractContinuousIntegrationTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Ignore
 
-class MultiProjectContinuousIntegrationTest extends Java7RequiringContinuousIntegrationTest {
+class MultiProjectContinuousIntegrationTest extends AbstractContinuousIntegrationTest {
 
     def upstreamSource, downstreamSource
 
@@ -39,7 +41,7 @@ class MultiProjectContinuousIntegrationTest extends Java7RequiringContinuousInte
         """
 
         upstreamSource = file("upstream/src/main/java/Upstream.java") << "class Upstream {}"
-        downstreamSource = file("downstream/src/main/java/Downstream.java").createFile() << "class Downstream {}"
+        downstreamSource = file("downstream/src/main/java/Downstream.java").createFile() << "class Downstream extends Upstream {}"
     }
 
     def "changes to upstream project triggers build of downstream"() {
@@ -55,7 +57,7 @@ class MultiProjectContinuousIntegrationTest extends Java7RequiringContinuousInte
         executedAndNotSkipped ":upstream:compileJava", ":downstream:compileJava"
 
         when:
-        downstreamSource.text = "class Downstream { int change = 1; }"
+        downstreamSource.text = "class Downstream extends Upstream { int change = 1; }"
 
         then:
         succeeds()
@@ -69,13 +71,13 @@ class MultiProjectContinuousIntegrationTest extends Java7RequiringContinuousInte
         fails()
 
         when:
-        downstreamSource.text = "class Downstream { int change = 11; }"
+        downstreamSource.text = "class Downstream extends Upstream { int change = 11; }"
 
         then:
         noBuildTriggered()
 
         when:
-        downstreamSource.text = "class Downstream {}"
+        downstreamSource.text = "class Downstream extends Upstream{}"
         upstreamSource.text = "class Upstream {}"
 
         then:
@@ -133,15 +135,15 @@ class MultiProjectContinuousIntegrationTest extends Java7RequiringContinuousInte
     }
 
     // here to put more stress on parallel execution
+    @ToBeFixedForInstantExecution
     def "reasonable sized multi-project"() {
         given:
         def extraProjectNames = (0..100).collect { "project$it" }
         extraProjectNames.each {
             settingsFile << "\n include '$it' \n"
             buildFile << "\n project(':$it') { dependencies { compile project(':upstream') } } \n"
-            file("${it}/src/main/java/${it}/Thing.java").createFile() << """
-                package ${it};
-                class Thing {}
+            file("${it}/src/main/java/Thing${it}.java").createFile() << """
+                class Thing${it} extends Upstream {}
             """
         }
 
@@ -152,7 +154,7 @@ class MultiProjectContinuousIntegrationTest extends Java7RequiringContinuousInte
         succeeds("build")
 
         when:
-        downstreamSource.text = "class Downstream { int change = 1; }"
+        downstreamSource.text = "class Downstream extends Upstream { int change = 1; }"
 
         then:
         succeeds()
@@ -166,7 +168,7 @@ class MultiProjectContinuousIntegrationTest extends Java7RequiringContinuousInte
         executedAndNotSkipped extraCompileTasks
 
         when:
-        file("${anExtraProjectName}/src/main/java/Thing.java").text = "class Thing { int change = 1; }"
+        file("${anExtraProjectName}/src/main/java/Thing.java").text = "class Thing extends Upstream{ int change = 1; }"
 
         then:
         succeeds()

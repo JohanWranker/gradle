@@ -16,10 +16,8 @@
 
 package org.gradle.internal.operations;
 
-import net.jcip.annotations.ThreadSafe;
+import javax.annotation.concurrent.ThreadSafe;
 import org.gradle.api.Action;
-import org.gradle.internal.progress.BuildOperationListener;
-import org.gradle.internal.progress.BuildOperationState;
 
 /**
  * Runs build operations. These are the pieces of work that make up a build. Build operations can be nested inside other
@@ -53,6 +51,13 @@ public interface BuildOperationExecutor {
     <T> T call(CallableBuildOperation<T> buildOperation);
 
     /**
+     * Starts an operation that can be finished later through its context available via {@link ExecutingBuildOperation#getContext()}.
+     *
+     * When a parent operation is finished any unfinished child operations will be failed.
+     */
+    ExecutingBuildOperation start(BuildOperationDescriptor.Builder descriptor);
+
+    /**
      * Submits an arbitrary number of runnable operations, created synchronously by the scheduling action, to be executed in the global
      * build operation thread pool. Operations may execute concurrently. Blocks until all operations are complete.
      */
@@ -67,9 +72,9 @@ public interface BuildOperationExecutor {
 
     /**
      * Returns the state of the build operation currently running on this thread. Can be used as parent of a new build operation
-     * started in a different thread (or process). See {@link org.gradle.internal.progress.BuildOperationDescriptor.Builder#parent(BuildOperationState)}
+     * started in a different thread (or process). See {@link BuildOperationDescriptor.Builder#parent(BuildOperationRef)}
      *
      * @throws IllegalStateException When the current thread is not executing an operation.
      */
-    BuildOperationState getCurrentOperation();
+    BuildOperationRef getCurrentOperation();
 }

@@ -18,11 +18,12 @@ package org.gradle.language.scala
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.AvailableJavaHomes
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.util.Requires
 import spock.lang.Unroll
 
-import static org.gradle.api.JavaVersion.VERSION_1_7
 import static org.gradle.api.JavaVersion.VERSION_1_8
+import static org.gradle.api.JavaVersion.VERSION_1_9
 
 @Unroll
 class UpToDatePlatformScalaCompileIntegrationTest extends AbstractIntegrationSpec {
@@ -31,29 +32,42 @@ class UpToDatePlatformScalaCompileIntegrationTest extends AbstractIntegrationSpe
         file('app/controller/Person.scala') << "class Person(name: String)"
     }
 
-    @Requires(adhoc = { AvailableJavaHomes.getJdk(VERSION_1_7) && AvailableJavaHomes.getJdk(VERSION_1_8) })
-    def "compile is out of date when changing the java version"() {
-        def jdk7 = AvailableJavaHomes.getJdk(VERSION_1_7)
-        def jdk8 = AvailableJavaHomes.getJdk(VERSION_1_8)
+    def expectDeprecationWarnings() {
+        executer.expectDocumentedDeprecationWarning("The jvm-component plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_6.html#upgrading_jvm_plugins")
+        executer.expectDocumentedDeprecationWarning("The scala-lang plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_6.html#upgrading_jvm_plugins")
+        executer.expectDocumentedDeprecationWarning("The jvm-resources plugin has been deprecated. This is scheduled to be removed in Gradle 7.0. " +
+            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_6.html#upgrading_jvm_plugins")
+    }
 
-        def scalaFixture = new LanuageScalaCompilationFixture(temporaryFolder.testDirectory)
+    @Requires(adhoc = { AvailableJavaHomes.getJdk(VERSION_1_8) && AvailableJavaHomes.getJdk(VERSION_1_9) })
+    @ToBeFixedForInstantExecution
+    def "compile is out of date when changing the java version"() {
+        def jdk8 = AvailableJavaHomes.getJdk(VERSION_1_8)
+        def jdk9 = AvailableJavaHomes.getJdk(VERSION_1_9)
+
+        def scalaFixture = new LanguageScalaCompilationFixture(temporaryFolder.testDirectory)
         scalaFixture.baseline()
         buildFile << scalaFixture.buildScript()
         when:
-        executer.withJavaHome(jdk7.javaHome)
+        expectDeprecationWarnings()
+        executer.withJavaHome(jdk8.javaHome)
         run 'compileMainJarMainScala'
 
         then:
         executedAndNotSkipped(':compileMainJarMainScala')
 
         when:
-        executer.withJavaHome(jdk7.javaHome)
+        expectDeprecationWarnings()
+        executer.withJavaHome(jdk8.javaHome)
         run 'compileMainJarMainScala'
         then:
         skipped ':compileMainJarMainScala'
 
         when:
-        executer.withJavaHome(jdk8.javaHome)
+        expectDeprecationWarnings()
+        executer.withJavaHome(jdk9.javaHome)
         run 'compileMainJarMainScala'
         then:
         executedAndNotSkipped(':compileMainJarMainScala')

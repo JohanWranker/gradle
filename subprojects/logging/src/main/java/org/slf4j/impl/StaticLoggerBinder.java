@@ -27,7 +27,7 @@ public class StaticLoggerBinder implements LoggerFactoryBinder {
     private static final StaticLoggerBinder SINGLETON = new StaticLoggerBinder();
     private static final String LOGGER_FACTORY_CLASS_STR = OutputEventListenerBackedLoggerContext.class.getName();
 
-    private final OutputEventListenerBackedLoggerContext factory = new OutputEventListenerBackedLoggerContext(System.out, System.err, Time.clock());
+    private final OutputEventListenerBackedLoggerContext factory = new OutputEventListenerBackedLoggerContext(Time.clock());
 
     public static StaticLoggerBinder getSingleton() {
         return SINGLETON;
@@ -37,7 +37,7 @@ public class StaticLoggerBinder implements LoggerFactoryBinder {
      * Declare the version of the SLF4J API this implementation is compiled against.
      * The value of this field is usually modified with each release.
      */
-    public static final String REQUESTED_API_VERSION = "1.7.7";
+    public static final String REQUESTED_API_VERSION = "1.7.28";
 
     @Override
     public ILoggerFactory getLoggerFactory() {

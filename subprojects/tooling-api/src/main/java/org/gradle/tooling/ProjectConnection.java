@@ -17,18 +17,21 @@ package org.gradle.tooling;
 
 import org.gradle.api.Incubating;
 
+import java.io.Closeable;
+import java.nio.file.Path;
+import java.util.List;
+
 /**
  * <p>Represents a long-lived connection to a Gradle project. You obtain an instance of a {@code ProjectConnection} by using {@link org.gradle.tooling.GradleConnector#connect()}.</p>
  *
  * <pre class='autoTested'>
- * ProjectConnection connection = GradleConnector.newConnector()
- *    .forProjectDirectory(new File("someFolder"))
- *    .connect();
  *
- * try {
+ * try (ProjectConnection connection = GradleConnector.newConnector()
+ *        .forProjectDirectory(new File("someFolder"))
+ *        .connect()) {
+ *
  *    //obtain some information from the build
- *    BuildEnvironment environment = connection.model(BuildEnvironment.class)
- *      .get();
+ *    BuildEnvironment environment = connection.model(BuildEnvironment.class).get();
  *
  *    //run some tasks
  *    connection.newBuild()
@@ -36,8 +39,6 @@ import org.gradle.api.Incubating;
  *      .setStandardOutput(System.out)
  *      .run();
  *
- * } finally {
- *    connection.close();
  * }
  * </pre>
  *
@@ -49,7 +50,7 @@ import org.gradle.api.Incubating;
  *
  * @since 1.0-milestone-3
  */
-public interface ProjectConnection {
+public interface ProjectConnection extends Closeable {
     /**
      * Fetches a snapshot of the model of the given type for this project. This method blocks until the model is available.
      *
@@ -102,7 +103,6 @@ public interface ProjectConnection {
      * @return The launcher.
      * @since 2.6
      */
-    @Incubating
     TestLauncher newTestLauncher();
 
     /**
@@ -135,7 +135,7 @@ public interface ProjectConnection {
     <T> ModelBuilder<T> model(Class<T> modelType);
 
     /**
-     * Creates an executer which can be used to run the given action. The action is serialized into the build
+     * Creates an executer which can be used to run the given action when the build has finished. The action is serialized into the build
      * process and executed, then its result is serialized back to the caller.
      *
      * <p>Requires Gradle 1.8 or later.</p>
@@ -144,13 +144,57 @@ public interface ProjectConnection {
      * @param <T> The result type.
      * @return The builder.
      * @since 1.8
+     * @see #action() if you want to hook into different points of the build lifecycle.
+     */
+    <T> BuildActionExecuter<T> action(BuildAction<T> buildAction);
+
+    /**
+     * Creates a builder for an executer which can be used to run actions in different phases of the build.
+     * The actions are serialized into the build process and executed, then its result is serialized back to the caller.
+     *
+     * <p>Requires Gradle 4.8 or later.
+     *
+     * @return The builder.
+     * @since 4.8
+     */
+    BuildActionExecuter.Builder action();
+
+    /**
+     * Notifies all daemons about file changes made by an external process, like an IDE.
+     *
+     * <p>The daemons will use this information to update the retained file system state.
+     *
+     * <p>The method should be invoked on every change done by the external process.
+     * The process shouldn't notify Gradle about changes detected by using file watchers,
+     * since Gradle already will be using its own file watcher.
+     * For example, an IDE should notify Gradle when the user saves a changed file, or
+     * after some refactoring finished.
+     *
+     * <p>The paths which are passed in need to be absolute, canonicalized paths.
+     * For a delete, the deleted path should be passed.
+     * For a rename, the old and the new path should be passed.
+     * When creating a new file, the path to the file should be passed.
+     *
+     * <p>The call is synchronous, i.e. the method ensures that the changed paths are taken into account
+     * by the daemon after it returned. This ensures that for every build started
+     * after this method has been called knows about the changed paths.
+     *
+     * <p>If the version of Gradle does not support virtual file system retention (i.e. &lt; 6.1),
+     * then the operation is a no-op.
+     *
+     * @param changedPaths Absolute paths which have been changed by the external process.
+     * @throws IllegalArgumentException When the paths are not absolute.
+     * @throws UnsupportedVersionException When the target Gradle version is &lt;= 2.5.
+     * @throws GradleConnectionException On some other failure using the connection.
+     * @since 6.1
      */
     @Incubating
-    <T> BuildActionExecuter<T> action(BuildAction<T> buildAction);
+    void notifyDaemonsAboutChangedPaths(List<Path> changedPaths);
 
     /**
      * Closes this connection. Blocks until any pending operations are complete. Once this method has returned, no more notifications will be delivered by any threads.
      * @since 1.0-milestone-3
      */
+    @Override
     void close();
 }

@@ -16,23 +16,32 @@
 package org.gradle.launcher.cli;
 
 import org.gradle.api.Action;
-import org.gradle.launcher.bootstrap.ExecutionListener;
 import org.gradle.initialization.ReportedException;
+import org.gradle.internal.logging.LoggingOutputInternal;
+import org.gradle.launcher.bootstrap.ExecutionListener;
 
 public class ExceptionReportingAction implements Action<ExecutionListener> {
     private final Action<ExecutionListener> action;
     private final Action<Throwable> reporter;
+    private final LoggingOutputInternal loggingOutput;
 
-    public ExceptionReportingAction(Action<ExecutionListener> action, Action<Throwable> reporter) {
+    public ExceptionReportingAction(Action<ExecutionListener> action, Action<Throwable> reporter, LoggingOutputInternal loggingOutput) {
         this.action = action;
         this.reporter = reporter;
+        this.loggingOutput = loggingOutput;
     }
 
+    @Override
     public void execute(ExecutionListener executionListener) {
         try {
-            action.execute(executionListener);
+            try {
+                action.execute(executionListener);
+            } finally {
+                loggingOutput.flush();
+            }
         } catch (ReportedException e) {
-            executionListener.onFailure(e.getCause());
+            // Exception has already been reported
+            executionListener.onFailure(e);
         } catch (Throwable t) {
             reporter.execute(t);
             executionListener.onFailure(t);

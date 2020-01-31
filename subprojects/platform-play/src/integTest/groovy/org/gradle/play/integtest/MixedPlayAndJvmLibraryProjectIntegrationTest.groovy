@@ -17,18 +17,24 @@
 package org.gradle.play.integtest
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.jvm.TestJvmComponent
 import org.gradle.language.fixtures.TestJavaComponent
-import org.gradle.play.integtest.fixtures.app.BasicPlayApp
 import org.gradle.play.integtest.fixtures.PlayApp
+import org.gradle.play.integtest.fixtures.app.BasicPlayApp
 import org.gradle.test.fixtures.archive.JarTestFixture
-import static org.gradle.play.integtest.fixtures.Repositories.*
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 
+import static org.gradle.play.integtest.fixtures.Repositories.PLAY_REPOSITORIES
+
+@Requires(TestPrecondition.JDK8_OR_LATER)
 class MixedPlayAndJvmLibraryProjectIntegrationTest extends AbstractIntegrationSpec {
     TestJvmComponent jvmApp = new TestJavaComponent()
     PlayApp playApp = new BasicPlayApp()
 
     def setup() {
+        executer.noDeprecationChecks()
         playApp.writeSources(testDirectory)
         jvmApp.writeSources(file("src/jvmLib"))
         jvmApp.writeResources(file("src/jvmLib/resources"))
@@ -50,6 +56,7 @@ class MixedPlayAndJvmLibraryProjectIntegrationTest extends AbstractIntegrationSp
         """
     }
 
+    @ToBeFixedForInstantExecution
     def "assemble builds jvm component and play component binaries"() {
         when:
         succeeds("assemble")

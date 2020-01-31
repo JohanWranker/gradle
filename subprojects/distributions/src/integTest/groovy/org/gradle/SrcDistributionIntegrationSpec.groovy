@@ -17,10 +17,14 @@
 package org.gradle
 
 import org.apache.tools.ant.taskdefs.Expand
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.AntUtil
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
+
+import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.gradlePluginRepositoryMirrorUrl
+import static org.gradle.test.fixtures.server.http.MavenHttpPluginRepository.PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY
 
 class SrcDistributionIntegrationSpec extends DistributionIntegrationSpec {
 
@@ -35,8 +39,12 @@ class SrcDistributionIntegrationSpec extends DistributionIntegrationSpec {
     }
 
     @Requires(TestPrecondition.NOT_WINDOWS)
+    @ToBeFixedForInstantExecution
     def sourceZipContents() {
         given:
+        // workaround for https://github.com/asciidoctor/asciidoctor-gradle-plugin/issues/270
+        // can be removed once 1.5.9.3/1.5.10 is released
+        executer.noDeprecationChecks()
         TestFile contentsDir = unpackDistribution()
 
         expect:
@@ -47,6 +55,7 @@ class SrcDistributionIntegrationSpec extends DistributionIntegrationSpec {
             inDirectory(contentsDir)
             usingExecutable('gradlew')
             withTasks('binZip')
+            withArguments("-D${PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}=${gradlePluginRepositoryMirrorUrl()}")
             withWarningMode(null)
         }.run()
 

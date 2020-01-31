@@ -16,10 +16,10 @@
 
 package org.gradle.internal.nativeintegration.filesystem.services;
 
-import net.rubygrapefruit.platform.FileInfo;
-import net.rubygrapefruit.platform.Files;
+import net.rubygrapefruit.platform.file.FileInfo;
+import net.rubygrapefruit.platform.file.Files;
 import org.gradle.internal.file.FileMetadataSnapshot;
-import org.gradle.internal.nativeintegration.filesystem.DefaultFileMetadata;
+import org.gradle.internal.file.impl.DefaultFileMetadata;
 import org.gradle.internal.nativeintegration.filesystem.FileMetadataAccessor;
 
 import java.io.File;
@@ -49,7 +49,6 @@ public class NativePlatformBackedFileMetadataAccessor implements FileMetadataAcc
     }
 
     @Override
-    @SuppressWarnings("Since15")
     public FileMetadataSnapshot stat(Path path) throws IOException {
         return stat(path.toFile());
     }

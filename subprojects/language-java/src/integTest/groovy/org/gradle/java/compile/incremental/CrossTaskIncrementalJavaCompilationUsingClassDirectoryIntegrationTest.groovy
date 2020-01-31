@@ -18,21 +18,5 @@
 package org.gradle.java.compile.incremental
 
 class CrossTaskIncrementalJavaCompilationUsingClassDirectoryIntegrationTest extends AbstractCrossTaskIncrementalJavaCompilationIntegrationTest {
-
-    @Override
-    protected String getProjectDependencyBlock() {
-        '''
-            project(':api') {
-                configurations {
-                   classesDir
-                }
-                artifacts {
-                    classesDir file: compileJava.destinationDir, builtBy:compileJava
-                }
-            }
-            project(':impl') {
-                dependencies { compile project(path:':api', configuration: 'classesDir') }
-            }
-        '''
-    }
+    boolean useJar = false
 }

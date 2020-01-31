@@ -17,6 +17,7 @@
 package org.gradle.api.internal.project.taskfactory
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Issue
 
 class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
@@ -77,21 +78,21 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
                 namedOutputDirectories = [one: file("outputs-one"), two: file("outputs-two")]
 
                 doLast {
-                    def outputFiles = []
-                    def inputFiles = []
+                    def outputFiles = [:]
+                    def inputFiles = [:]
                     TaskPropertyUtils.visitProperties(project.services.get(PropertyWalker), it, new PropertyVisitor.Adapter() {
                         @Override
-                        void visitInputFileProperty(TaskInputFilePropertySpec inputFileProperty) {
-                            inputFiles << inputFileProperty
+                        void visitInputFileProperty(String propertyName, boolean optional, boolean skipWhenEmpty, boolean incremental, Class<? extends FileNormalizer> fileNormalizer, PropertyValue value, InputFilePropertyType filePropertyType) {
+                            inputFiles[propertyName] = project.files(value)
                         }
 
                         @Override
-                        void visitOutputFileProperty(TaskOutputFilePropertySpec outputFileProperty) {
-                            outputFiles << outputFileProperty
+                        void visitOutputFileProperty(String propertyName, boolean optional, PropertyValue value, OutputFilePropertyType filePropertyType) {
+                            outputFiles[propertyName] = project.files(value)
                         }
                     })
-                    inputFiles.each { property ->
-                        println "Input: \${property.propertyName} \${property.propertyFiles.files*.name.sort()}"
+                    inputFiles.each { propertyName, value ->
+                        println "Input: \${propertyName} \${value.files*.name.sort()}"
                     }
                     outputs.fileProperties.each { property ->
                         println "Output: \${property.propertyName} \${property.propertyFiles.files*.name.sort()}"
@@ -102,7 +103,7 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
         when:
         run "myTask"
         then:
-        output.contains "Input: inputDirectory [inputA.txt, inputB.txt]"
+        output.contains "Input: inputDirectory [inputs]"
         output.contains "Input: inputFile [input.txt]"
         output.contains "Input: inputFiles [input1.txt, input2.txt]"
         output.contains "Input: nested.inputFile [input-nested.txt]"
@@ -120,6 +121,7 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
         output.contains 'Output: outputFiles$2 [output2.txt]'
     }
 
+    @ToBeFixedForInstantExecution
     def "nested properties are discovered"() {
         buildFile << classesForNestedProperties()
         buildFile << """
@@ -142,15 +144,16 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
         expect:
         succeeds "test", "printMetadata"
         output.contains "Input property 'input'"
-        output.contains "Input property 'bean.class'"
+        output.contains "Input property 'bean'"
 
         output.contains "Input property 'bean.input'"
-        output.contains "Input property 'bean.nestedBean.class'"
+        output.contains "Input property 'bean.nestedBean'"
         output.contains "Input file property 'bean.inputDir'"
         output.contains "Input file property 'bean.nestedBean.inputFile'"
         output.contains "Output file property 'bean.outputDir'"
     }
 
+    @ToBeFixedForInstantExecution
     def "nested iterable properties have names"() {
         buildFile << printPropertiesTask()
         buildFile << """ 
@@ -179,12 +182,13 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
 
         expect:
         succeeds 'test', 'printMetadata'
-        output.contains "Input property 'beans.\$0.class'"
+        output.contains "Input property 'beans.\$0'"
         output.contains "Input property 'beans.\$0.input'"
-        output.contains "Input property 'beans.\$1.class'"
+        output.contains "Input property 'beans.\$1'"
         output.contains "Input property 'beans.\$1.secondInput'"
     }
 
+    @ToBeFixedForInstantExecution
     def "nested destroyables are discovered"() {
         buildFile << classesForNestedProperties()
         buildFile << """
@@ -211,10 +215,11 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
         succeeds "destroy", "printMetadata"
 
         then:
-        output.contains "Input property 'bean.class'"
+        output.contains "Input property 'bean'"
         output =~ /Destroys: '.*destroyed'/
     }
 
+    @ToBeFixedForInstantExecution
     def "nested local state is discovered"() {
         buildFile << classesForNestedProperties()
         buildFile << """
@@ -241,10 +246,11 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
         succeeds "taskWithLocalState", "printMetadata"
 
         then:
-        output.contains "Input property 'bean.class'"
+        output.contains "Input property 'bean'"
         output =~ /Local state: '.*localState'/
     }
 
+    @ToBeFixedForInstantExecution
     def "unnamed file properties are named"() {
         buildFile << """
             import org.gradle.api.internal.tasks.*
@@ -272,10 +278,11 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
             Output file property '\$2'
             Output file property '\$3'
             Output file property '\$4'
-        """.stripIndent()
+            """.stripIndent()
     }
 
     @Issue("https://github.com/gradle/gradle/issues/4085")
+    @ToBeFixedForInstantExecution
     def "can register more unnamed properties after properties have been queried"() {
         buildFile << """
             import org.gradle.api.internal.tasks.*
@@ -313,9 +320,10 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
             Input file property '\$2'
             Output file property '\$1'
             Output file property '\$2'
-        """.stripIndent()
+            """.stripIndent()
     }
 
+    @ToBeFixedForInstantExecution
     def "input properties can be overridden"() {
         buildFile << classesForNestedProperties()
         buildFile << """
@@ -341,7 +349,7 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
         output.contains "Input property 'input'"
         output.contains "Input property 'bean.input'"
 
-        output.contains "Input property 'bean.class'"
+        output.contains "Input property 'bean'"
         output.contains "Input file property 'bean.inputDir'"
     }
 
@@ -388,33 +396,34 @@ class TaskPropertyNamingIntegrationTest extends AbstractIntegrationSpec {
             import org.gradle.api.internal.tasks.properties.*
 
             class PrintInputsAndOutputs extends DefaultTask {
+                @Internal
                 Task task
                 @TaskAction
                 void printInputsAndOutputs() {
-                    TaskPropertyUtils.visitProperties(project.services.get(PropertyWalker), task, new PropertyVisitor() {
+                    TaskPropertyUtils.visitProperties(project.services.get(PropertyWalker), task, new PropertyVisitor.Adapter() {
                         @Override
-                        void visitInputProperty(TaskInputPropertySpec inputProperty) {
-                            println "Input property '\${inputProperty.propertyName}'"
+                        void visitInputProperty(String propertyName, PropertyValue value, boolean optional) {
+                            println "Input property '\${propertyName}'"
                         }
 
                         @Override
-                        void visitInputFileProperty(TaskInputFilePropertySpec inputFileProperty) {
-                            println "Input file property '\${inputFileProperty.propertyName}'"
+                        void visitInputFileProperty(String propertyName, boolean optional, boolean skipWhenEmpty, boolean incremental, Class<? extends FileNormalizer> fileNormalizer, PropertyValue value, InputFilePropertyType filePropertyType) {
+                            println "Input file property '\${propertyName}'"
                         }
 
                         @Override
-                        void visitOutputFileProperty(TaskOutputFilePropertySpec outputFileProperty) {
-                            println "Output file property '\${outputFileProperty.propertyName}'"
+                        void visitOutputFileProperty(String propertyName, boolean optional, PropertyValue value, OutputFilePropertyType filePropertyType) {
+                            println "Output file property '\${propertyName}'"
                         }
 
                         @Override
-                        void visitDestroyableProperty(TaskDestroyablePropertySpec destroyable) {
-                            println "Destroys: '\${destroyable.value.call()}'"
+                        void visitDestroyableProperty(Object path) {
+                            println "Destroys: '\${path.call()}'"
                         }
 
                         @Override
-                        void visitLocalStateProperty(TaskLocalStatePropertySpec localStateProperty) {
-                            println "Local state: '\${localStateProperty.value.call()}'"
+                        void visitLocalStateProperty(Object value) {
+                            println "Local state: '\${value.call()}'"
                         }
                     })
                 }

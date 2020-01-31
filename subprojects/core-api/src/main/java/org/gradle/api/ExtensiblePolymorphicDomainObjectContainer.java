@@ -22,9 +22,10 @@ import org.gradle.api.internal.rules.NamedDomainObjectFactoryRegistry;
  * A {@link org.gradle.api.PolymorphicDomainObjectContainer} that can be extended at runtime to
  * create elements of new types.
  *
+ * <p>You can create an instance of this type using the factory method {@link org.gradle.api.model.ObjectFactory#polymorphicDomainObjectContainer(Class)}.</p>
+ *
  * @param <T> the (base) container element type
  */
-@Incubating
 public interface ExtensiblePolymorphicDomainObjectContainer<T> extends PolymorphicDomainObjectContainer<T>, NamedDomainObjectFactoryRegistry<T> {
     /**
      * Registers a factory for creating elements of the specified type. Typically, the specified type
@@ -36,6 +37,7 @@ public interface ExtensiblePolymorphicDomainObjectContainer<T> extends Polymorph
      *
      * @throws IllegalArgumentException if the specified type is not a subtype of the container element type
      */
+    @Override
     <U extends T> void registerFactory(Class<U> type, NamedDomainObjectFactory<? extends U> factory);
 
     /**

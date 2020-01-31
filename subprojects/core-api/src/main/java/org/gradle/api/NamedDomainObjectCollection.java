@@ -16,7 +16,9 @@
 package org.gradle.api;
 
 import groovy.lang.Closure;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
+import org.gradle.api.tasks.Internal;
 
 import javax.annotation.Nullable;
 import java.util.Collection;
@@ -25,7 +27,7 @@ import java.util.SortedMap;
 import java.util.SortedSet;
 
 /**
- * <p>A {@code NamedDomainObjectCollection} represents a collection of domain objects that have an inherent, constant, name.</p>
+ * <p>A {@code NamedDomainObjectCollection} represents a collection of objects that have an inherent, constant, name.</p>
  *
  * <p>Objects to be added to a named domain object collection must implement {@code equals()} in such a way that no two objects
  * with different names are considered equal. That is, all equality tests <strong>must</strong> consider the name as an
@@ -61,15 +63,15 @@ import java.util.SortedSet;
  * </pre>
  *
  * <p>{@link Rule} objects can be attached to the collection in order to respond to requests for objects by name
- * where no object with name exists in the collection. This mechanism can be used to create objects on demand. 
+ * where no object with name exists in the collection. This mechanism can be used to create objects on demand.
  * For example: </p>
- * 
+ *
  * <pre>
  * books.addRule('create any') { books.add(new Book(name: "gradle", title: null)) }
  * books.gradle.name == "gradle"
  * </pre>
- * 
- * @param <T> The type of domain objects in this collection.
+ *
+ * @param <T> The type of objects in this collection.
  */
 public interface NamedDomainObjectCollection<T> extends DomainObjectCollection<T> {
 
@@ -79,6 +81,7 @@ public interface NamedDomainObjectCollection<T> extends DomainObjectCollection<T
      * @param e the item to add to the collection
      * @return {@code true} if the item was added, or {@code} false if an item with the same name already exists.
      */
+    @Override
     boolean add(T e);
 
     /**
@@ -87,6 +90,7 @@ public interface NamedDomainObjectCollection<T> extends DomainObjectCollection<T
      * @param c the items to add to the collection
      * @return {@code true} if any item was added, or {@code} false if all items have non unique names within this collection.
      */
+    @Override
     boolean addAll(Collection<? extends T> c);
 
     /**
@@ -204,16 +208,71 @@ public interface NamedDomainObjectCollection<T> extends DomainObjectCollection<T
     /**
      * {@inheritDoc}
      */
+    @Override
     <S extends T> NamedDomainObjectCollection<S> withType(Class<S> type);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     NamedDomainObjectCollection<T> matching(Spec<? super T> spec);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     NamedDomainObjectCollection<T> matching(Closure spec);
 
+    /**
+     * Locates a object by name, without triggering its creation or configuration, failing if there is no such object.
+     *
+     * @param name The object's name
+     * @return A {@link Provider} that will return the object when queried. The object may be created and configured at this point, if not already.
+     * @throws UnknownDomainObjectException If a object with the given name is not defined.
+     * @since 4.10
+     */
+    NamedDomainObjectProvider<T> named(String name) throws UnknownDomainObjectException;
+
+    /**
+     * Locates a object by name, without triggering its creation or configuration, failing if there is no such object.
+     * The given configure action is executed against the object before it is returned from the provider.
+     *
+     * @param name The object's name
+     * @return A {@link Provider} that will return the object when queried. The object may be created and configured at this point, if not already.
+     * @throws UnknownDomainObjectException If a object with the given name is not defined.
+     * @since 5.0
+     */
+    NamedDomainObjectProvider<T> named(String name, Action<? super T> configurationAction) throws UnknownDomainObjectException;
+
+    /**
+     * Locates a object by name and type, without triggering its creation or configuration, failing if there is no such object.
+     *
+     * @param name The object's name
+     * @param type The object's type
+     * @return A {@link Provider} that will return the object when queried. The object may be created and configured at this point, if not already.
+     * @throws UnknownDomainObjectException If a object with the given name is not defined.
+     * @since 5.0
+     */
+    <S extends T> NamedDomainObjectProvider<S> named(String name, Class<S> type) throws UnknownDomainObjectException;
+
+    /**
+     * Locates a object by name and type, without triggering its creation or configuration, failing if there is no such object.
+     * The given configure action is executed against the object before it is returned from the provider.
+     *
+     * @param name The object's name
+     * @param type The object's type
+     * @param configurationAction The action to use to configure the object.
+     * @return A {@link Provider} that will return the object when queried. The object may be created and configured at this point, if not already.
+     * @throws UnknownDomainObjectException If a object with the given name is not defined.
+     * @since 5.0
+     */
+    <S extends T> NamedDomainObjectProvider<S> named(String name, Class<S> type, Action<? super S> configurationAction) throws UnknownDomainObjectException;
+
+    /**
+     * Provides access to the schema of all created or registered named domain objects in this collection.
+     *
+     * @since 4.10
+     */
+    @Internal
+    NamedDomainObjectCollectionSchema getCollectionSchema();
 }

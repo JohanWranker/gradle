@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 the original author or authors.
+ * Copyright 2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,29 +13,65 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import org.gradle.cleanup.EmptyDirectoryCheck
+
+import org.gradle.gradlebuild.testing.integrationtests.cleanup.WhenNotEmpty
+import org.gradle.gradlebuild.unittestandcompile.ModuleType
 
 plugins {
-    id("strict-compile")
-    id("classycle")
+    `java-library`
+    gradlebuild.`strict-compile`
+    gradlebuild.classycle
 }
 
 dependencies {
-    compile(library("groovy"))
-    compile(project(":core"))
-    compile(project(":plugins"))
-    compile(project(":publish"))
-    compile(project(":maven"))
-    compile(project(":ivy"))
-    testRuntime(project(":toolingApi"))
-    testRuntime(project(":launcher"))
-    testRuntime(project(":testKit"))
-    integTestRuntime(project(":toolingApiBuilders"))
+    implementation(project(":baseServices"))
+    implementation(project(":logging"))
+    implementation(project(":processServices"))
+    implementation(project(":files"))
+    implementation(project(":coreApi"))
+    implementation(project(":modelCore"))
+    implementation(project(":execution"))
+    implementation(project(":core"))
+    implementation(project(":dependencyManagement"))
+    implementation(project(":maven"))
+    implementation(project(":ivy"))
+    implementation(project(":platformJvm"))
+    implementation(project(":reporting"))
+    implementation(project(":testingBase"))
+    implementation(project(":testingJvm"))
+    implementation(project(":plugins"))
+    implementation(project(":pluginUse"))
+    implementation(project(":publish"))
+    implementation(project(":messaging"))
+    implementation(project(":workers"))
+
+    implementation(library("slf4j_api"))
+    implementation(library("groovy"))
+    implementation(library("commons_io"))
+    implementation(library("guava"))
+    implementation(library("inject"))
+    implementation(library("asm"))
+
+    testImplementation(project(":fileCollections"))
+    testImplementation(testFixtures(project(":core")))
+    testImplementation(testFixtures(project(":logging")))
+
+    testRuntimeOnly(project(":toolingApi"))
+    testRuntimeOnly(project(":testKit"))
+    testRuntimeOnly(project(":runtimeApiInfo"))
+
+    integTestImplementation(project(":baseServicesGroovy"))
+    integTestImplementation(library("jetbrains_annotations"))
+
+    integTestRuntimeOnly(project(":toolingApiBuilders"))
+    integTestRuntimeOnly(project(":runtimeApiInfo"))
+    integTestRuntimeOnly(project(":testingJunitPlatform"))
 }
 
-testFixtures {
-    from(":core")
-    from(":logging")
+gradlebuildJava {
+    moduleType = ModuleType.CORE
 }
 
-tasks.getByName<EmptyDirectoryCheck>("verifyTestFilesCleanup").isErrorWhenNotEmpty = false
+testFilesCleanup {
+    policy.set(WhenNotEmpty.REPORT)
+}

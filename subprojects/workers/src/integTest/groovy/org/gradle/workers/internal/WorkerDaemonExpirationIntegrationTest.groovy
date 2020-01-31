@@ -17,9 +17,9 @@
 package org.gradle.workers.internal
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import spock.lang.Timeout
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
 
-@Timeout(60)
+@IntegrationTestTimeout(120)
 class WorkerDaemonExpirationIntegrationTest extends AbstractIntegrationSpec {
 
     def setup() {
@@ -73,18 +73,17 @@ class WorkerDaemonExpirationIntegrationTest extends AbstractIntegrationSpec {
         succeeds 'expireWorkers'
 
         then:
-        result.output.contains 'Worker Daemon(s) expired to free some system memory'
+        outputContains 'Worker Daemon(s) expired to free some system memory'
     }
 
     def "worker daemons expiration can be disabled using a system property"() {
         when:
-        def result = withDebugLogging()
+        withDebugLogging()
             .withWorkerDaemonsExpirationDisabled()
-            .withTasks('expireWorkers')
-            .run()
+        succeeds('expireWorkers')
 
         then:
-        !result.output.contains('Worker Daemon(s) expired to free some system memory')
-        result.output.contains 'Worker Daemons expiration is disabled, skipping'
+        outputDoesNotContain('Worker Daemon(s) expired to free some system memory')
+        outputContains 'Worker Daemon(s) had expiration disabled and were skipped'
     }
 }

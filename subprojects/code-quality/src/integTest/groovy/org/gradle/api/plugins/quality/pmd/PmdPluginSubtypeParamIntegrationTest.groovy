@@ -15,6 +15,7 @@
  */
 package org.gradle.api.plugins.quality.pmd
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.util.VersionNumber
 
 import static org.junit.Assume.assumeTrue
@@ -33,14 +34,33 @@ class PmdPluginSubtypeParamIntegrationTest extends AbstractPmdPluginVersionInteg
             ${mavenCentralRepository()}
 
             dependencies {
-                compile "${calculateDefaultDependencyNotation()}"
-                compile 'ch.qos.logback.contrib:logback-json-core:0.1.4'
-            }
-
-            pmd {
-                ruleSets = ["java-unusedcode"]
+                pmd "${calculateDefaultDependencyNotation()}"
+                implementation 'ch.qos.logback.contrib:logback-json-core:0.1.4'
             }
         """
+
+        if (versionNumber < VersionNumber.version(6)) {
+            buildFile << """
+                pmd {
+                    ruleSets = ["java-unusedcode"]
+                }
+            """
+        } else {
+            buildFile << """
+                pmd {
+                    ruleSets = [] // disable default rule set
+                    ruleSetConfig = resources.text.fromString('''<?xml version="1.0"?>
+                        <ruleset name="Unused Code">
+                            <description>Copy of https://github.com/pmd/pmd/blob/master/pmd-java/src/main/resources/rulesets/java/unusedcode.xml without deprecations.</description>
+                            <rule ref="category/java/bestpractices.xml/UnusedFormalParameter" />
+                            <rule ref="category/java/bestpractices.xml/UnusedLocalVariable" />
+                            <rule ref="category/java/bestpractices.xml/UnusedPrivateField" />
+                            <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod" />
+                        </ruleset>
+                    ''')
+                }
+            """
+        }
 
         file("src/main/java/org/gradle/ruleusing/UnderAnalysis.java") << underAnalysisCode()
         file("src/main/java/org/gradle/ruleusing/IAccessEvent.java") << iAccessEventCode()
@@ -48,8 +68,9 @@ class PmdPluginSubtypeParamIntegrationTest extends AbstractPmdPluginVersionInteg
         file("src/main/java/org/gradle/ruleusing/JsonHttpLayout.java") << jsonHttpLayoutCode()
     }
 
+    @ToBeFixedForInstantExecution
     def "unused code rule not triggered when passing subtype parameter"() {
-        assumeTrue(supportsAuxclasspath())
+        assumeTrue(supportsAuxclasspath() && fileLockingIssuesSolved())
 
         expect:
         succeeds "pmdMain"

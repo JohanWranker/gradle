@@ -16,38 +16,45 @@
 
 package org.gradle.nativeplatform.fixtures
 
-import org.gradle.api.internal.file.BaseDirFileResolver
+
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ContextualMultiVersionTest
 import org.gradle.integtests.fixtures.SourceFile
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.internal.time.Time
 import org.gradle.nativeplatform.internal.CompilerOutputFileNamingSchemeFactory
+import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 import org.gradle.test.fixtures.file.TestFile
+import org.junit.experimental.categories.Category
 import org.junit.runner.RunWith
 
 /**
  * Runs a test separately for each installed tool chain.
  */
-@RunWith(SingleToolChainTestRunner.class)
+@RunWith(NativeToolChainTestRunner.class)
+@Category(ContextualMultiVersionTest.class)
 abstract class AbstractInstalledToolChainIntegrationSpec extends AbstractIntegrationSpec implements HostPlatform {
     static AvailableToolChains.InstalledToolChain toolChain
     File initScript
 
+    AvailableToolChains.InstalledToolChain getToolchainUnderTest() { toolChain }
+
     def setup() {
         initScript = file("init.gradle") << """
-allprojects { p ->
-    apply plugin: ${toolChain.pluginClass}
-
-    model {
-          toolChains {
-            ${toolChain.buildScriptConfig}
-          }
-    }
-}
-"""
+            allprojects { p ->
+                apply plugin: ${toolChain.pluginClass}
+            
+                model {
+                      toolChains {
+                        ${toolChain.buildScriptConfig}
+                      }
+                }
+            }
+        """
         executer.beforeExecute({
             usingInitScript(initScript)
+            toolChain.configureExecuter(it)
         })
     }
 
@@ -129,7 +136,7 @@ allprojects { p ->
     }
 
     def intermediateFileFor(File sourceFile, String intermediateFilesDir, String intermediateFileSuffix) {
-        File intermediateFile = new CompilerOutputFileNamingSchemeFactory(new BaseDirFileResolver(TestFiles.fileSystem(), testDirectory, TestFiles.getPatternSetFactory())).create()
+        File intermediateFile = new CompilerOutputFileNamingSchemeFactory(TestFiles.resolver(testDirectory)).create()
             .withObjectFileNameSuffix(intermediateFileSuffix)
             .withOutputBaseFolder(file(intermediateFilesDir))
             .map(file(sourceFile))
@@ -159,7 +166,7 @@ allprojects { p ->
     boolean isObjectiveCWithAslr() {
         return (sourceType == "Objc" || sourceType == "Objcpp") &&
             OperatingSystem.current().isLinux() &&
-            toolChain.displayName == "clang"
+            toolChain.displayName.startsWith("clang")
     }
 
     protected void maybeWait() {
@@ -168,5 +175,13 @@ allprojects { p ->
             def nextSecond = now % 1000
             Thread.sleep(1200 - nextSecond)
         }
+    }
+
+    protected String getCurrentOsFamilyName() {
+        DefaultNativePlatform.currentOperatingSystem.toFamilyName()
+    }
+
+    protected String getCurrentArchitecture() {
+        return DefaultNativePlatform.currentArchitecture.name
     }
 }

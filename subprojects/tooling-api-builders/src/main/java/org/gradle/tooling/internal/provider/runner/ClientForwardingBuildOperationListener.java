@@ -16,47 +16,47 @@
 
 package org.gradle.tooling.internal.provider.runner;
 
-import org.gradle.initialization.BuildEventConsumer;
-import org.gradle.internal.progress.BuildOperationDescriptor;
-import org.gradle.internal.progress.BuildOperationListener;
-import org.gradle.internal.progress.OperationFinishEvent;
-import org.gradle.internal.progress.OperationProgressEvent;
-import org.gradle.internal.progress.OperationStartEvent;
-import org.gradle.tooling.internal.provider.events.AbstractOperationResult;
-import org.gradle.tooling.internal.provider.events.DefaultFailure;
-import org.gradle.tooling.internal.provider.events.DefaultFailureResult;
-import org.gradle.tooling.internal.provider.events.DefaultOperationDescriptor;
-import org.gradle.tooling.internal.provider.events.DefaultOperationFinishedProgressEvent;
-import org.gradle.tooling.internal.provider.events.DefaultOperationStartedProgressEvent;
-import org.gradle.tooling.internal.provider.events.DefaultSuccessResult;
+import org.gradle.internal.operations.BuildOperationDescriptor;
+import org.gradle.internal.operations.BuildOperationListener;
+import org.gradle.internal.operations.OperationFinishEvent;
+import org.gradle.internal.operations.OperationIdentifier;
+import org.gradle.internal.operations.OperationProgressEvent;
+import org.gradle.internal.operations.OperationStartEvent;
+import org.gradle.internal.build.event.types.AbstractOperationResult;
+import org.gradle.internal.build.event.types.DefaultFailure;
+import org.gradle.internal.build.event.types.DefaultFailureResult;
+import org.gradle.internal.build.event.types.DefaultOperationDescriptor;
+import org.gradle.internal.build.event.types.DefaultOperationFinishedProgressEvent;
+import org.gradle.internal.build.event.types.DefaultOperationStartedProgressEvent;
+import org.gradle.internal.build.event.types.DefaultSuccessResult;
 
 import java.util.Collections;
 
 /**
- * Build listener that forwards all receiving events to the client via the provided {@code BuildEventConsumer} instance.
+ * Build listener that forwards all receiving events to the client via the provided {@code ProgressEventConsumer} instance.
  *
  * @since 2.5
  */
 class ClientForwardingBuildOperationListener implements BuildOperationListener {
 
-    private final BuildEventConsumer eventConsumer;
+    private final ProgressEventConsumer eventConsumer;
 
-    ClientForwardingBuildOperationListener(BuildEventConsumer eventConsumer) {
+    ClientForwardingBuildOperationListener(ProgressEventConsumer eventConsumer) {
         this.eventConsumer = eventConsumer;
     }
 
     @Override
     public void started(BuildOperationDescriptor buildOperation, OperationStartEvent startEvent) {
-        eventConsumer.dispatch(new DefaultOperationStartedProgressEvent(startEvent.getStartTime(), toBuildOperationDescriptor(buildOperation)));
+        eventConsumer.started(new DefaultOperationStartedProgressEvent(startEvent.getStartTime(), toBuildOperationDescriptor(buildOperation)));
     }
 
     @Override
-    public void progress(BuildOperationDescriptor buildOperation, OperationProgressEvent progressEvent) {
+    public void progress(OperationIdentifier buildOperationId, OperationProgressEvent progressEvent) {
     }
 
     @Override
     public void finished(BuildOperationDescriptor buildOperation, OperationFinishEvent result) {
-        eventConsumer.dispatch(new DefaultOperationFinishedProgressEvent(result.getEndTime(), toBuildOperationDescriptor(buildOperation), adaptResult(result)));
+        eventConsumer.finished(new DefaultOperationFinishedProgressEvent(result.getEndTime(), toBuildOperationDescriptor(buildOperation), toOperationResult(result)));
     }
 
     private DefaultOperationDescriptor toBuildOperationDescriptor(BuildOperationDescriptor buildOperation) {
@@ -67,7 +67,7 @@ class ClientForwardingBuildOperationListener implements BuildOperationListener {
         return new DefaultOperationDescriptor(id, name, displayName, parentId);
     }
 
-    private AbstractOperationResult adaptResult(OperationFinishEvent result) {
+    static AbstractOperationResult toOperationResult(OperationFinishEvent result) {
         Throwable failure = result.getFailure();
         long startTime = result.getStartTime();
         long endTime = result.getEndTime();

@@ -19,38 +19,40 @@ package org.gradle.api.internal.tasks.execution;
 import org.gradle.api.GradleException;
 import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.tasks.TaskExecuter;
+import org.gradle.api.internal.tasks.TaskExecuterResult;
 import org.gradle.api.internal.tasks.TaskExecutionContext;
 import org.gradle.api.internal.tasks.TaskExecutionOutcome;
 import org.gradle.api.internal.tasks.TaskStateInternal;
-import org.gradle.api.logging.Logger;
-import org.gradle.api.logging.Logging;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A {@link org.gradle.api.internal.tasks.TaskExecuter} which skips tasks whose onlyIf predicate evaluates to false
  */
 public class SkipOnlyIfTaskExecuter implements TaskExecuter {
-    private static final Logger LOGGER = Logging.getLogger(SkipOnlyIfTaskExecuter.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(SkipOnlyIfTaskExecuter.class);
     private final TaskExecuter executer;
 
     public SkipOnlyIfTaskExecuter(TaskExecuter executer) {
         this.executer = executer;
     }
 
-    public void execute(TaskInternal task, TaskStateInternal state, TaskExecutionContext context) {
+    @Override
+    public TaskExecuterResult execute(TaskInternal task, TaskStateInternal state, TaskExecutionContext context) {
         boolean skip;
         try {
             skip = !task.getOnlyIf().isSatisfiedBy(task);
         } catch (Throwable t) {
             state.setOutcome(new GradleException(String.format("Could not evaluate onlyIf predicate for %s.", task), t));
-            return;
+            return TaskExecuterResult.WITHOUT_OUTPUTS;
         }
 
         if (skip) {
             LOGGER.info("Skipping {} as task onlyIf is false.", task);
             state.setOutcome(TaskExecutionOutcome.SKIPPED);
-            return;
+            return TaskExecuterResult.WITHOUT_OUTPUTS;
         }
 
-        executer.execute(task, state, context);
+        return executer.execute(task, state, context);
     }
 }

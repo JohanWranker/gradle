@@ -20,14 +20,18 @@ import org.gradle.api.Action;
 import org.gradle.api.Incubating;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.SourceDirectorySet;
+import org.gradle.api.plugins.ExtensionAware;
 
 import javax.annotation.Nullable;
 
 /**
- * A {@code SourceSet} represents a logical group of Java source and resources.
+ * A {@code SourceSet} represents a logical group of Java source and resource files. They
+ * are covered in more detail in the
+ * <a href="https://docs.gradle.org/current/userguide/building_java_projects.html#sec:java_source_sets">user manual</a>.
  * <p>
- * See the example below how {@link SourceSet} 'main' is accessed and how the {@link SourceDirectorySet} 'java'
- * is configured to exclude some package from compilation.
+ * The following example shows how you can configure the 'main' source set, which in this
+ * case involves excluding classes whose package begins 'some.unwanted.package' from
+ * compilation of the source files in the 'java' {@link SourceDirectorySet}:
  *
  * <pre class='autoTested'>
  * apply plugin: 'java'
@@ -41,7 +45,7 @@ import javax.annotation.Nullable;
  * }
  * </pre>
  */
-public interface SourceSet {
+public interface SourceSet extends ExtensionAware {
     /**
      * The name of the main source set.
      */
@@ -82,7 +86,6 @@ public interface SourceSet {
      * @return The annotation processor path. Never returns null.
      * @since 4.6
      */
-    @Incubating
     FileCollection getAnnotationProcessorPath();
 
     /**
@@ -94,8 +97,7 @@ public interface SourceSet {
      * @param annotationProcessorPath The annotation processor path. Should not be null.
      * @since 4.6
      */
-    @Incubating
-    void setAnnotationProcessorPath(@Nullable FileCollection annotationProcessorPath);
+    void setAnnotationProcessorPath(FileCollection annotationProcessorPath);
 
     /**
      * Returns the classpath used to execute this source.
@@ -111,9 +113,9 @@ public interface SourceSet {
      */
     void setRuntimeClasspath(FileCollection classpath);
 
-   /**
+    /**
      * {@link SourceSetOutput} is a {@link FileCollection} of all output directories (compiled classes, processed resources, etc.)
-     *  and it provides means to configure the default output dirs and register additional output dirs. See examples in {@link SourceSetOutput}
+     * and it provides means to configure the default output dirs and register additional output dirs. See examples in {@link SourceSetOutput}
      *
      * @return The output dirs, as a {@link SourceSetOutput}.
      */
@@ -143,7 +145,7 @@ public interface SourceSet {
      * @param configureClosure The closure to use to configure the resources.
      * @return this
      */
-    SourceSet resources(Closure configureClosure);
+    SourceSet resources(@Nullable Closure configureClosure);
 
     /**
      * Configures the non-Java resources for this set.
@@ -170,7 +172,7 @@ public interface SourceSet {
      * @param configureClosure The closure to use to configure the Java source.
      * @return this
      */
-    SourceSet java(Closure configureClosure);
+    SourceSet java(@Nullable Closure configureClosure);
 
     /**
      * Configures the Java source for this set.
@@ -227,11 +229,41 @@ public interface SourceSet {
     String getCompileTaskName(String language);
 
     /**
+     * Returns the name of the Javadoc task for this source set.
+     *
+     * @return The task name. Never returns null.
+     *
+     * @since 6.0
+     */
+    @Incubating
+    String getJavadocTaskName();
+
+    /**
      * Returns the name of the Jar task for this source set.
      *
      * @return The task name. Never returns null.
      */
     String getJarTaskName();
+
+    /**
+     * Returns the name of the Javadoc Jar task for this source set.
+     *
+     * @return The task name. Never returns null.
+     *
+     * @since 6.0
+     */
+    @Incubating
+    String getJavadocJarTaskName();
+
+    /**
+     * Returns the name of the Source Jar task for this source set.
+     *
+     * @return The task name. Never returns null.
+     *
+     * @since 6.0
+     */
+    @Incubating
+    String getSourcesJarTaskName();
 
     /**
      * Returns the name of a task for this source set.
@@ -244,32 +276,38 @@ public interface SourceSet {
 
     /**
      * Returns the name of the compile configuration for this source set.
+     *
      * @return The configuration name
+     * @deprecated Use {@link #getImplementationConfigurationName()}, {@link #getApiConfigurationName()}, {@link #getCompileClasspathConfigurationName()} or {@link #getApiElementsConfigurationName()} instead.
      */
+    @Deprecated
     String getCompileConfigurationName();
 
     /**
      * Returns the name of the runtime configuration for this source set.
+     *
      * @return The runtime configuration name
+     * @deprecated Use {@link #getRuntimeOnlyConfigurationName()}, {@link #getRuntimeClasspathConfigurationName()} or {@link #getRuntimeElementsConfigurationName()} instead.
      */
+    @Deprecated
     String getRuntimeConfigurationName();
 
     /**
      * Returns the name of the compile only configuration for this source set.
+     *
      * @return The compile only configuration name
      *
      * @since 2.12
      */
-    @Incubating
     String getCompileOnlyConfigurationName();
 
     /**
      * Returns the name of the compile classpath configuration for this source set.
+     *
      * @return The compile classpath configuration
      *
      * @since 2.12
      */
-    @Incubating
     String getCompileClasspathConfigurationName();
 
     /**
@@ -279,7 +317,6 @@ public interface SourceSet {
      * @return the name of the annotation processor configuration.
      * @since 4.6
      */
-    @Incubating
     String getAnnotationProcessorConfigurationName();
 
     /**
@@ -292,17 +329,16 @@ public interface SourceSet {
      *
      * @since 3.3
      */
-    @Incubating
     String getApiConfigurationName();
 
     /**
      * Returns the name of the implementation configuration for this source set. The implementation
      * configuration should contain dependencies which are specific to the implementation of the component
      * (internal APIs).
+     *
      * @return The configuration name
      * @since 3.4
      */
-    @Incubating
     String getImplementationConfigurationName();
 
     /**
@@ -314,7 +350,6 @@ public interface SourceSet {
      *
      * @since 3.3
      */
-    @Incubating
     String getApiElementsConfigurationName();
 
     /**
@@ -325,7 +360,6 @@ public interface SourceSet {
      * @return the runtime only configuration name
      * @since 3.4
      */
-    @Incubating
     String getRuntimeOnlyConfigurationName();
 
     /**
@@ -335,17 +369,35 @@ public interface SourceSet {
      * @return the name of the runtime classpath configuration
      * @since 3.4
      */
-    @Incubating
     String getRuntimeClasspathConfigurationName();
 
     /**
-     * Returns the name of the configuration containing elements that are stricly required
+     * Returns the name of the configuration containing elements that are strictly required
      * at runtime. Consumers of this configuration will get all the mandatory elements for
      * this component to execute at runtime.
      *
      * @return the name of the runtime elements configuration.
      * @since 3.4
      */
-    @Incubating
     String getRuntimeElementsConfigurationName();
+
+    /**
+     * Returns the name of the configuration that represents the variant that carries the
+     * Javadoc for this source set in packaged form. Used to publish a variant with a '-javadoc' zip.
+     *
+     * @return the name of the javadoc elements configuration.
+     * @since 6.0
+     */
+    @Incubating
+    String getJavadocElementsConfigurationName();
+
+    /**
+     * Returns the name of the configuration that represents the variant that carries the
+     * original source code in packaged form. Used to publish a variant with a '-sources' zip.
+     *
+     * @return the name of the sources elements configuration.
+     * @since 6.0
+     */
+    @Incubating
+    String getSourcesElementsConfigurationName();
 }

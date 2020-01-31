@@ -16,14 +16,18 @@
 
 package org.gradle.api.internal.tasks.testing.junit;
 
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+
+import org.gradle.api.Action;
 import org.gradle.api.GradleException;
-import org.gradle.api.InvalidUserDataException;
-import org.gradle.api.Transformer;
 import org.gradle.api.internal.tasks.testing.filter.TestSelectionMatcher;
 import org.gradle.internal.concurrent.ThreadSafe;
-import org.gradle.util.CollectionUtils;
+import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.Description;
 import org.junit.runner.Request;
+import org.junit.runner.RunWith;
 import org.junit.runner.Runner;
 import org.junit.runner.manipulation.Filter;
 import org.junit.runner.manipulation.Filterable;
@@ -31,11 +35,7 @@ import org.junit.runner.manipulation.NoTestsRemainException;
 import org.junit.runner.notification.RunListener;
 import org.junit.runner.notification.RunNotifier;
 
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-
-public class JUnitTestClassExecutor {
+public class JUnitTestClassExecutor implements Action<String> {
     private final ClassLoader applicationClassLoader;
     private final RunListener listener;
     private final JUnitSpec options;
@@ -49,6 +49,7 @@ public class JUnitTestClassExecutor {
         this.executionListener = executionListener;
     }
 
+    @Override
     public void execute(String testClassName) {
         executionListener.testClassStarted(testClassName);
 
@@ -64,29 +65,24 @@ public class JUnitTestClassExecutor {
 
     private void runTestClass(String testClassName) throws ClassNotFoundException {
         final Class<?> testClass = Class.forName(testClassName, false, applicationClassLoader);
+        if (isNestedClassInsideEnclosedRunner(testClass)) {
+            return;
+        }
         List<Filter> filters = new ArrayList<Filter>();
         if (options.hasCategoryConfiguration()) {
             verifyJUnitCategorySupport();
-            Transformer<Class<?>, String> transformer = new Transformer<Class<?>, String>() {
-                public Class<?> transform(final String original) {
-                    try {
-                        return applicationClassLoader.loadClass(original);
-                    } catch (ClassNotFoundException e) {
-                        throw new InvalidUserDataException(String.format("Can't load category class [%s].", original), e);
-                    }
-                }
-            };
-            filters.add(new CategoryFilter(
-                    CollectionUtils.collect(options.getIncludeCategories(), transformer),
-                    CollectionUtils.collect(options.getExcludeCategories(), transformer)
-            ));
+            filters.add(new CategoryFilter(options.getIncludeCategories(), options.getExcludeCategories(), applicationClassLoader));
         }
 
         Request request = Request.aClass(testClass);
         Runner runner = request.getRunner();
 
-        if (!options.getIncludedTests().isEmpty() || !options.getIncludedTestsCommandLine().isEmpty()) {
-            TestSelectionMatcher matcher = new TestSelectionMatcher(options.getIncludedTests(), options.getIncludedTestsCommandLine());
+        if (!options.getIncludedTests().isEmpty()
+            || !options.getIncludedTestsCommandLine().isEmpty()
+            || !options.getExcludedTests().isEmpty()) {
+            TestSelectionMatcher matcher = new TestSelectionMatcher(
+                options.getIncludedTests(), options.getExcludedTests(),
+                options.getIncludedTestsCommandLine());
 
             // For test suites (including suite-like custom Runners), if the test suite class
             // matches the filter, run the entire suite instead of filtering away its contents.
@@ -112,6 +108,21 @@ public class JUnitTestClassExecutor {
         RunNotifier notifier = new RunNotifier();
         notifier.addListener(listener);
         runner.run(notifier);
+    }
+
+    // https://github.com/gradle/gradle/issues/2319
+    public static boolean isNestedClassInsideEnclosedRunner(Class<?> testClass) {
+        if (testClass.getEnclosingClass() == null) {
+            return false;
+        }
+
+        Class<?> outermostClass = testClass;
+        while (outermostClass.getEnclosingClass() != null) {
+            outermostClass = outermostClass.getEnclosingClass();
+        }
+
+        RunWith runWith = outermostClass.getAnnotation(RunWith.class);
+        return runWith != null && Enclosed.class.equals(runWith.value());
     }
 
     private void verifyJUnitCategorySupport() {

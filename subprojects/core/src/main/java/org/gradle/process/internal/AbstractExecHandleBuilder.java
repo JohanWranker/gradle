@@ -16,12 +16,13 @@
 package org.gradle.process.internal;
 
 import org.apache.commons.lang.StringUtils;
+import org.gradle.initialization.BuildCancellationToken;
 import org.gradle.internal.file.PathToFileResolver;
 import org.gradle.process.BaseExecSpec;
 import org.gradle.process.internal.streams.EmptyStdInStreamsHandler;
 import org.gradle.process.internal.streams.ForwardStdinStreamsHandler;
-import org.gradle.process.internal.streams.SafeStreams;
 import org.gradle.process.internal.streams.OutputStreamsForwarder;
+import org.gradle.process.internal.streams.SafeStreams;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -31,12 +32,13 @@ import java.util.concurrent.Executor;
 
 public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOptions implements BaseExecSpec {
     private static final EmptyStdInStreamsHandler DEFAULT_STDIN = new EmptyStdInStreamsHandler();
+    private final BuildCancellationToken buildCancellationToken;
+    private final List<ExecHandleListener> listeners = new ArrayList<ExecHandleListener>();
     private OutputStream standardOutput;
     private OutputStream errorOutput;
     private InputStream input;
     private StreamsHandler inputHandler = DEFAULT_STDIN;
     private String displayName;
-    private final List<ExecHandleListener> listeners = new ArrayList<ExecHandleListener>();
     private boolean ignoreExitValue;
     private boolean redirectErrorStream;
     private StreamsHandler streamsHandler;
@@ -44,8 +46,9 @@ public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOption
     protected boolean daemon;
     private Executor executor;
 
-    AbstractExecHandleBuilder(PathToFileResolver fileResolver, Executor executor) {
+    AbstractExecHandleBuilder(PathToFileResolver fileResolver, Executor executor, BuildCancellationToken buildCancellationToken) {
         super(fileResolver);
+        this.buildCancellationToken = buildCancellationToken;
         this.executor = executor;
         standardOutput = SafeStreams.systemOut();
         errorOutput = SafeStreams.systemErr();
@@ -54,6 +57,11 @@ public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOption
 
     public abstract List<String> getAllArguments();
 
+    protected List<String> getEffectiveArguments() {
+        return getAllArguments();
+    }
+
+    @Override
     public List<String> getCommandLine() {
         List<String> commandLine = new ArrayList<String>();
         commandLine.add(getExecutable());
@@ -61,6 +69,7 @@ public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOption
         return commandLine;
     }
 
+    @Override
     public AbstractExecHandleBuilder setStandardInput(InputStream inputStream) {
         this.input = inputStream;
         this.inputHandler = new ForwardStdinStreamsHandler(inputStream);
@@ -71,10 +80,12 @@ public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOption
         return inputHandler;
     }
 
+    @Override
     public InputStream getStandardInput() {
         return input;
     }
 
+    @Override
     public AbstractExecHandleBuilder setStandardOutput(OutputStream outputStream) {
         if (outputStream == null) {
             throw new IllegalArgumentException("outputStream == null!");
@@ -83,10 +94,12 @@ public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOption
         return this;
     }
 
+    @Override
     public OutputStream getStandardOutput() {
         return standardOutput;
     }
 
+    @Override
     public AbstractExecHandleBuilder setErrorOutput(OutputStream outputStream) {
         if (outputStream == null) {
             throw new IllegalArgumentException("outputStream == null!");
@@ -95,14 +108,17 @@ public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOption
         return this;
     }
 
+    @Override
     public OutputStream getErrorOutput() {
         return errorOutput;
     }
 
+    @Override
     public boolean isIgnoreExitValue() {
         return ignoreExitValue;
     }
 
+    @Override
     public AbstractExecHandleBuilder setIgnoreExitValue(boolean ignoreExitValue) {
         this.ignoreExitValue = ignoreExitValue;
         return this;
@@ -118,9 +134,6 @@ public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOption
     }
 
     public AbstractExecHandleBuilder listener(ExecHandleListener listener) {
-        if (listeners == null) {
-            throw new IllegalArgumentException("listeners == null!");
-        }
         this.listeners.add(listener);
         return this;
     }
@@ -132,8 +145,8 @@ public abstract class AbstractExecHandleBuilder extends DefaultProcessForkOption
         }
 
         StreamsHandler effectiveOutputHandler = getEffectiveStreamsHandler();
-        return new DefaultExecHandle(getDisplayName(), getWorkingDir(), executable, getAllArguments(), getActualEnvironment(),
-                effectiveOutputHandler, inputHandler, listeners, redirectErrorStream, timeoutMillis, daemon, executor);
+        return new DefaultExecHandle(getDisplayName(), getWorkingDir(), executable, getEffectiveArguments(), getActualEnvironment(),
+                effectiveOutputHandler, inputHandler, listeners, redirectErrorStream, timeoutMillis, daemon, executor, buildCancellationToken);
     }
 
     private StreamsHandler getEffectiveStreamsHandler() {

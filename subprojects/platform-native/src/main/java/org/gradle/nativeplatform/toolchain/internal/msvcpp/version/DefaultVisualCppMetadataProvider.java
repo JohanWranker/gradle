@@ -26,6 +26,7 @@ import org.gradle.util.VersionNumber;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 public class DefaultVisualCppMetadataProvider implements VisualCppMetadataProvider {
     private static final String VS2017_METADATA_FILE_PATH = "VC/Auxiliary/Build/Microsoft.VCToolsVersion.default.txt";
@@ -46,7 +47,7 @@ public class DefaultVisualCppMetadataProvider implements VisualCppMetadataProvid
     }
 
     @Override
-    public VisualCppMetadata getVisualCppFromRegistry(String version) {
+    public VisualCppInstallCandidate getVisualCppFromRegistry(String version) {
         for (String baseKey : REGISTRY_BASEPATHS) {
             try {
                 File visualCppDir = new File(windowsRegistry.getStringValue(WindowsRegistry.Key.HKEY_LOCAL_MACHINE, baseKey + REGISTRY_ROOTPATH_VC, version));
@@ -55,18 +56,20 @@ public class DefaultVisualCppMetadataProvider implements VisualCppMetadataProvid
                 // Version not found at this base path
             }
         }
+
+        LOGGER.debug("No Windows registry values found for version " + version);
         return null;
     }
 
     @Override
-    public VisualCppMetadata getVisualCppFromMetadataFile(File installDir) {
+    public VisualCppInstallCandidate getVisualCppFromMetadataFile(File installDir) {
         File msvcVersionFile = new File(installDir, VS2017_METADATA_FILE_PATH);
         if (!msvcVersionFile.exists() || !msvcVersionFile.isFile()) {
             LOGGER.debug("The MSVC version file at {} either does not exist or is not a file.  Cannot determine the MSVC version for this installation.", msvcVersionFile.getAbsolutePath());
             return null;
         }
         try {
-            String versionString = FileUtils.readFileToString(msvcVersionFile).trim();
+            String versionString = FileUtils.readFileToString(msvcVersionFile, StandardCharsets.UTF_8).trim();
             File visualCppDir = new File(installDir, VS2017_COMPILER_PATH_PREFIX + "/" + versionString);
             return new DefaultVisualCppMetadata(visualCppDir, VersionNumber.parse(versionString));
         } catch (IOException e) {
@@ -74,7 +77,7 @@ public class DefaultVisualCppMetadataProvider implements VisualCppMetadataProvid
         }
     }
 
-    private static class DefaultVisualCppMetadata implements VisualCppMetadata {
+    private static class DefaultVisualCppMetadata implements VisualCppInstallCandidate {
         private final File visualCppDir;
         private final VersionNumber version;
 

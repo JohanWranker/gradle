@@ -16,47 +16,59 @@
 
 package org.gradle.api.internal.tasks.properties;
 
-import org.gradle.api.internal.tasks.TaskDestroyablePropertySpec;
-import org.gradle.api.internal.tasks.TaskInputFilePropertySpec;
-import org.gradle.api.internal.tasks.TaskInputPropertySpec;
-import org.gradle.api.internal.tasks.TaskLocalStatePropertySpec;
-import org.gradle.api.internal.tasks.TaskOutputFilePropertySpec;
+import org.gradle.api.tasks.FileNormalizer;
+
+import javax.annotation.Nullable;
 
 /**
  * Visits properties of beans which are inputs, outputs, destroyables or local state.
  */
 public interface PropertyVisitor {
+    /**
+     * Should only output file properties be visited?
+     *
+     * This is here as a temporary work around to allow a listener avoid broken `@Nested` properties whose getters fail when called just after the bean has been created.
+     *
+     * It is also here to avoid the cost of visiting input and other properties on creation when these are not used at this point.
+     *
+     * Later, these issues can be improved and this method removed.
+     */
+    boolean visitOutputFilePropertiesOnly();
 
-    void visitInputFileProperty(TaskInputFilePropertySpec inputFileProperty);
+    void visitInputFileProperty(String propertyName, boolean optional, boolean skipWhenEmpty, boolean incremental, @Nullable Class<? extends FileNormalizer> fileNormalizer, PropertyValue value, InputFilePropertyType filePropertyType);
 
-    void visitInputProperty(TaskInputPropertySpec inputProperty);
+    void visitInputProperty(String propertyName, PropertyValue value, boolean optional);
 
-    void visitOutputFileProperty(TaskOutputFilePropertySpec outputFileProperty);
+    void visitOutputFileProperty(String propertyName, boolean optional, PropertyValue value, OutputFilePropertyType filePropertyType);
 
-    void visitDestroyableProperty(TaskDestroyablePropertySpec destroyableProperty);
+    void visitDestroyableProperty(Object value);
 
-    void visitLocalStateProperty(TaskLocalStatePropertySpec localStateProperty);
+    void visitLocalStateProperty(Object value);
 
     class Adapter implements PropertyVisitor {
-
         @Override
-        public void visitInputFileProperty(TaskInputFilePropertySpec inputFileProperty) {
+        public boolean visitOutputFilePropertiesOnly() {
+            return false;
         }
 
         @Override
-        public void visitInputProperty(TaskInputPropertySpec inputProperty) {
+        public void visitInputFileProperty(String propertyName, boolean optional, boolean skipWhenEmpty, boolean incremental, @Nullable Class<? extends FileNormalizer> fileNormalizer, PropertyValue value, InputFilePropertyType filePropertyType) {
         }
 
         @Override
-        public void visitOutputFileProperty(TaskOutputFilePropertySpec outputFileProperty) {
+        public void visitInputProperty(String propertyName, PropertyValue value, boolean optional) {
         }
 
         @Override
-        public void visitDestroyableProperty(TaskDestroyablePropertySpec destroyableProperty) {
+        public void visitOutputFileProperty(String propertyName, boolean optional, PropertyValue value, OutputFilePropertyType filePropertyType) {
         }
 
         @Override
-        public void visitLocalStateProperty(TaskLocalStatePropertySpec localStateProperty) {
+        public void visitDestroyableProperty(Object value) {
+        }
+
+        @Override
+        public void visitLocalStateProperty(Object value) {
         }
     }
 }

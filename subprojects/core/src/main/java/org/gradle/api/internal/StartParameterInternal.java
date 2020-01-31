@@ -20,6 +20,7 @@ import org.gradle.StartParameter;
 import org.gradle.internal.deprecation.Deprecatable;
 import org.gradle.internal.deprecation.LoggingDeprecatable;
 
+import java.io.File;
 import java.util.Set;
 
 public class StartParameterInternal extends StartParameter implements Deprecatable {
@@ -30,6 +31,7 @@ public class StartParameterInternal extends StartParameter implements Deprecatab
         return prepareNewInstance(new StartParameterInternal());
     }
 
+    @Override
     public StartParameter newBuild() {
         return prepareNewBuild(new StartParameterInternal());
     }
@@ -47,5 +49,29 @@ public class StartParameterInternal extends StartParameter implements Deprecatab
     @Override
     public void checkDeprecation() {
         deprecationHandler.checkDeprecation();
+    }
+
+    public File getGradleHomeDir() {
+        return gradleHomeDir;
+    }
+
+    public void setGradleHomeDir(File gradleHomeDir) {
+        this.gradleHomeDir = gradleHomeDir;
+    }
+
+    public void useEmptySettingsWithoutDeprecationWarning() {
+        doUseEmptySettings();
+    }
+
+    public boolean isUseEmptySettingsWithoutDeprecationWarning() {
+        return super.useEmptySettings;
+    }
+
+    public boolean isSearchUpwardsWithoutDeprecationWarning() {
+        return super.searchUpwards;
+    }
+
+    public void setSearchUpwardsWithoutDeprecationWarning(boolean searchUpwards) {
+        super.searchUpwards = searchUpwards;
     }
 }

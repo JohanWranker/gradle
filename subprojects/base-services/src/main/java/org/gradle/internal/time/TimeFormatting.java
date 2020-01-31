@@ -17,6 +17,7 @@
 package org.gradle.internal.time;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 public class TimeFormatting {
 
@@ -48,7 +49,11 @@ public class TimeFormatting {
         if (elapsedTimeInMs > MILLIS_PER_MINUTE) {
             result.append((elapsedTimeInMs % MILLIS_PER_HOUR) / MILLIS_PER_MINUTE).append("m ");
         }
-        result.append((elapsedTimeInMs % MILLIS_PER_MINUTE) / 1000).append("s");
+        if (elapsedTimeInMs >= MILLIS_PER_SECOND) {
+            result.append((elapsedTimeInMs % MILLIS_PER_MINUTE) / 1000).append("s");
+        } else {
+            result.append(elapsedTimeInMs).append("ms");
+        }
         return result.toString();
     }
 
@@ -78,7 +83,7 @@ public class TimeFormatting {
             result.append("m");
         }
         int secondsScale = result.length() > 0 ? 2 : 3;
-        result.append(BigDecimal.valueOf(duration).divide(BigDecimal.valueOf(MILLIS_PER_SECOND)).setScale(secondsScale, BigDecimal.ROUND_HALF_UP));
+        result.append(BigDecimal.valueOf(duration).divide(BigDecimal.valueOf(MILLIS_PER_SECOND)).setScale(secondsScale, RoundingMode.HALF_UP));
         result.append("s");
         return result.toString();
     }

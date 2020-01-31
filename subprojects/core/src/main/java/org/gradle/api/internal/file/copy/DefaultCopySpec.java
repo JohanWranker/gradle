@@ -15,6 +15,8 @@
  */
 package org.gradle.api.internal.file.copy;
 
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import groovy.lang.Closure;
@@ -25,27 +27,34 @@ import org.gradle.api.Transformer;
 import org.gradle.api.file.CopyProcessingSpec;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.DuplicatesStrategy;
+import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileCopyDetails;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.file.FileTreeElement;
 import org.gradle.api.file.RelativePath;
-import org.gradle.api.internal.ChainingTransformer;
-import org.gradle.api.internal.ClosureBackedAction;
+import org.gradle.api.internal.file.DefaultCompositeFileTree;
+import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.internal.file.FileTreeInternal;
+import org.gradle.api.internal.file.pattern.PatternMatcher;
 import org.gradle.api.internal.file.pattern.PatternMatcherFactory;
 import org.gradle.api.specs.Spec;
-import org.gradle.api.specs.Specs;
 import org.gradle.api.tasks.util.PatternSet;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.typeconversion.NotationParser;
+import org.gradle.util.ClosureBackedAction;
+import org.gradle.util.CollectionUtils;
 import org.gradle.util.ConfigureUtil;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FilterReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,30 +64,43 @@ import java.util.regex.Pattern;
 public class DefaultCopySpec implements CopySpecInternal {
     private static final NotationParser<Object, String> PATH_NOTATION_PARSER = PathNotationConverter.parser();
     protected final FileResolver fileResolver;
-    private final Set<Object> sourcePaths;
+    protected final FileCollectionFactory fileCollectionFactory;
+    private final Set<Object> sourcePaths = new LinkedHashSet<>();
     private Object destDir;
     private final PatternSet patternSet;
-    private final List<CopySpecInternal> childSpecs;
-    private final List<CopySpecInternal> childSpecsInAdditionOrder;
+    private final List<CopySpecInternal> childSpecs = new LinkedList<>();
+    private final List<CopySpecInternal> childSpecsInAdditionOrder = new LinkedList<>();
     protected final Instantiator instantiator;
-    private final List<Action<? super FileCopyDetails>> copyActions = new ArrayList<Action<? super FileCopyDetails>>();
+    private final List<Action<? super FileCopyDetails>> copyActions = new LinkedList<>();
     private boolean hasCustomActions;
     private Integer dirMode;
     private Integer fileMode;
     private Boolean caseSensitive;
     private Boolean includeEmptyDirs;
-    private DuplicatesStrategy duplicatesStrategy;
-    private String filteringCharset;
-    private List<CopySpecListener> listeners = Lists.newLinkedList();
 
-    public DefaultCopySpec(FileResolver resolver, Instantiator instantiator) {
+    private DuplicatesStrategy duplicatesStrategy = DuplicatesStrategy.INHERIT;
+
+    private String filteringCharset;
+    private final List<CopySpecListener> listeners = Lists.newLinkedList();
+
+    public DefaultCopySpec(FileResolver resolver, FileCollectionFactory fileCollectionFactory, Instantiator instantiator) {
+        this(resolver, fileCollectionFactory, instantiator, resolver.getPatternSetFactory().create());
+    }
+
+    public DefaultCopySpec(FileResolver resolver, FileCollectionFactory fileCollectionFactory, Instantiator instantiator, PatternSet patternSet) {
         this.fileResolver = resolver;
+        this.fileCollectionFactory = fileCollectionFactory;
         this.instantiator = instantiator;
-        sourcePaths = new LinkedHashSet<Object>();
-        childSpecs = new ArrayList<CopySpecInternal>();
-        childSpecsInAdditionOrder = new ArrayList<CopySpecInternal>();
-        patternSet = resolver.getPatternSetFactory().create();
-        duplicatesStrategy = null;
+        this.patternSet = patternSet;
+    }
+
+    public DefaultCopySpec(FileResolver resolver, FileCollectionFactory fileCollectionFactory, Instantiator instantiator, @Nullable String destPath, FileCollection source, PatternSet patternSet, Collection<CopySpecInternal> children) {
+        this(resolver, fileCollectionFactory, instantiator, patternSet);
+        sourcePaths.add(source);
+        destDir = destPath;
+        for (CopySpecInternal child : children) {
+            addChildSpec(child);
+        }
     }
 
     @Override
@@ -94,10 +116,12 @@ public class DefaultCopySpec implements CopySpecInternal {
         return false;
     }
 
-    protected List<Action<? super FileCopyDetails>> getCopyActions() {
+    @VisibleForTesting
+    List<Action<? super FileCopyDetails>> getCopyActions() {
         return copyActions;
     }
 
+    @Override
     public CopySpec with(CopySpec... copySpecs) {
         for (CopySpec copySpec : copySpecs) {
             CopySpecInternal copySpecInternal;
@@ -112,46 +136,46 @@ public class DefaultCopySpec implements CopySpecInternal {
         return this;
     }
 
+    @Override
     public CopySpec from(Object... sourcePaths) {
-        for (Object sourcePath : sourcePaths) {
-            this.sourcePaths.add(sourcePath);
-        }
+        Collections.addAll(this.sourcePaths, sourcePaths);
         return this;
     }
 
-    public CopySpec from(Object sourcePath, final Closure c) {
-        return from(sourcePath, new ClosureBackedAction<CopySpec>(c));
+    @Override
+    public CopySpec from(Object sourcePath, Closure c) {
+        return from(sourcePath, new ClosureBackedAction<>(c));
     }
 
+    @Override
     public CopySpec from(Object sourcePath, Action<? super CopySpec> configureAction) {
-        if (configureAction == null) {
-            from(sourcePath);
-            return this;
-        } else {
-            CopySpecInternal child = addChild();
-            child.from(sourcePath);
-            CopySpecWrapper wrapper = instantiator.newInstance(CopySpecWrapper.class, child);
-            configureAction.execute(wrapper);
-            return wrapper;
-        }
+        Preconditions.checkNotNull(configureAction, "Gradle does not allow passing null for the configuration action for CopySpec.from().");
+        CopySpecInternal child = addChild();
+        child.from(sourcePath);
+        CopySpecWrapper wrapper = instantiator.newInstance(CopySpecWrapper.class, child);
+        configureAction.execute(wrapper);
+        return wrapper;
     }
 
+    @Override
     public CopySpecInternal addFirst() {
         return addChildAtPosition(0);
     }
 
     protected CopySpecInternal addChildAtPosition(int position) {
-        DefaultCopySpec child = instantiator.newInstance(SingleParentCopySpec.class, fileResolver, instantiator, buildRootResolver());
+        DefaultCopySpec child = instantiator.newInstance(SingleParentCopySpec.class, fileResolver, fileCollectionFactory, instantiator, buildRootResolver());
         addChildSpec(position, child);
         return child;
     }
 
+    @Override
     public CopySpecInternal addChild() {
-        DefaultCopySpec child = new SingleParentCopySpec(fileResolver, instantiator, buildRootResolver());
+        DefaultCopySpec child = new SingleParentCopySpec(fileResolver, fileCollectionFactory, instantiator, buildRootResolver());
         addChildSpec(child);
         return child;
     }
 
+    @Override
     public CopySpecInternal addChildBeforeSpec(CopySpecInternal childSpec) {
         int position = childSpecs.indexOf(childSpec);
         return position != -1 ? addChildAtPosition(position) : addChild();
@@ -169,21 +193,13 @@ public class DefaultCopySpec implements CopySpecInternal {
         childSpecsInAdditionOrder.add(childSpec);
 
         // In case more descendants are added to downward hierarchy, make sure they'll notify us
-        childSpec.addChildSpecListener(new CopySpecListener() {
-            @Override
-            public void childSpecAdded(CopySpecAddress path, CopySpecInternal spec) {
-                CopySpecAddress childPath = new DefaultCopySpecAddress(null, DefaultCopySpec.this, additionIndex).append(path);
-                fireChildSpecListeners(childPath, spec);
-            }
+        childSpec.addChildSpecListener((path, spec) -> {
+            CopySpecAddress childPath = new DefaultCopySpecAddress(null, DefaultCopySpec.this, additionIndex).append(path);
+            fireChildSpecListeners(childPath, spec);
         });
 
         // Notify upwards of currently existing descendant spec hierarchy
-        childSpec.visit(new DefaultCopySpecAddress(null, this, additionIndex), new CopySpecVisitor() {
-            @Override
-            public void visit(final CopySpecAddress parentPath, CopySpecInternal spec) {
-                fireChildSpecListeners(parentPath, spec);
-            }
-        });
+        childSpec.visit(new DefaultCopySpecAddress(null, this, additionIndex), this::fireChildSpecListeners);
     }
 
     private void fireChildSpecListeners(CopySpecAddress path, CopySpecInternal spec) {
@@ -208,228 +224,248 @@ public class DefaultCopySpec implements CopySpecInternal {
         this.listeners.add(copySpecListener);
     }
 
+    @VisibleForTesting
     public Set<Object> getSourcePaths() {
         return sourcePaths;
     }
 
+    @Nullable
+    public String getDestPath() {
+        return destDir == null ? null : PATH_NOTATION_PARSER.parseNotation(destDir);
+    }
 
-    public DefaultCopySpec into(Object destDir) {
+    @Override
+    public CopySpec into(Object destDir) {
         this.destDir = destDir;
         return this;
     }
 
+    @Override
     public CopySpec into(Object destPath, Closure configureClosure) {
-        return into(destPath, new ClosureBackedAction<CopySpec>(configureClosure));
+        return into(destPath, new ClosureBackedAction<>(configureClosure));
     }
 
+    @Override
     public CopySpec into(Object destPath, Action<? super CopySpec> copySpec) {
-        if (copySpec == null) {
-            into(destPath);
-            return this;
-        } else {
-            CopySpecInternal child = addChild();
-            child.into(destPath);
-            CopySpecWrapper wrapper = instantiator.newInstance(CopySpecWrapper.class, child);
-            copySpec.execute(wrapper);
-            return wrapper;
-        }
+        Preconditions.checkNotNull(copySpec, "Gradle does not allow passing null for the configuration action for CopySpec.into().");
+        CopySpecInternal child = addChild();
+        child.into(destPath);
+        CopySpecWrapper wrapper = instantiator.newInstance(CopySpecWrapper.class, child);
+        copySpec.execute(wrapper);
+        return wrapper;
     }
 
+    @Override
     public boolean isCaseSensitive() {
         return buildRootResolver().isCaseSensitive();
     }
 
+    @Override
     public void setCaseSensitive(boolean caseSensitive) {
         this.caseSensitive = caseSensitive;
     }
 
+    @Override
     public boolean getIncludeEmptyDirs() {
         return buildRootResolver().getIncludeEmptyDirs();
     }
 
+    @Override
     public void setIncludeEmptyDirs(boolean includeEmptyDirs) {
         this.includeEmptyDirs = includeEmptyDirs;
     }
 
+    @Override
     public DuplicatesStrategy getDuplicatesStrategy() {
         return buildRootResolver().getDuplicatesStrategy();
     }
 
+    @Override
     public void setDuplicatesStrategy(DuplicatesStrategy strategy) {
         this.duplicatesStrategy = strategy;
     }
 
+    @Override
     public CopySpec filesMatching(String pattern, Action<? super FileCopyDetails> action) {
-        Spec<RelativePath> matcher = PatternMatcherFactory.getPatternMatcher(true, isCaseSensitive(), pattern);
+        PatternMatcher matcher = PatternMatcherFactory.getPatternMatcher(true, isCaseSensitive(), pattern);
         return eachFile(new MatchingCopyAction(matcher, action));
     }
 
+    @Override
     public CopySpec filesMatching(Iterable<String> patterns, Action<? super FileCopyDetails> action) {
         if (!patterns.iterator().hasNext()) {
             throw new InvalidUserDataException("must provide at least one pattern to match");
         }
-        List<Spec> matchers = new ArrayList<Spec>();
-        for (String pattern : patterns) {
-            matchers.add(PatternMatcherFactory.getPatternMatcher(true, isCaseSensitive(), pattern));
-        }
-        Spec unionMatcher = Specs.union(matchers.toArray(new Spec[matchers.size()]));
-        return eachFile(new MatchingCopyAction(unionMatcher, action));
+        PatternMatcher matcher = PatternMatcherFactory.getPatternsMatcher(true, isCaseSensitive(), patterns);
+        return eachFile(new MatchingCopyAction(matcher, action));
     }
 
+    @Override
     public CopySpec filesNotMatching(String pattern, Action<? super FileCopyDetails> action) {
-        Spec<RelativePath> matcher = PatternMatcherFactory.getPatternMatcher(true, isCaseSensitive(), pattern);
-        return eachFile(new MatchingCopyAction(Specs.<RelativePath>negate(matcher), action));
+        PatternMatcher matcher = PatternMatcherFactory.getPatternMatcher(true, isCaseSensitive(), pattern);
+        return eachFile(new MatchingCopyAction(matcher.negate(), action));
     }
 
+    @Override
     public CopySpec filesNotMatching(Iterable<String> patterns, Action<? super FileCopyDetails> action) {
         if (!patterns.iterator().hasNext()) {
             throw new InvalidUserDataException("must provide at least one pattern to not match");
         }
-        List<Spec> matchers = new ArrayList<Spec>();
-        for (String pattern : patterns) {
-            matchers.add(PatternMatcherFactory.getPatternMatcher(true, isCaseSensitive(), pattern));
-        }
-        Spec unionMatcher = Specs.union(matchers.toArray(new Spec[matchers.size()]));
-        return eachFile(new MatchingCopyAction(Specs.<RelativePath>negate(unionMatcher), action));
+        PatternMatcher matcher = PatternMatcherFactory.getPatternsMatcher(true, isCaseSensitive(), patterns);
+        return eachFile(new MatchingCopyAction(matcher.negate(), action));
     }
 
+    public PatternSet getPatterns() {
+        return patternSet;
+    }
+
+    @Override
     public CopySpec include(String... includes) {
         patternSet.include(includes);
         return this;
     }
 
+    @Override
     public CopySpec include(Iterable<String> includes) {
         patternSet.include(includes);
         return this;
     }
 
+    @Override
     public CopySpec include(Spec<FileTreeElement> includeSpec) {
         patternSet.include(includeSpec);
         return this;
     }
 
+    @Override
     public CopySpec include(Closure includeSpec) {
         patternSet.include(includeSpec);
         return this;
     }
 
+    @Override
     public Set<String> getIncludes() {
         return patternSet.getIncludes();
     }
 
+    @Override
     public CopySpec setIncludes(Iterable<String> includes) {
         patternSet.setIncludes(includes);
         return this;
     }
 
+    @Override
     public CopySpec exclude(String... excludes) {
         patternSet.exclude(excludes);
         return this;
     }
 
+    @Override
     public CopySpec exclude(Iterable<String> excludes) {
         patternSet.exclude(excludes);
         return this;
     }
 
+    @Override
     public CopySpec exclude(Spec<FileTreeElement> excludeSpec) {
         patternSet.exclude(excludeSpec);
         return this;
     }
 
+    @Override
     public CopySpec exclude(Closure excludeSpec) {
         patternSet.exclude(excludeSpec);
         return this;
     }
 
+    @Override
     public Set<String> getExcludes() {
         return patternSet.getExcludes();
     }
 
-    public DefaultCopySpec setExcludes(Iterable<String> excludes) {
+    @Override
+    public CopySpec setExcludes(Iterable<String> excludes) {
         patternSet.setExcludes(excludes);
         return this;
     }
 
+    @Override
     public CopySpec rename(String sourceRegEx, String replaceWith) {
         appendCopyAction(new RenamingCopyAction(new RegExpNameMapper(sourceRegEx, replaceWith)));
         return this;
     }
 
+    @Override
     public CopySpec rename(Pattern sourceRegEx, String replaceWith) {
         appendCopyAction(new RenamingCopyAction(new RegExpNameMapper(sourceRegEx, replaceWith)));
         return this;
     }
 
+    @Override
     public CopySpec filter(final Class<? extends FilterReader> filterType) {
-        appendCopyAction(new Action<FileCopyDetails>() {
-            public void execute(FileCopyDetails fileCopyDetails) {
-                fileCopyDetails.filter(filterType);
-            }
-        });
+        appendCopyAction(fileCopyDetails -> fileCopyDetails.filter(filterType));
         return this;
     }
 
+    @Override
     public CopySpec filter(final Closure closure) {
         return filter(new ClosureBackedTransformer(closure));
     }
 
+    @Override
     public CopySpec filter(final Transformer<String, String> transformer) {
-        appendCopyAction(new Action<FileCopyDetails>() {
-            public void execute(FileCopyDetails fileCopyDetails) {
-                fileCopyDetails.filter(transformer);
-            }
-        });
+        appendCopyAction(fileCopyDetails -> fileCopyDetails.filter(transformer));
         return this;
     }
 
+    @Override
     public CopySpec filter(final Map<String, ?> properties, final Class<? extends FilterReader> filterType) {
-        appendCopyAction(new Action<FileCopyDetails>() {
-            public void execute(FileCopyDetails fileCopyDetails) {
-                fileCopyDetails.filter(properties, filterType);
-            }
-        });
+        appendCopyAction(fileCopyDetails -> fileCopyDetails.filter(properties, filterType));
         return this;
     }
 
+    @Override
     public CopySpec expand(final Map<String, ?> properties) {
-        appendCopyAction(new Action<FileCopyDetails>() {
-            public void execute(FileCopyDetails fileCopyDetails) {
-                fileCopyDetails.expand(properties);
-            }
-        });
+        appendCopyAction(fileCopyDetails -> fileCopyDetails.expand(properties));
         return this;
     }
 
+    @Override
     public CopySpec rename(Closure closure) {
         return rename(new ClosureBackedTransformer(closure));
     }
 
+    @Override
     public CopySpec rename(Transformer<String, String> renamer) {
-        ChainingTransformer<String> transformer = new ChainingTransformer<String>(String.class);
+        ChainingTransformer<String> transformer = new ChainingTransformer<>(String.class);
         transformer.add(renamer);
         appendCopyAction(new RenamingCopyAction(transformer));
         return this;
     }
 
+    @Override
     public Integer getDirMode() {
         return buildRootResolver().getDirMode();
     }
 
+    @Override
     public Integer getFileMode() {
         return buildRootResolver().getFileMode();
     }
 
-    public CopyProcessingSpec setDirMode(Integer mode) {
+    @Override
+    public CopyProcessingSpec setDirMode(@Nullable Integer mode) {
         dirMode = mode;
         return this;
     }
 
-    public CopyProcessingSpec setFileMode(Integer mode) {
+    @Override
+    public CopyProcessingSpec setFileMode(@Nullable Integer mode) {
         fileMode = mode;
         return this;
     }
 
+    @Override
     public CopySpec eachFile(Action<? super FileCopyDetails> action) {
         appendCopyAction(action);
         return this;
@@ -445,47 +481,44 @@ public class DefaultCopySpec implements CopySpecInternal {
         copyActions.add(action);
     }
 
+    @Override
     public CopySpec eachFile(Closure closure) {
         appendCopyAction(ConfigureUtil.configureUsing(closure));
         return this;
     }
 
-    public Iterable<CopySpecInternal> getChildren() {
+    @Override
+    public Collection<CopySpecInternal> getChildren() {
         return childSpecs;
     }
 
+    @Override
     public void walk(Action<? super CopySpecResolver> action) {
         buildRootResolver().walk(action);
     }
 
-    public boolean hasSource() {
-        if (!sourcePaths.isEmpty()) {
-            return true;
-        }
-        for (CopySpecInternal spec : childSpecs) {
-            if (spec.hasSource()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
+    @Override
     public CopySpecResolver buildResolverRelativeToParent(CopySpecResolver parent) {
         return this.new DefaultCopySpecResolver(parent);
     }
 
+    @Override
     public CopySpecResolver buildRootResolver() {
         return this.new DefaultCopySpecResolver(null);
     }
 
+    public FileCollection resolveSourceFiles() {
+        return fileCollectionFactory.resolving(sourcePaths);
+    }
+
+    @Override
     public String getFilteringCharset() {
         return buildRootResolver().getFilteringCharset();
     }
 
+    @Override
     public void setFilteringCharset(String charset) {
-        if (charset == null) {
-            throw new InvalidUserDataException("filteringCharset must not be null");
-        }
+        Preconditions.checkNotNull(charset, "filteringCharset must not be null");
         if (!Charset.isSupported(charset)) {
             throw new InvalidUserDataException(String.format("filteringCharset %s is not supported by your JVM", charset));
         }
@@ -496,10 +529,11 @@ public class DefaultCopySpec implements CopySpecInternal {
 
         private CopySpecResolver parentResolver;
 
-        private DefaultCopySpecResolver(CopySpecResolver parent) {
+        private DefaultCopySpecResolver(@Nullable CopySpecResolver parent) {
             this.parentResolver = parent;
         }
 
+        @Override
         public RelativePath getDestPath() {
 
             RelativePath parentPath;
@@ -509,11 +543,11 @@ public class DefaultCopySpec implements CopySpecInternal {
                 parentPath = parentResolver.getDestPath();
             }
 
-            if (destDir == null) {
+            String path = DefaultCopySpec.this.getDestPath();
+            if (path == null) {
                 return parentPath;
             }
 
-            String path = PATH_NOTATION_PARSER.parseNotation(destDir);
             if (path.startsWith("/") || path.startsWith(File.separator)) {
                 return RelativePath.parse(false, path);
             }
@@ -521,33 +555,33 @@ public class DefaultCopySpec implements CopySpecInternal {
             return RelativePath.parse(false, parentPath, path);
         }
 
+        @Override
         public FileTree getSource() {
-            return fileResolver.resolveFilesAsTree(sourcePaths).matching(this.getPatternSet());
+            return resolveSourceFiles().getAsFileTree().matching(this.getPatternSet());
         }
 
+        @Override
         public FileTree getAllSource() {
             final ImmutableList.Builder<FileTree> builder = ImmutableList.builder();
-            walk(new Action<CopySpecResolver>() {
-                public void execute(CopySpecResolver copySpecResolver) {
-                    builder.add(copySpecResolver.getSource());
-                }
-            });
+            walk(copySpecResolver -> builder.add(copySpecResolver.getSource()));
 
-            return fileResolver.compositeFileTree(builder.build());
+            return new DefaultCompositeFileTree(CollectionUtils.checkedCast(FileTreeInternal.class, builder.build()));
         }
 
+        @Override
         public Collection<? extends Action<? super FileCopyDetails>> getAllCopyActions() {
             if (parentResolver == null) {
                 return copyActions;
             }
-            List<Action<? super FileCopyDetails>> allActions = new ArrayList<Action<? super FileCopyDetails>>();
+            List<Action<? super FileCopyDetails>> allActions = new ArrayList<>();
             allActions.addAll(parentResolver.getAllCopyActions());
             allActions.addAll(copyActions);
             return allActions;
         }
 
+        @Override
         public List<String> getAllIncludes() {
-            List<String> result = new ArrayList<String>();
+            List<String> result = new ArrayList<>();
             if (parentResolver != null) {
                 result.addAll(parentResolver.getAllIncludes());
             }
@@ -555,8 +589,9 @@ public class DefaultCopySpec implements CopySpecInternal {
             return result;
         }
 
+        @Override
         public List<String> getAllExcludes() {
-            List<String> result = new ArrayList<String>();
+            List<String> result = new ArrayList<>();
             if (parentResolver != null) {
                 result.addAll(parentResolver.getAllExcludes());
             }
@@ -565,8 +600,9 @@ public class DefaultCopySpec implements CopySpecInternal {
         }
 
 
+        @Override
         public List<Spec<FileTreeElement>> getAllExcludeSpecs() {
-            List<Spec<FileTreeElement>> result = new ArrayList<Spec<FileTreeElement>>();
+            List<Spec<FileTreeElement>> result = new ArrayList<>();
             if (parentResolver != null) {
                 result.addAll(parentResolver.getAllExcludeSpecs());
             }
@@ -574,8 +610,9 @@ public class DefaultCopySpec implements CopySpecInternal {
             return result;
         }
 
+        @Override
         public DuplicatesStrategy getDuplicatesStrategy() {
-            if (duplicatesStrategy != null) {
+            if (duplicatesStrategy != DuplicatesStrategy.INHERIT) {
                 return duplicatesStrategy;
             }
             if (parentResolver != null) {
@@ -584,7 +621,18 @@ public class DefaultCopySpec implements CopySpecInternal {
             return DuplicatesStrategy.INCLUDE;
         }
 
+        @Override
+        public boolean isDefaultDuplicateStrategy() {
+            if (duplicatesStrategy != DuplicatesStrategy.INHERIT) {
+                return false;
+            }
+            if (parentResolver != null) {
+                return parentResolver.isDefaultDuplicateStrategy();
+            }
+            return true;
+        }
 
+        @Override
         public boolean isCaseSensitive() {
             if (caseSensitive != null) {
                 return caseSensitive;
@@ -595,6 +643,7 @@ public class DefaultCopySpec implements CopySpecInternal {
             return true;
         }
 
+        @Override
         public Integer getFileMode() {
             if (fileMode != null) {
                 return fileMode;
@@ -605,6 +654,7 @@ public class DefaultCopySpec implements CopySpecInternal {
             return null;
         }
 
+        @Override
         public Integer getDirMode() {
             if (dirMode != null) {
                 return dirMode;
@@ -615,6 +665,7 @@ public class DefaultCopySpec implements CopySpecInternal {
             return null;
         }
 
+        @Override
         public boolean getIncludeEmptyDirs() {
             if (includeEmptyDirs != null) {
                 return includeEmptyDirs;
@@ -625,8 +676,9 @@ public class DefaultCopySpec implements CopySpecInternal {
             return true;
         }
 
+        @Override
         public List<Spec<FileTreeElement>> getAllIncludeSpecs() {
-            List<Spec<FileTreeElement>> result = new ArrayList<Spec<FileTreeElement>>();
+            List<Spec<FileTreeElement>> result = new ArrayList<>();
             if (parentResolver != null) {
                 result.addAll(parentResolver.getAllIncludeSpecs());
             }
@@ -636,6 +688,7 @@ public class DefaultCopySpec implements CopySpecInternal {
 
         public PatternSet getPatternSet() {
             PatternSet patterns = fileResolver.getPatternSetFactory().create();
+            assert patterns != null;
             patterns.setCaseSensitive(isCaseSensitive());
             patterns.include(this.getAllIncludes());
             patterns.includeSpecs(getAllIncludeSpecs());
@@ -644,6 +697,7 @@ public class DefaultCopySpec implements CopySpecInternal {
             return patterns;
         }
 
+        @Override
         public void walk(Action<? super CopySpecResolver> action) {
             action.execute(this);
             for (CopySpecInternal child : getChildren()) {
@@ -651,6 +705,7 @@ public class DefaultCopySpec implements CopySpecInternal {
             }
         }
 
+        @Override
         public String getFilteringCharset() {
             if (filteringCharset != null) {
                 return filteringCharset;
@@ -660,16 +715,14 @@ public class DefaultCopySpec implements CopySpecInternal {
             }
             return Charset.defaultCharset().name();
         }
-
-
     }
 
-    private class DefaultCopySpecAddress implements CopySpecAddress {
+    private static class DefaultCopySpecAddress implements CopySpecAddress {
         private final DefaultCopySpecAddress parent;
         private final CopySpecInternal spec;
         private final int additionIndex;
 
-        public DefaultCopySpecAddress(DefaultCopySpecAddress parent, CopySpecInternal spec, int additionIndex) {
+        public DefaultCopySpecAddress(@Nullable DefaultCopySpecAddress parent, CopySpecInternal spec, int additionIndex) {
             this.parent = parent;
             this.spec = spec;
             this.additionIndex = additionIndex;

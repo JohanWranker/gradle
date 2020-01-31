@@ -18,31 +18,28 @@
 
 package org.gradle.api.reporting.internal
 
+import org.gradle.api.Describable
 import org.gradle.api.InvalidUserDataException
-import org.gradle.api.Project
-import org.gradle.api.internal.AsmBackedClassGenerator
-import org.gradle.api.internal.ClassGeneratorBackedInstantiator
-import org.gradle.api.internal.file.TestFiles
+import org.gradle.api.file.FileSystemLocation
+import org.gradle.api.file.FileSystemLocationProperty
+import org.gradle.api.internal.CollectionCallbackActionDecorator
+import org.gradle.api.internal.provider.DefaultProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.reflect.ObjectInstantiationException
 import org.gradle.api.reporting.Report
 import org.gradle.api.reporting.ReportContainer
-import org.gradle.internal.reflect.DirectInstantiator
-import org.gradle.internal.reflect.Instantiator
-import org.gradle.api.reflect.ObjectInstantiationException
-import org.gradle.testfixtures.ProjectBuilder
+import org.gradle.internal.Describables
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class DefaultReportContainerTest extends Specification {
-
-    static Instantiator instantiator = new ClassGeneratorBackedInstantiator(new AsmBackedClassGenerator(), DirectInstantiator.INSTANCE)
-    static Project project = ProjectBuilder.builder().build()
-
     static class TestReportContainer extends DefaultReportContainer {
         TestReportContainer(Closure c) {
-            super(Report, DefaultReportContainerTest.instantiator)
+            super(Report, TestUtil.instantiatorFactory().decorateLenient(), CollectionCallbackActionDecorator.NOOP)
 
             c.delegate = new Object() {
                 Report createReport(String name) {
-                    add(SimpleReport, name, name, Report.OutputType.FILE, TestFiles.resolver(), DefaultReportContainerTest.project)
+                    add(TestReport, name, Describables.of(name), Report.OutputType.FILE)
                 }
             }
 
@@ -50,15 +47,15 @@ class DefaultReportContainerTest extends Specification {
         }
     }
 
-    DefaultReportContainer createContainer(Closure c) {
+    DefaultReportContainer createContainer(Closure cl) {
         try {
-            instantiator.newInstance(TestReportContainer, c)
+            TestUtil.instantiatorFactory().decorateLenient().newInstance(TestReportContainer, cl)
         } catch (ObjectInstantiationException e) {
             throw e.cause
         }
     }
 
-    def container
+    DefaultReportContainer container
 
     def setup() {
         container = createContainer {
@@ -78,7 +75,7 @@ class DefaultReportContainerTest extends Specification {
 
     def "container is immutable"() {
         when:
-        container.add(new SimpleReport("d", "d", Report.OutputType.FILE, TestFiles.resolver(), project))
+        container.add(Stub(Report))
 
         then:
         thrown(ReportContainer.ImmutableViolationException)
@@ -134,7 +131,16 @@ class DefaultReportContainerTest extends Specification {
         thrown(MissingMethodException)
     }
 
-    def cleanupSpec() {
-        instantiator = null
+    static class TestReport extends SimpleReport {
+        final Property<Boolean> required = new DefaultProperty<>(Boolean).value(false)
+
+        TestReport(String name, Describable displayName, OutputType outputType) {
+            super(name, displayName, outputType)
+        }
+
+        @Override
+        FileSystemLocationProperty<? extends FileSystemLocation> getOutputLocation() {
+            return null
+        }
     }
 }

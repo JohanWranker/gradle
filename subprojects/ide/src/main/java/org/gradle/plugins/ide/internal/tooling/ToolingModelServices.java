@@ -17,8 +17,9 @@
 package org.gradle.plugins.ide.internal.tooling;
 
 import org.gradle.api.internal.artifacts.ivyservice.projectmodule.ProjectPublicationRegistry;
+import org.gradle.api.internal.file.FileCollectionFactory;
+import org.gradle.api.internal.project.ProjectStateRegistry;
 import org.gradle.api.internal.project.ProjectTaskLister;
-import org.gradle.initialization.ProjectPathRegistry;
 import org.gradle.internal.service.ServiceRegistration;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.service.scopes.AbstractPluginServiceRegistry;
@@ -35,13 +36,14 @@ public class ToolingModelServices extends AbstractPluginServiceRegistry {
 
     private static class BuildScopeToolingServices {
 
-        protected UniqueProjectNameProvider createBuildProjectRegistry(ProjectPathRegistry projectRegistry) {
+        protected UniqueProjectNameProvider createBuildProjectRegistry(ProjectStateRegistry projectRegistry) {
             return new DefaultUniqueProjectNameProvider(projectRegistry);
         }
 
         protected BuildScopeToolingModelBuilderRegistryAction createIdeBuildScopeToolingModelBuilderRegistryAction(
             final ProjectTaskLister taskLister,
             final ProjectPublicationRegistry projectPublicationRegistry,
+            final FileCollectionFactory fileCollectionFactory,
             final ServiceRegistry services) {
 
             return new BuildScopeToolingModelBuilderRegistryAction() {
@@ -49,6 +51,8 @@ public class ToolingModelServices extends AbstractPluginServiceRegistry {
                 public void execute(ToolingModelBuilderRegistry registry) {
                     GradleProjectBuilder gradleProjectBuilder = new GradleProjectBuilder();
                     IdeaModelBuilder ideaModelBuilder = new IdeaModelBuilder(gradleProjectBuilder, services);
+                    registry.register(new RunBuildDependenciesTaskBuilder());
+                    registry.register(new RunEclipseTasksBuilder());
                     registry.register(new EclipseModelBuilder(gradleProjectBuilder, services));
                     registry.register(ideaModelBuilder);
                     registry.register(gradleProjectBuilder);
@@ -56,7 +60,7 @@ public class ToolingModelServices extends AbstractPluginServiceRegistry {
                     registry.register(new BasicIdeaModelBuilder(ideaModelBuilder));
                     registry.register(new BuildInvocationsBuilder(taskLister));
                     registry.register(new PublicationsBuilder(projectPublicationRegistry));
-                    registry.register(new BuildEnvironmentBuilder());
+                    registry.register(new BuildEnvironmentBuilder(fileCollectionFactory));
                 }
             };
         }

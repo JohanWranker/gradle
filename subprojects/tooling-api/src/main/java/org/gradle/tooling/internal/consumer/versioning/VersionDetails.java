@@ -16,16 +16,6 @@
 
 package org.gradle.tooling.internal.consumer.versioning;
 
-import org.gradle.tooling.model.GradleProject;
-import org.gradle.tooling.model.build.BuildEnvironment;
-import org.gradle.tooling.model.eclipse.EclipseProject;
-import org.gradle.tooling.model.eclipse.HierarchicalEclipseProject;
-import org.gradle.tooling.model.gradle.BuildInvocations;
-import org.gradle.tooling.model.gradle.GradleBuild;
-import org.gradle.tooling.model.gradle.ProjectPublications;
-import org.gradle.tooling.model.idea.BasicIdeaProject;
-import org.gradle.tooling.model.idea.IdeaProject;
-import org.gradle.tooling.model.internal.outcomes.ProjectOutcomes;
 import org.gradle.util.GradleVersion;
 
 import java.io.Serializable;
@@ -36,25 +26,22 @@ public abstract class VersionDetails implements Serializable {
     }
 
     public static VersionDetails from(GradleVersion version) {
+        if (version.getBaseVersion().compareTo(GradleVersion.version("5.1")) >= 0) {
+            return new R51VersionDetails(version.getVersion());
+        }
+        if (version.getBaseVersion().compareTo(GradleVersion.version("4.8")) >= 0) {
+            return new R48VersionDetails(version.getVersion());
+        }
         if (version.getBaseVersion().compareTo(GradleVersion.version("4.4")) >= 0) {
             return new R44VersionDetails(version.getVersion());
         }
         if (version.getBaseVersion().compareTo(GradleVersion.version("3.5")) >= 0) {
             return new R35VersionDetails(version.getVersion());
         }
-        if (version.compareTo(GradleVersion.version("2.1")) >= 0) {
-            return new R21VersionDetails(version.getVersion());
+        if (version.getBaseVersion().compareTo(GradleVersion.version("2.8")) >= 0) {
+            return new R28VersionDetails(version.getVersion());
         }
-        if (version.compareTo(GradleVersion.version("1.12")) >= 0) {
-            return new R112VersionDetails(version.getVersion());
-        }
-        if (version.compareTo(GradleVersion.version("1.8")) >= 0) {
-            return new R18VersionDetails(version.getVersion());
-        }
-        if (version.compareTo(GradleVersion.version("1.6")) >= 0) {
-            return new R16VersionDetails(version.getVersion());
-        }
-        return new R12VersionDetails(version.getVersion());
+        return new R26VersionDetails(version.getVersion());
     }
 
     private final String providerVersion;
@@ -77,10 +64,6 @@ public abstract class VersionDetails implements Serializable {
         return false;
     }
 
-    public boolean supportsCancellation() {
-        return false;
-    }
-
     public boolean supportsEnvironmentVariablesCustomization() {
         return false;
     }
@@ -93,50 +76,23 @@ public abstract class VersionDetails implements Serializable {
         return false;
     }
 
-    private static class R12VersionDetails extends VersionDetails {
-        public R12VersionDetails(String version) {
-            super(version);
-        }
-
-        @Override
-        public boolean maySupportModel(Class<?> modelType) {
-            return modelType.equals(ProjectOutcomes.class)
-                || modelType.equals(HierarchicalEclipseProject.class)
-                || modelType.equals(EclipseProject.class)
-                || modelType.equals(IdeaProject.class)
-                || modelType.equals(BasicIdeaProject.class)
-                || modelType.equals(BuildEnvironment.class)
-                || modelType.equals(GradleProject.class)
-                || modelType.equals(Void.class);
-        }
+    public boolean supportsRunPhasedActions() {
+        return false;
     }
 
-    private static class R16VersionDetails extends VersionDetails {
-        public R16VersionDetails(String version) {
-            super(version);
-        }
-
-        @Override
-        public boolean maySupportModel(Class<?> modelType) {
-            return modelType != BuildInvocations.class
-                && modelType != ProjectPublications.class
-                && modelType != GradleBuild.class;
-        }
+    public boolean supportsPluginClasspathInjection() {
+        return false;
     }
 
-    private static class R18VersionDetails extends VersionDetails {
-        private R18VersionDetails(String version) {
-            super(version);
-        }
-
-        @Override
-        public boolean maySupportModel(Class<?> modelType) {
-            return modelType != ProjectPublications.class && modelType != BuildInvocations.class;
-        }
+    /**
+     * Returns true if this provider correctly implements the protocol contract wrt exceptions thrown on cancel
+     */
+    public boolean honorsContractOnCancel() {
+        return false;
     }
 
-    private static class R112VersionDetails extends VersionDetails {
-        private R112VersionDetails(String version) {
+    private static class R26VersionDetails extends VersionDetails {
+        R26VersionDetails(String version) {
             super(version);
         }
 
@@ -146,24 +102,19 @@ public abstract class VersionDetails implements Serializable {
         }
     }
 
-    private static class R21VersionDetails extends VersionDetails {
-        public R21VersionDetails(String version) {
+    private static class R28VersionDetails extends R26VersionDetails {
+        R28VersionDetails(String version) {
             super(version);
         }
 
         @Override
-        public boolean maySupportModel(Class<?> modelType) {
-            return true;
-        }
-
-        @Override
-        public boolean supportsCancellation() {
+        public boolean supportsPluginClasspathInjection() {
             return true;
         }
     }
 
-    private static class R35VersionDetails extends R21VersionDetails {
-        public R35VersionDetails(String version) {
+    private static class R35VersionDetails extends R28VersionDetails {
+        R35VersionDetails(String version) {
             super(version);
         }
 
@@ -179,12 +130,34 @@ public abstract class VersionDetails implements Serializable {
     }
 
     private static class R44VersionDetails extends R35VersionDetails {
-        public R44VersionDetails(String version) {
+        R44VersionDetails(String version) {
             super(version);
         }
 
         @Override
         public boolean supportsParameterizedToolingModels() {
+            return true;
+        }
+    }
+
+    private static class R48VersionDetails extends R44VersionDetails {
+        R48VersionDetails(String version) {
+            super(version);
+        }
+
+        @Override
+        public boolean supportsRunPhasedActions() {
+            return true;
+        }
+    }
+
+    private static class R51VersionDetails extends R48VersionDetails {
+        R51VersionDetails(String version) {
+            super(version);
+        }
+
+        @Override
+        public boolean honorsContractOnCancel() {
             return true;
         }
     }

@@ -22,6 +22,7 @@ import org.gradle.internal.work.WorkerLeaseService;
 import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.language.base.internal.compile.DefaultCompilerVersion;
 import org.gradle.language.base.internal.compile.VersionAwareCompiler;
+import org.gradle.nativeplatform.internal.BinaryToolSpec;
 import org.gradle.nativeplatform.internal.CompilerOutputFileNamingSchemeFactory;
 import org.gradle.nativeplatform.internal.LinkerSpec;
 import org.gradle.nativeplatform.internal.StaticLibraryArchiverSpec;
@@ -31,12 +32,12 @@ import org.gradle.nativeplatform.toolchain.internal.CommandLineToolContext;
 import org.gradle.nativeplatform.toolchain.internal.CommandLineToolInvocationWorker;
 import org.gradle.nativeplatform.toolchain.internal.DefaultCommandLineToolInvocationWorker;
 import org.gradle.nativeplatform.toolchain.internal.DefaultMutableCommandLineToolContext;
+import org.gradle.nativeplatform.toolchain.internal.EmptySystemLibraries;
 import org.gradle.nativeplatform.toolchain.internal.MutableCommandLineToolContext;
-import org.gradle.nativeplatform.toolchain.internal.NativeCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.OutputCleaningCompiler;
 import org.gradle.nativeplatform.toolchain.internal.Stripper;
 import org.gradle.nativeplatform.toolchain.internal.SymbolExtractor;
-import org.gradle.nativeplatform.toolchain.internal.SystemIncludesAwarePlatformToolProvider;
+import org.gradle.nativeplatform.toolchain.internal.SystemLibraries;
 import org.gradle.nativeplatform.toolchain.internal.ToolType;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.AssembleSpec;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.CCompileSpec;
@@ -48,22 +49,21 @@ import org.gradle.nativeplatform.toolchain.internal.compilespec.ObjectiveCPCHCom
 import org.gradle.nativeplatform.toolchain.internal.compilespec.ObjectiveCppCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.ObjectiveCppPCHCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.gcc.metadata.GccMetadata;
-import org.gradle.nativeplatform.toolchain.internal.gcc.metadata.GccMetadataProvider;
 import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetaDataProvider;
 import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetadata;
 import org.gradle.nativeplatform.toolchain.internal.tools.CommandLineToolSearchResult;
 import org.gradle.nativeplatform.toolchain.internal.tools.GccCommandLineToolConfigurationInternal;
 import org.gradle.nativeplatform.toolchain.internal.tools.ToolRegistry;
 import org.gradle.nativeplatform.toolchain.internal.tools.ToolSearchPath;
-import org.gradle.platform.base.internal.toolchain.ToolSearchResult;
+import org.gradle.platform.base.internal.toolchain.ComponentNotFound;
+import org.gradle.platform.base.internal.toolchain.SearchResult;
 import org.gradle.process.internal.ExecActionFactory;
 
-import java.io.File;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-class GccPlatformToolProvider extends AbstractPlatformToolProvider implements SystemIncludesAwarePlatformToolProvider {
+class GccPlatformToolProvider extends AbstractPlatformToolProvider {
 
     private static final Map<ToolType, String> LANGUAGE_FOR_COMPILER = ImmutableMap.of(
         ToolType.C_COMPILER, "c",
@@ -92,8 +92,8 @@ class GccPlatformToolProvider extends AbstractPlatformToolProvider implements Sy
     }
 
     @Override
-    public ToolSearchResult isToolAvailable(ToolType toolType) {
-        return toolSearchPath.locate(toolType, toolRegistry.getTool(toolType).getExecutable());
+    public CommandLineToolSearchResult locateTool(ToolType compilerType) {
+        return toolSearchPath.locate(compilerType, toolRegistry.getTool(compilerType).getExecutable());
     }
 
     @Override
@@ -112,12 +112,12 @@ class GccPlatformToolProvider extends AbstractPlatformToolProvider implements Sy
         return versionAwareCompiler(outputCleaningCompiler, ToolType.CPP_COMPILER);
     }
 
-    private <T extends NativeCompileSpec> VersionAwareCompiler<T> versionAwareCompiler(Compiler<T> compiler, ToolType toolType) {
-        GccMetadata gccMetadata = getGccMetadata(toolType);
+    private <T extends BinaryToolSpec> VersionAwareCompiler<T> versionAwareCompiler(Compiler<T> compiler, ToolType toolType) {
+        SearchResult<GccMetadata> gccMetadata = getGccMetadata(toolType);
         return new VersionAwareCompiler<T>(compiler, new DefaultCompilerVersion(
             metadataProvider.getCompilerType().getIdentifier(),
-            gccMetadata.getVendor(),
-            gccMetadata.getVersion())
+            gccMetadata.getComponent().getVendor(),
+            gccMetadata.getComponent().getVersion())
         );
     }
 
@@ -180,7 +180,7 @@ class GccPlatformToolProvider extends AbstractPlatformToolProvider implements Sy
     @Override
     protected Compiler<LinkerSpec> createLinker() {
         GccCommandLineToolConfigurationInternal linkerTool = toolRegistry.getTool(ToolType.LINKER);
-        return new GccLinker(buildOperationExecutor, commandLineTool(linkerTool), context(linkerTool), useCommandFile, workerLeaseService);
+        return versionAwareCompiler(new GccLinker(buildOperationExecutor, commandLineTool(linkerTool), context(linkerTool), useCommandFile, workerLeaseService), ToolType.LINKER);
     }
 
     @Override
@@ -213,6 +213,11 @@ class GccPlatformToolProvider extends AbstractPlatformToolProvider implements Sy
         baseInvocation.addPath(toolSearchPath.getPath());
         baseInvocation.addEnvironmentVar("CYGWIN", "nodosfilewarning");
         baseInvocation.setArgAction(toolConfiguration.getArgAction());
+
+        String developerDir = System.getenv("DEVELOPER_DIR");
+        if (developerDir != null) {
+            baseInvocation.addEnvironmentVar("DEVELOPER_DIR", developerDir);
+        }
         return baseInvocation;
     }
 
@@ -220,28 +225,29 @@ class GccPlatformToolProvider extends AbstractPlatformToolProvider implements Sy
         return ".h.gch";
     }
 
-    private GccMetadata getGccMetadata(ToolType compilerType) {
+    private SearchResult<GccMetadata> getGccMetadata(ToolType compilerType) {
         GccCommandLineToolConfigurationInternal compiler = toolRegistry.getTool(compilerType);
         if (compiler == null) {
-            return GccMetadataProvider.broken("Tool " + compilerType.getToolName() + " is not available");
+            return new ComponentNotFound<GccMetadata>("Tool " + compilerType.getToolName() + " is not available");
         }
         CommandLineToolSearchResult searchResult = toolSearchPath.locate(compiler.getToolType(), compiler.getExecutable());
         String language = LANGUAGE_FOR_COMPILER.get(compilerType);
         List<String> languageArgs = language == null ? Collections.<String>emptyList() : ImmutableList.of("-x", language);
-        return metadataProvider.getCompilerMetaData(searchResult.getTool(), languageArgs);
+
+        return metadataProvider.getCompilerMetaData(toolSearchPath.getPath(), spec -> spec.executable(searchResult.getTool()).args(languageArgs));
     }
 
     @Override
-    public List<File> getSystemIncludes(ToolType compilerType) {
-        GccMetadata gccMetadata = getGccMetadata(compilerType);
+    public SystemLibraries getSystemLibraries(ToolType compilerType) {
+        final SearchResult<GccMetadata> gccMetadata = getGccMetadata(compilerType);
         if (gccMetadata.isAvailable()) {
-            return gccMetadata.getSystemIncludes();
+            return gccMetadata.getComponent().getSystemLibraries();
         }
-        return ImmutableList.of();
+        return new EmptySystemLibraries();
     }
 
     @Override
-    public CompilerMetadata getCompilerMetadata() {
-        return getGccMetadata(ToolType.C_COMPILER);
+    public CompilerMetadata getCompilerMetadata(ToolType toolType) {
+        return getGccMetadata(toolType).getComponent();
     }
 }

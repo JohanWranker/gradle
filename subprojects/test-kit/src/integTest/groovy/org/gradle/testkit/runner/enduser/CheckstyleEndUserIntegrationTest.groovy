@@ -32,7 +32,7 @@ class CheckstyleEndUserIntegrationTest extends BaseTestKitEndUserIntegrationTest
             }
             ${jcenterRepository()}
             dependencies {
-                testCompile('org.spockframework:spock-core:1.0-groovy-2.4') {
+                testImplementation('org.spockframework:spock-core:1.0-groovy-2.4') {
                     exclude module: 'groovy-all'
                 }
             }
@@ -50,6 +50,7 @@ class Test extends Specification {
 
     def 'task runs successfully'() {
         setup:
+        temporaryFolder.newFile('settings.gradle') << "rootProject.name = 'checkstyle-test'"
         temporaryFolder.newFile('build.gradle') << '''
 apply plugin: 'java'
 apply plugin: 'checkstyle'
@@ -57,7 +58,7 @@ apply plugin: 'checkstyle'
 ${mavenCentralRepository()}
 
 dependencies {
-    testCompile 'junit:junit:4.11'
+    testImplementation 'junit:junit:4.11'
 }
 '''
         javaFile()

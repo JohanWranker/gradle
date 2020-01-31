@@ -16,12 +16,10 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.result;
 
-import com.google.common.collect.BiMap;
-import com.google.common.collect.HashBiMap;
-import com.google.common.collect.ImmutableList;
 import org.gradle.api.artifacts.result.ComponentSelectionCause;
 import org.gradle.api.artifacts.result.ComponentSelectionDescriptor;
 import org.gradle.api.artifacts.result.ComponentSelectionReason;
+import org.gradle.internal.Describables;
 import org.gradle.internal.serialize.Decoder;
 import org.gradle.internal.serialize.Encoder;
 import org.gradle.internal.serialize.Serializer;
@@ -33,40 +31,35 @@ import java.util.List;
 @NotThreadSafe
 public class ComponentSelectionReasonSerializer implements Serializer<ComponentSelectionReason> {
 
-    private final BiMap<String, Integer> descriptions = HashBiMap.create();
-
-    private OperationType lastOperationType = OperationType.read;
-
+    @Override
     public ComponentSelectionReason read(Decoder decoder) throws IOException {
-        prepareForOperation(OperationType.read);
-        List<ComponentSelectionDescriptor> descriptions = readDescriptions(decoder);
-        return VersionSelectionReasons.of(descriptions);
+        ComponentSelectionDescriptor[] descriptions = readDescriptions(decoder);
+        return ComponentSelectionReasons.of(descriptions);
     }
 
-    private List<ComponentSelectionDescriptor> readDescriptions(Decoder decoder) throws IOException {
+    private ComponentSelectionDescriptor[] readDescriptions(Decoder decoder) throws IOException {
         int size = decoder.readSmallInt();
-        ImmutableList.Builder<ComponentSelectionDescriptor> builder = new ImmutableList.Builder<ComponentSelectionDescriptor>();
+        ComponentSelectionDescriptor[] descriptors = new ComponentSelectionDescriptor[size];
         for (int i = 0; i < size; i++) {
             ComponentSelectionCause cause = ComponentSelectionCause.values()[decoder.readByte()];
             String desc = readDescriptionText(decoder);
-            builder.add(new DefaultComponentSelectionDescriptor(cause, desc));
+            String defaultReason = cause.getDefaultReason();
+            if (desc.equals(defaultReason)) {
+                descriptors[i] = new DefaultComponentSelectionDescriptor(cause);
+            } else {
+                descriptors[i] = new DefaultComponentSelectionDescriptor(cause, Describables.of(desc));
+            }
+
         }
-        return builder.build();
+        return descriptors;
     }
 
     private String readDescriptionText(Decoder decoder) throws IOException {
-        boolean alreadyKnown = decoder.readBoolean();
-        if (alreadyKnown) {
-            return descriptions.inverse().get(decoder.readSmallInt());
-        } else {
-            String description = decoder.readString();
-            descriptions.put(description, descriptions.size());
-            return description;
-        }
+        return decoder.readString();
     }
 
+    @Override
     public void write(Encoder encoder, ComponentSelectionReason value) throws IOException {
-        prepareForOperation(OperationType.write);
         List<ComponentSelectionDescriptor> descriptions = value.getDescriptions();
         encoder.writeSmallInt(descriptions.size());
         for (ComponentSelectionDescriptor description : descriptions) {
@@ -80,32 +73,7 @@ public class ComponentSelectionReasonSerializer implements Serializer<ComponentS
     }
 
     private void writeDescriptionText(Encoder encoder, String description) throws IOException {
-        Integer index = descriptions.get(description);
-        encoder.writeBoolean(index != null); // already known custom reason
-        if (index == null) {
-            index = descriptions.size();
-            descriptions.put(description, index);
-            encoder.writeString(description);
-        } else {
-            encoder.writeSmallInt(index);
-        }
+        encoder.writeString(description);
     }
 
-    /**
-     * This serializer assumes that we are using it alternatively for writes, then reads, in cycles.
-     * After each cycle completed, state has to be reset.
-     *
-     * @param operationType the current operation type
-     */
-    private void prepareForOperation(OperationType operationType) {
-        if (operationType != lastOperationType) {
-            descriptions.clear();
-            lastOperationType = operationType;
-        }
-    }
-
-    private enum OperationType {
-        read,
-        write
-    }
 }

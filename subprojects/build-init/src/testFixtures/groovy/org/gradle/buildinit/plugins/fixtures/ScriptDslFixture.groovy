@@ -24,7 +24,7 @@ import org.hamcrest.Matcher
 
 import static BuildInitDsl.GROOVY
 import static BuildInitDsl.KOTLIN
-import static org.hamcrest.Matchers.containsString
+import static org.hamcrest.CoreMatchers.containsString
 
 @CompileStatic
 class ScriptDslFixture {
@@ -76,8 +76,7 @@ class ScriptDslFixture {
         assert getBuildFile(parentFolder).exists()
         assert getSettingsFile(parentFolder).exists()
         def gradleVersion = GradleVersion.current().version
-        def distributionType = scriptDsl.wrapperDistributionType.name().toLowerCase()
-        new WrapperTestFixture(parentFolder).generated(gradleVersion, distributionType)
+        new WrapperTestFixture(parentFolder).generated(gradleVersion)
     }
 
     void assertWrapperNotGenerated(TestFile parentFolder = rootDir) {

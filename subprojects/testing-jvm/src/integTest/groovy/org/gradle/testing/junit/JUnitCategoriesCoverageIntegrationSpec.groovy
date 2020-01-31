@@ -17,28 +17,25 @@
 package org.gradle.testing.junit
 
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
-import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
 import org.gradle.integtests.fixtures.TargetCoverage
 import org.gradle.integtests.fixtures.TestResources
-import org.gradle.testing.fixture.JUnitCoverage
+import org.gradle.testing.fixture.JUnitMultiVersionIntegrationSpec
 import org.junit.Rule
 
-@TargetCoverage({JUnitCoverage.CATEGORIES})
-public class JUnitCategoriesCoverageIntegrationSpec extends MultiVersionIntegrationSpec {
+import static org.gradle.testing.fixture.JUnitCoverage.CATEGORIES
+import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_VINTAGE
+
+@TargetCoverage({ CATEGORIES + JUNIT_VINTAGE })
+class JUnitCategoriesCoverageIntegrationSpec extends JUnitMultiVersionIntegrationSpec {
 
     @Rule TestResources resources = new TestResources(temporaryFolder)
 
     def setup() {
         executer.noExtraLogging()
-    }
-
-    def configureJUnit() {
-        buildFile << "dependencies { testCompile 'junit:junit:$version' }"
+        buildFile << "dependencies { testImplementation '$dependencyNotation' }"
     }
 
     def canSpecifyIncludeAndExcludeCategories() {
-        configureJUnit()
-
         when:
         run('test')
 
@@ -57,8 +54,6 @@ public class JUnitCategoriesCoverageIntegrationSpec extends MultiVersionIntegrat
     }
 
     def canSpecifyExcludesOnly() {
-        configureJUnit()
-
         when:
         run('test')
 
@@ -74,8 +69,6 @@ public class JUnitCategoriesCoverageIntegrationSpec extends MultiVersionIntegrat
     }
 
     def canCombineCategoriesWithCustomRunner() {
-        configureJUnit()
-
         when:
         run('test')
 
@@ -84,5 +77,21 @@ public class JUnitCategoriesCoverageIntegrationSpec extends MultiVersionIntegrat
         result.assertTestClassesExecuted('org.gradle.SomeLocaleTests')
         result.testClass("org.gradle.SomeLocaleTests").assertTestCount(3, 0, 0)
         result.testClass("org.gradle.SomeLocaleTests").assertTestsExecuted('ok1 [de]', 'ok1 [en]', 'ok1 [fr]')
+    }
+
+    def canRunParameterizedTestsWithCategories() {
+        when:
+        run('test')
+
+        then:
+        def expectedTestClasses = ['org.gradle.NestedTestsWithCategories$TagOnMethodNoParam', 'org.gradle.NestedTestsWithCategories$TagOnMethod']
+        if (isVintage() || !(version in ['4.10', '4.11', '4.12'])) {
+            expectedTestClasses << 'org.gradle.NestedTestsWithCategories$TagOnClass'
+        }
+        DefaultTestExecutionResult result = new DefaultTestExecutionResult(testDirectory)
+        result.assertTestClassesExecuted(expectedTestClasses as String[])
+        expectedTestClasses.each {
+            result.testClass(it).assertTestCount(1, 0, 0)
+        }
     }
 }

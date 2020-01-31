@@ -16,9 +16,16 @@
 package org.gradle.plugins.signing;
 
 import groovy.lang.Closure;
+import org.gradle.api.Buildable;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.internal.artifacts.publish.AbstractPublishArtifact;
+import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.OutputFile;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
+import org.gradle.api.tasks.TaskDependency;
 import org.gradle.plugins.signing.signatory.Signatory;
 import org.gradle.plugins.signing.type.SignatureType;
 
@@ -45,7 +52,7 @@ public class Signature extends AbstractPublishArtifact {
     /**
      * The artifact that this signature is for, which may be {@code null} if this signature is not for an artifact.
      */
-    private PublishArtifact toSignArtifact;
+    private Buildable source;
 
     /**
      * The name of the signature artifact.
@@ -76,22 +83,17 @@ public class Signature extends AbstractPublishArtifact {
     private String classifier;
 
     /**
-     * The date of the signature arifact.
+     * The date of the signature artifact.
      *
      * @see #getDate()
      */
     private Date date;
 
-    /**
-     * The signature file.
-     *
-     * @see #getFile()
-     */
-    private File file;
-
     private Callable<File> toSignGenerator;
 
     private Callable<String> classifierGenerator;
+
+    private Callable<String> nameGenerator;
 
     /**
      * Creates a signature artifact for the given public artifact.
@@ -104,17 +106,28 @@ public class Signature extends AbstractPublishArtifact {
      * @param tasks The task(s) that will invoke {@link #generate()} on this signature (optional)
      */
     public Signature(final PublishArtifact toSign, SignatureSpec signatureSpec, Object... tasks) {
-        super(tasks);
-        init(new Callable<File>() {
+        this(toSign, new Callable<File>() {
+            @Override
             public File call() {
                 return toSign.getFile();
             }
         }, new Callable<String>() {
+            @Override
             public String call() {
                 return toSign.getClassifier();
             }
-        }, signatureSpec);
-        this.toSignArtifact = toSign;
+        }, new Callable<String>() {
+            @Override
+            public String call() {
+                return toSign.getName();
+            }
+        }, signatureSpec, tasks);
+    }
+
+    Signature(Buildable source, Callable<File> toSign, Callable<String> classifier, Callable<String> name, SignatureSpec signatureSpec, Object... tasks) {
+        super(tasks);
+        init(toSign, classifier, name, signatureSpec);
+        this.source = source;
     }
 
     /**
@@ -126,7 +139,7 @@ public class Signature extends AbstractPublishArtifact {
      */
     public Signature(final File toSign, SignatureSpec signatureSpec, Object... tasks) {
         super(tasks);
-        init(returning(toSign), null, signatureSpec);
+        init(returning(toSign), null, null, signatureSpec);
     }
 
     /**
@@ -139,7 +152,7 @@ public class Signature extends AbstractPublishArtifact {
      */
     public Signature(final File toSign, final String classifier, SignatureSpec signatureSpec, Object... tasks) {
         super(tasks);
-        init(returning(toSign), returning(classifier), signatureSpec);
+        init(returning(toSign), returning(classifier), null, signatureSpec);
     }
 
     /**
@@ -176,9 +189,10 @@ public class Signature extends AbstractPublishArtifact {
         this.signatureSpec = signatureSpec;
     }
 
-    private void init(Callable<File> toSign, Callable<String> classifier, SignatureSpec signatureSpec) {
+    private void init(Callable<File> toSign, Callable<String> classifier, Callable<String> name, SignatureSpec signatureSpec) {
         this.toSignGenerator = toSign;
         this.classifierGenerator = classifier;
+        this.nameGenerator = name;
         this.signatureSpec = signatureSpec;
     }
 
@@ -187,6 +201,8 @@ public class Signature extends AbstractPublishArtifact {
      *
      * @return The file. May be {@code null} if unknown at this time.
      */
+    @PathSensitive(PathSensitivity.NONE)
+    @InputFile
     public File getToSign() {
         File toSign = uncheckedCall(toSignGenerator);
         return toSign != null ? toSign : null;
@@ -203,13 +219,15 @@ public class Signature extends AbstractPublishArtifact {
      *
      * @return The name. May be {@code null} if unknown at this time.
      */
+    @Override
+    @Internal
     public String getName() {
         return name != null ? name : defaultName();
     }
 
     @Nullable
     private String defaultName() {
-        return toSignArtifact != null ? toSignArtifact.getName() : fileName();
+        return nameGenerator != null ? uncheckedCall(nameGenerator) : fileName();
     }
 
     @Nullable
@@ -229,6 +247,8 @@ public class Signature extends AbstractPublishArtifact {
      *
      * @return The extension. May be {@code null} if unknown at this time.
      */
+    @Override
+    @Internal
     public String getExtension() {
         return extension != null ? extension : signatureTypeExtension();
     }
@@ -251,6 +271,8 @@ public class Signature extends AbstractPublishArtifact {
      *
      * @return The type. May be {@code null} if the file to sign or signature type are unknown at this time.
      */
+    @Override
+    @Internal
     public String getType() {
         return type != null ? type : defaultType();
     }
@@ -275,8 +297,14 @@ public class Signature extends AbstractPublishArtifact {
      *
      * @return The classifier. May be {@code null} if unknown at this time.
      */
+    @Override
+    @Internal
     public String getClassifier() {
-        return classifier != null ? classifier : uncheckedCall(classifierGenerator);
+        return classifier != null ? classifier : defaultClassifier();
+    }
+
+    private String defaultClassifier() {
+        return classifierGenerator == null ? null : uncheckedCall(classifierGenerator);
     }
 
     public void setDate(Date date) {
@@ -290,6 +318,8 @@ public class Signature extends AbstractPublishArtifact {
      *
      * @return The date of the signature. May be {@code null} if unknown at this time.
      */
+    @Override
+    @Internal
     public Date getDate() {
         return date != null ? date : defaultDate();
     }
@@ -309,23 +339,17 @@ public class Signature extends AbstractPublishArtifact {
         return new Date(modified);
     }
 
-    public void setFile(File file) {
-        this.file = file;
-    }
-
     /**
      * The file for the generated signature, which may not yet exist.
      *
-     * <p>Defaults to a file alongside the {@link #getToSign() file to sign} with the extension of the {@link #getSignatureType() signature type}.</p>
+     * <p>The file will be placed alongside the {@link #getToSign() file to sign} with the extension of the {@link #getSignatureType() signature type}.
      *
      * @return The signature file. May be {@code null} if unknown at this time.
+     * @see SignatureType#fileFor(File)
      */
+    @Override
+    @OutputFile
     public File getFile() {
-        return file != null ? file : defaultFile();
-    }
-
-    @Nullable
-    private File defaultFile() {
         File toSign = getToSign();
         SignatureType signatureType = getSignatureType();
         return toSign != null && signatureType != null
@@ -338,6 +362,7 @@ public class Signature extends AbstractPublishArtifact {
      *
      * @return The signatory. May be {@code null} if unknown at this time.
      */
+    @Internal("already tracked as part of the Sign task")
     public Signatory getSignatory() {
         return signatureSpec.getSignatory();
     }
@@ -347,6 +372,7 @@ public class Signature extends AbstractPublishArtifact {
      *
      * @return The signature type. May be {@code null} if unknown at this time.
      */
+    @Internal("already tracked as part of the Sign task")
     public SignatureType getSignatureType() {
         return signatureSpec.getSignatureType();
     }
@@ -355,12 +381,24 @@ public class Signature extends AbstractPublishArtifact {
         this.signatureSpec = signatureSpec;
     }
 
+    @Internal
     public SignatureSpec getSignatureSpec() {
         return signatureSpec;
     }
 
-    public final PublishArtifact getToSignArtifact() {
-        return toSignArtifact;
+    @Internal
+    Buildable getSource() {
+        return source;
+    }
+
+    @Internal
+    @Override
+    public TaskDependency getBuildDependencies() {
+        return super.getBuildDependencies();
+    }
+
+    String toKey() {
+        return String.join(":", getName(), getType(), getExtension(), getClassifier());
     }
 
     /**
@@ -384,7 +422,7 @@ public class Signature extends AbstractPublishArtifact {
         Signatory signatory = getSignatory();
         if (signatory == null) {
             if (signatureSpec.isRequired()) {
-                throw new InvalidUserDataException("Unable to generate signature for \'" + String.valueOf(toSign) + "\' as no signatory is available to sign");
+                throw new InvalidUserDataException("Unable to generate signature for \'" + toSign + "\' as no signatory is available to sign");
             } else {
                 return;
             }
@@ -393,12 +431,17 @@ public class Signature extends AbstractPublishArtifact {
         SignatureType signatureType = getSignatureType();
         if (signatureType == null) {
             if (signatureSpec.isRequired()) {
-                throw new InvalidUserDataException("Unable to generate signature for \'" + String.valueOf(toSign) + "\' as no signature type has been configured");
+                throw new InvalidUserDataException("Unable to generate signature for \'" + toSign + "\' as no signature type has been configured");
             } else {
                 return;
             }
         }
 
         signatureType.sign(signatory, toSign);
+    }
+
+    @Override
+    public boolean shouldBePublished() {
+        return true;
     }
 }

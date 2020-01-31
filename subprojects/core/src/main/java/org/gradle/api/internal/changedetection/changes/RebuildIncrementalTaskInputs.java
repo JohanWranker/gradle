@@ -17,59 +17,28 @@
 package org.gradle.api.internal.changedetection.changes;
 
 import org.gradle.api.Action;
-import org.gradle.api.Task;
-import org.gradle.api.file.FileCollection;
-import org.gradle.api.internal.tasks.execution.TaskProperties;
 import org.gradle.api.tasks.incremental.InputFileDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.File;
 
 public class RebuildIncrementalTaskInputs extends StatefulIncrementalTaskInputs {
-    private static final Logger LOGGER = LoggerFactory.getLogger(RebuildIncrementalTaskInputs.class);
+    private final Iterable<InputFileDetails> inputChanges;
 
-    private final FileCollection inputFiles;
-
-    public RebuildIncrementalTaskInputs(Task task, TaskProperties taskProperties) {
-        LOGGER.info("All input files are considered out-of-date for incremental {}.", task);
-        this.inputFiles = taskProperties.getInputFiles();
+    public RebuildIncrementalTaskInputs(Iterable<InputFileDetails> inputChanges) {
+        this.inputChanges = inputChanges;
     }
 
+    @Override
     public boolean isIncremental() {
         return false;
     }
 
-    public void doOutOfDate(Action<? super InputFileDetails> outOfDateAction) {
-        for (File file : inputFiles) {
-            outOfDateAction.execute(new RebuildInputFile(file));
+    @Override
+    public void doOutOfDate(final Action<? super InputFileDetails> outOfDateAction) {
+        for (InputFileDetails inputFileChange : inputChanges) {
+            outOfDateAction.execute(inputFileChange);
         }
     }
 
+    @Override
     public void doRemoved(Action<? super InputFileDetails> removedAction) {
-    }
-
-    private static class RebuildInputFile implements InputFileDetails {
-        private final File file;
-
-        private RebuildInputFile(File file) {
-            this.file = file;
-        }
-
-        public File getFile() {
-            return file;
-        }
-
-        public boolean isAdded() {
-            return false;
-        }
-
-        public boolean isModified() {
-            return false;
-        }
-
-        public boolean isRemoved() {
-            return false;
-        }
     }
 }

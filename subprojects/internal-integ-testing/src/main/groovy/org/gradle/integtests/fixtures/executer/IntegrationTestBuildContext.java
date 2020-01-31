@@ -16,9 +16,11 @@
 
 package org.gradle.integtests.fixtures.executer;
 
+import com.google.common.base.CaseFormat;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.util.GradleVersion;
 
+import javax.annotation.Nullable;
 import java.io.File;
 
 /**
@@ -34,15 +36,7 @@ public class IntegrationTestBuildContext {
     }
 
     public TestFile getSamplesDir() {
-        return file("integTest.samplesdir", String.format("%s/samples", getGradleHomeDir()));
-    }
-
-    public TestFile getUserGuideOutputDir() {
-        return file("integTest.userGuideOutputDir", "subprojects/docs/src/samples/userguideOutput");
-    }
-
-    public TestFile getUserGuideInfoDir() {
-        return file("integTest.userGuideInfoDir", "subprojects/docs/build/src");
+        return file("integTest.samplesdir", null);
     }
 
     public TestFile getDistributionsDir() {
@@ -61,6 +55,11 @@ public class IntegrationTestBuildContext {
         return file("integTest.gradleUserHomeDir", "intTestHomeDir").file("worker-1");
     }
 
+    @Nullable
+    public TestFile getGradleGeneratedApiJarCacheDir() {
+        return optionalFile("integTest.gradleGeneratedApiJarCacheDir");
+    }
+
     public TestFile getTmpDir() {
         return file("integTest.tmpDir", "build/tmp");
     }
@@ -73,9 +72,13 @@ public class IntegrationTestBuildContext {
         return GradleVersion.current();
     }
 
+    public String getCurrentSubprojectName() {
+        return CaseFormat.LOWER_HYPHEN.to(CaseFormat.LOWER_CAMEL, getGradleHomeDir().getParentFile().getParentFile().getName());
+    }
+
     /**
      * The timestamped version used in the docs and the bin and all zips. This should be different to {@link GradleVersion#getVersion()}.
-     * Note that the binary distribution used for testing (testBinZip and intTestImage) has {@link GradleVersion#getVersion()} as version.
+     * Note that the binary distribution used for testing (binZip and intTestImage) has {@link GradleVersion#getVersion()} as version.
      *
      * @return timestamped version
      */
@@ -102,24 +105,37 @@ public class IntegrationTestBuildContext {
         if (version.startsWith("#")) {
             return new BuildServerGradleDistribution(version, previousVersionDir.file(version));
         }
+
+        if (LocallyBuiltGradleDistribution.isLocallyBuiltVersion(version)) {
+            return new LocallyBuiltGradleDistribution(version);
+        }
         return new ReleasedGradleDistribution(version, previousVersionDir.file(version));
     }
 
-    protected static TestFile file(String propertyName, String defaultFile) {
-        String defaultPath;
-        if (defaultFile == null) {
-            defaultPath = null;
-        } else if (new File(defaultFile).isAbsolute()) {
-            defaultPath = defaultFile;
-        } else {
-            defaultPath = TEST_DIR.file(defaultFile).getAbsolutePath();
+    protected static TestFile file(String propertyName, String defaultPath) {
+        TestFile testFile = optionalFile(propertyName);
+        if (testFile != null) {
+            return testFile;
         }
-        String path = System.getProperty(propertyName, defaultPath);
-        if (path == null) {
-            throw new RuntimeException(String.format("You must set the '%s' property to run the integration tests. The default passed was: '%s'",
-                propertyName, defaultFile));
+        if (defaultPath == null) {
+            throw new RuntimeException("You must set the '" + propertyName + "' property to run the integration tests.");
         }
-        return new TestFile(new File(path));
+        return testFile(defaultPath);
+    }
+
+    @Nullable
+    private static TestFile optionalFile(String propertyName) {
+        String path = System.getProperty(propertyName);
+        // MODULE_WORKING_DIR doesn't seem to work correctly and MODULE_DIR seems to be in `.idea/modules/<path-to-subproject>`
+        // See https://youtrack.jetbrains.com/issue/IDEA-194910
+        return path != null ? new TestFile(new File(path.replace(".idea/modules/", ""))) : null;
+    }
+
+    private static TestFile testFile(String path) {
+        File file = new File(path);
+        return file.isAbsolute()
+            ? new TestFile(file)
+            : new TestFile(TEST_DIR.file(path).getAbsoluteFile());
     }
 
 }

@@ -17,22 +17,19 @@
 package org.gradle.api.internal.file
 
 import org.gradle.api.Task
-import org.gradle.api.tasks.TaskDependency
+import org.gradle.api.internal.tasks.TaskDependencyResolveContext
 import org.gradle.util.UsesNativeServices
 import spock.lang.Specification
 
 @UsesNativeServices
 class UnionFileCollectionTest extends Specification {
-    def containsUnionOfAllSourceCollections() {
-        def file1 = new File("1")
-        def file2 = new File("2")
-        def file3 = new File("3")
-        def source1 = Stub(FileCollectionInternal)
-        def source2 = Stub(FileCollectionInternal)
+    def file1 = new File("1")
+    def file2 = new File("2")
+    def file3 = new File("3")
 
-        given:
-        source1.files >> [file1, file2]
-        source2.files >> [file2, file3]
+    def containsUnionOfAllSourceCollections() {
+        def source1 = new AbstractFileCollectionTest.TestFileCollection(file1, file2)
+        def source2 = new AbstractFileCollectionTest.TestFileCollection(file2, file3)
 
         expect:
         def collection = new UnionFileCollection(source1, source2)
@@ -40,35 +37,21 @@ class UnionFileCollectionTest extends Specification {
     }
 
     def contentsTrackContentsOfSourceCollections() {
-        def file1 = new File("1")
-        def file2 = new File("2")
-        def file3 = new File("3")
-        def source1 = Stub(FileCollectionInternal)
-        def source2 = Stub(FileCollectionInternal)
-
-        given:
-        source1.files >> [file1]
-        source2.files >>> [[file2, file3], [file3]]
+        def source1 = new AbstractFileCollectionTest.TestFileCollection(file1)
+        def source2 = new AbstractFileCollectionTest.TestFileCollection(file2, file3)
 
         expect:
         def collection = new UnionFileCollection(source1, source2)
         collection.files == [file1, file2, file3] as LinkedHashSet
-        collection.files == [file1, file3] as LinkedHashSet
     }
 
     def canAddCollection() {
-        def file1 = new File("1")
-        def file2 = new File("2")
-        def source1 = Stub(FileCollectionInternal)
-        def source2 = Stub(FileCollectionInternal)
-
-        given:
-        source1.files >> [file1]
-        source2.files >> [file2]
+        def source1 = new AbstractFileCollectionTest.TestFileCollection(file1)
+        def source2 = new AbstractFileCollectionTest.TestFileCollection(file2)
 
         expect:
         def collection = new UnionFileCollection([source1])
-        collection.add(source2)
+        collection.addToUnion(source2)
         collection.files == [file1, file2] as LinkedHashSet
     }
 
@@ -80,11 +63,17 @@ class UnionFileCollectionTest extends Specification {
         def source2 = Stub(FileCollectionInternal)
 
         given:
-        source1.buildDependencies >> Stub(TaskDependency) { getDependencies(_) >> [task1, task2] }
-        source2.buildDependencies >> Stub(TaskDependency) { getDependencies(_) >> [task2, task3] }
+        source1.visitDependencies(_) >> { TaskDependencyResolveContext context ->
+            context.add(task1)
+            context.add(task2)
+        }
+        source2.visitDependencies(_) >> { TaskDependencyResolveContext context ->
+            context.add(task3)
+            context.add(task2)
+        }
 
         expect:
         def collection = new UnionFileCollection(source1, source2)
-        collection.buildDependencies.getDependencies(null) == [task1, task2, task3] as LinkedHashSet
+        collection.buildDependencies.getDependencies(null) as List == [task1, task2, task3]
     }
 }

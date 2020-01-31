@@ -20,12 +20,13 @@ class IvyDescriptorDependency {
     String org
     String module
     String revision
-    String conf
+    String revisionConstraint
+    Set<String> confs
     String transitive
     Collection<IvyDescriptorDependencyExclusion> exclusions = []
 
     boolean hasConf(String conf) {
-        this.conf == conf
+        this.confs.contains(conf)
     }
 
     boolean transitiveEnabled() {
@@ -42,6 +43,6 @@ class IvyDescriptorDependency {
 
     @Override
     String toString() {
-        "$org:$module:$revision $conf ${transitive?'(transitive)':''}"
+        "$org:$module:$revision $confs ${transitive?'(transitive)':''}"
     }
 }

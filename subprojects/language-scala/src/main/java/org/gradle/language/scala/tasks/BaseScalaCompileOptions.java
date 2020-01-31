@@ -16,7 +16,6 @@
 
 package org.gradle.language.scala.tasks;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.tasks.Console;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Nested;
@@ -25,12 +24,12 @@ import org.gradle.api.tasks.compile.AbstractOptions;
 import org.gradle.api.tasks.scala.IncrementalCompileOptions;
 import org.gradle.api.tasks.scala.ScalaForkOptions;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
 /**
  * Options for Scala platform compilation.
  */
-@Incubating
 public class BaseScalaCompileOptions extends AbstractOptions {
 
     private static final long serialVersionUID = 0;
@@ -59,7 +58,7 @@ public class BaseScalaCompileOptions extends AbstractOptions {
 
     private ScalaForkOptions forkOptions = new ScalaForkOptions();
 
-    private IncrementalCompileOptions incrementalOptions = new IncrementalCompileOptions();
+    private transient IncrementalCompileOptions incrementalOptions;
 
     /**
      * Fail the build on compilation errors.
@@ -101,13 +100,14 @@ public class BaseScalaCompileOptions extends AbstractOptions {
      * Generate debugging information.
      * Legal values: none, source, line, vars, notailcalls
      */
-    @Input
+    @Nullable
     @Optional
+    @Input
     public String getDebugLevel() {
         return debugLevel;
     }
 
-    public void setDebugLevel(String debugLevel) {
+    public void setDebugLevel(@Nullable String debugLevel) {
         this.debugLevel = debugLevel;
     }
 
@@ -126,12 +126,12 @@ public class BaseScalaCompileOptions extends AbstractOptions {
     /**
      * Encoding of source files.
      */
-    @Input @Optional
+    @Nullable @Optional @Input
     public String getEncoding() {
         return encoding;
     }
 
-    public void setEncoding(String encoding) {
+    public void setEncoding(@Nullable String encoding) {
         this.encoding = encoding;
     }
 
@@ -154,12 +154,12 @@ public class BaseScalaCompileOptions extends AbstractOptions {
      * Additional parameters passed to the compiler.
      * Each parameter must start with '-'.
      */
-    @Optional @Input
+    @Nullable @Optional @Input
     public List<String> getAdditionalParameters() {
         return additionalParameters;
     }
 
-    public void setAdditionalParameters(List<String> additionalParameters) {
+    public void setAdditionalParameters(@Nullable List<String> additionalParameters) {
         this.additionalParameters = additionalParameters;
     }
 

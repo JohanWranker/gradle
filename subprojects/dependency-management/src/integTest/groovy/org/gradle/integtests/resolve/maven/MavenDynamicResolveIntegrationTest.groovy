@@ -17,6 +17,7 @@
 package org.gradle.integtests.resolve.maven
 
 import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 import static org.gradle.internal.resource.transport.http.JavaSystemPropertiesHttpTimeoutSettings.SOCKET_TIMEOUT_SYSTEM_PROPERTY
 
@@ -130,12 +131,20 @@ task retrieve(type: Sync) {
         file('libs/projectA-1.0.jar').assertHasNotChangedSince(snapshot)
     }
 
-    def "falls back to directory listing when maven-metadata.xml is missing"() {
+    def "falls back to directory listing when maven-metadata.xml is missing and artifact metadata source is defined"() {
         given:
         mavenHttpRepo.module('group', 'projectA', '1.0').publish()
         def projectA = mavenHttpRepo.module('group', 'projectA', '1.5').publish()
 
         buildFile << createBuildFile(mavenHttpRepo.uri)
+        buildFile << """
+            repositories.all {
+                metadataSources {
+                    mavenPom()
+                    artifact()
+                }
+            } 
+        """
 
         when:
         mavenHttpRepo.getModuleMetaData("group", "projectA").expectGetMissing()
@@ -159,12 +168,21 @@ task retrieve(type: Sync) {
         file('libs/projectA-1.5.jar').assertHasNotChangedSince(snapshot)
     }
 
+    @ToBeFixedForInstantExecution
     def "reports and recovers from broken maven-metadata.xml and directory listing"() {
         given:
         mavenHttpRepo.module('group', 'projectA', '1.0').publish()
         def projectA = mavenHttpRepo.module('group', 'projectA', '1.5').publish()
 
         buildFile << createBuildFile(mavenHttpRepo.uri)
+        buildFile << """
+            repositories.all {
+                metadataSources {
+                    mavenPom()
+                    artifact()
+                }
+            } 
+        """
 
         when:
         def metaData = mavenHttpRepo.getModuleMetaData("group", "projectA")
@@ -207,6 +225,7 @@ task retrieve(type: Sync) {
         file('libs').assertHasDescendants('projectA-1.5.jar')
     }
 
+    @ToBeFixedForInstantExecution
     def "dynamic version reports and recovers from broken module"() {
         given:
         def repo = mavenHttpRepo("repo1")
@@ -234,7 +253,7 @@ task retrieve(type: Sync) {
         fails 'retrieve'
 
         then:
-        failure.assertHasCause("Could not download projectA.jar (group:projectA:1.1)")
+        failure.assertHasCause("Could not download projectA-1.1.jar (group:projectA:1.1)")
         failure.assertHasCause("Could not GET '${projectA.artifact.uri}'. Received status code 500 from server: broken")
 
         when:
@@ -248,6 +267,7 @@ task retrieve(type: Sync) {
         file('libs').assertHasDescendants('projectA-1.1.jar')
     }
 
+    @ToBeFixedForInstantExecution
     def "dynamic version reports and recovers from missing module"() {
         given:
         def repo = mavenHttpRepo("repo1")
@@ -258,7 +278,6 @@ task retrieve(type: Sync) {
         when:
         repo.getModuleMetaData("group", "projectA").expectGet()
         projectA.pom.expectGetMissing()
-        projectA.artifact.expectHeadMissing()
 
         and:
         fails 'retrieve'
@@ -267,9 +286,8 @@ task retrieve(type: Sync) {
         // TODO - this error message isn't right: it found a version, it just happened to be missing. should really choose another version
         failure.assertHasCause("""Could not find any matches for group:projectA:1.+ as no versions of group:projectA are available.
 Searched in the following locations:
-    ${repo.getModuleMetaData("group", "projectA").uri}
-    ${projectA.pom.uri}
-    ${projectA.artifact.uri}
+  - ${repo.getModuleMetaData("group", "projectA").uri}
+  - ${projectA.pom.uri}
 Required by:
 """)
 
@@ -282,7 +300,7 @@ Required by:
         fails 'retrieve'
 
         then:
-        failure.assertHasCause("""Could not find projectA.jar (group:projectA:1.1).
+        failure.assertHasCause("""Could not find projectA-1.1.jar (group:projectA:1.1).
 Searched in the following locations:
     ${projectA.artifact.uri}""")
 
@@ -311,7 +329,6 @@ Searched in the following locations:
 
         when:
         repo1.getModuleMetaData("group", "projectA").expectGetMissing()
-        repo1.directory("group", "projectA").expectGetMissing()
 
         repo2.getModuleMetaData("group", "projectA").expectGet()
         projectA2.pom.expectGet()
@@ -324,6 +341,41 @@ Searched in the following locations:
         file('libs').assertHasDescendants('projectA-1.5.jar')
     }
 
+    def "dynamic version ignores rejected module in one repository when higher candidate is available in another repository"() {
+        given:
+        def repo1 = mavenHttpRepo("repo1")
+        def repo2 = mavenHttpRepo("repo2")
+
+        def projectA1 = repo1.module('group', 'projectA', '1.5').publish()
+        def projectA2 = repo2.module('group', 'projectA', '1.4').publish()
+
+        buildFile << createBuildFile(repo1.uri, repo2.uri)
+        buildFile << """
+            dependencies {
+                constraints {
+                    compile('group:projectA') {
+                        version {
+                            reject '1.5'
+                        }
+                    }
+                }
+            } 
+"""
+
+        when:
+        repo1.getModuleMetaData("group", "projectA").expectGet()
+        repo2.getModuleMetaData("group", "projectA").expectGet()
+        projectA2.pom.expectGet()
+        projectA2.artifact.expectGet()
+
+        then:
+        succeeds 'retrieve'
+
+        then:
+        file('libs').assertHasDescendants('projectA-1.4.jar')
+    }
+
+    @ToBeFixedForInstantExecution
     def "dynamic version fails on broken module in one repository when available in another repository"() {
         given:
         def repo1 = mavenHttpRepo("repo1")
@@ -361,6 +413,7 @@ Searched in the following locations:
         file('libs').assertHasDescendants('projectA-1.5.jar')
     }
 
+    @ToBeFixedForInstantExecution
     def "dynamic version fails on timeout in one repository even when available in another repository"() {
         given:
         def repo1 = mavenHttpRepo("repo1")
@@ -368,7 +421,9 @@ Searched in the following locations:
         def projectA1 = repo1.module('group', 'projectA', '1.1').publish()
         def projectA2 = repo2.module('group', 'projectA', '1.5').publish()
 
-        executer.withArgument("-D${SOCKET_TIMEOUT_SYSTEM_PROPERTY}=1000")
+        executer.beforeExecute {
+            executer.withArgument("-D${SOCKET_TIMEOUT_SYSTEM_PROPERTY}=1000")
+        }
 
         buildFile << createBuildFile(repo1.uri, repo2.uri)
 
@@ -409,8 +464,8 @@ Searched in the following locations:
              compile 'group:projectA:1.+'
          }
  
-        task retrieve(type: Sync) {
-            into 'libs'
+         task retrieve(type: Sync) {
+             into 'libs'
              from configurations.compile
          }
          """

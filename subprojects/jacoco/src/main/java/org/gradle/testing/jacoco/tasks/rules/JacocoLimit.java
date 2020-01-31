@@ -16,10 +16,10 @@
 
 package org.gradle.testing.jacoco.tasks.rules;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Optional;
 
+import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
@@ -28,7 +28,6 @@ import java.math.BigDecimal;
  *
  * @since 3.4
  */
-@Incubating
 public interface JacocoLimit extends Serializable {
 
     /**
@@ -64,8 +63,9 @@ public interface JacocoLimit extends Serializable {
     /**
      * Gets the minimum expected value for limit. Default to null.
      */
-    @Input
+    @Nullable
     @Optional
+    @Input
     BigDecimal getMinimum();
 
     /**
@@ -73,13 +73,14 @@ public interface JacocoLimit extends Serializable {
      *
      * @param minimum Minimum
      */
-    void setMinimum(BigDecimal minimum);
+    void setMinimum(@Nullable BigDecimal minimum);
 
     /**
      * Gets the maximum expected value for limit. Default to null.
      */
-    @Input
+    @Nullable
     @Optional
+    @Input
     BigDecimal getMaximum();
 
     /**
@@ -87,5 +88,5 @@ public interface JacocoLimit extends Serializable {
      *
      * @param maximum Maximum
      */
-    void setMaximum(BigDecimal maximum);
+    void setMaximum(@Nullable BigDecimal maximum);
 }

@@ -39,7 +39,7 @@ class RunningPlayApp {
         return new URL("http://localhost:$httpPort/${path}")
     }
 
-    def playUrlError(String path='', int timeout=30) {
+    def playUrlError(String path='', int timeout=60) {
         requireHttpPort()
         HttpURLConnection connection
         ConcurrentTestUtil.poll(timeout) {
@@ -83,9 +83,9 @@ class RunningPlayApp {
         return UNASSIGNED
     }
 
-    void requireHttpPort(int occurence) {
+    void requireHttpPort(int occurrence) {
         if (httpPort == UNASSIGNED) {
-            if (parseHttpPort(occurence) == UNASSIGNED) {
+            if (parseHttpPort(occurrence) == UNASSIGNED) {
                 throw new IllegalStateException("Could not parse Play http port from gradle output!")
             }
         }
@@ -110,7 +110,7 @@ class RunningPlayApp {
     }
 
     void waitForStarted(int occurrence = 0) {
-        int timeout = 60
+        int timeout = 120
         ConcurrentTestUtil.poll(timeout) {
             assert parseHttpPort(occurrence) != UNASSIGNED : "Could not parse Play http port from spec output after ${timeout} seconds"
         }

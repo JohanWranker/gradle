@@ -17,23 +17,27 @@
 package org.gradle.ide.visualstudio.fixtures
 
 import org.gradle.integtests.fixtures.SourceFile
+import org.gradle.nativeplatform.fixtures.app.CppSourceElement
 import org.gradle.nativeplatform.fixtures.app.TestNativeComponent
+import org.gradle.plugins.ide.fixtures.IdeProjectFixture
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.TextUtil
 
-class ProjectFile {
+import javax.annotation.Nullable
+
+class ProjectFile extends IdeProjectFixture {
     String name
     TestFile projectFile
     Node projectXml
 
     ProjectFile(TestFile projectFile) {
-        assert projectFile.exists()
+        projectFile.assertIsFile()
         this.projectFile = projectFile
         this.name = projectFile.name.replace(".vcxproj", "")
         this.projectXml = new XmlParser().parse(projectFile)
     }
 
-    public Map<String, Configuration> getProjectConfigurations() {
+    Map<String, Configuration> getProjectConfigurations() {
         def configs = itemGroup("ProjectConfigurations").collect {
             new Configuration(it.Configuration[0].text(), it.Platform[0].text())
         }
@@ -42,25 +46,33 @@ class ProjectFile {
         }
     }
 
-    public String getProjectGuid() {
+    String getProjectGuid() {
         return globals.ProjectGUID[0].text()
     }
 
-    public Node getGlobals() {
+    Node getGlobals() {
         return projectXml.PropertyGroup.find({it.'@Label' == 'Globals'}) as Node
     }
 
-    public List<String> getSourceFiles() {
+    String getToolsVersion() {
+        return projectXml.@ToolsVersion
+    }
+
+    String getWindowsTargetPlatformVersion() {
+        return globals.WindowsTargetPlatformVersion[0].text()
+    }
+
+    List<String> getSourceFiles() {
         def sources = itemGroup('Sources').ClCompile
         return normalise(sources*.'@Include')
     }
 
-    public List<String> getResourceFiles() {
+    List<String> getResourceFiles() {
         def sources = itemGroup('References').ResourceCompile
         return normalise(sources*.'@Include')
     }
 
-    public List<String> getHeaderFiles() {
+    List<String> getHeaderFiles() {
         def sources = itemGroup('Headers').ClInclude
         return normalise(sources*.'@Include')
     }
@@ -106,8 +118,26 @@ class ProjectFile {
             TextUtil.normaliseFileSeparators(buildConfiguration.NMakeOutput[0].text())
         }
 
+        @Nullable
+        String getLanguageStandard() {
+            def itemDefinitionGroupNode = projectXml.ItemDefinitionGroup.find({ it.'@Condition' == condition }) as Node
+            if (itemDefinitionGroupNode == null) {
+                return null
+            }
+            return itemDefinitionGroupNode.ClCompile[0].LanguageStandard[0].text()
+        }
+
+        String getPlatformToolset() {
+            def nodes = configuration.PlatformToolset
+            return nodes.size() == 0 ? null : nodes[0].text()
+        }
+
         private Node getBuildConfiguration() {
             projectXml.PropertyGroup.find({ it.'@Label' == 'NMakeConfiguration' && it.'@Condition' == condition}) as Node
+        }
+
+        private Node getConfiguration() {
+            projectXml.PropertyGroup.find({ it.'@Label' == 'Configuration' && it.'@Condition' == condition}) as Node
         }
 
         private String getCondition() {
@@ -118,6 +148,11 @@ class ProjectFile {
     void assertHasComponentSources(TestNativeComponent component, String basePath) {
         assert sourceFiles == ['build.gradle'] + sourceFiles(component.sourceFiles, basePath)
         assert headerFiles == sourceFiles(component.headerFiles, basePath)
+    }
+
+    void assertHasComponentSources(CppSourceElement component, String basePath) {
+        assert sourceFiles == ['build.gradle'] + sourceFiles(component.sources.files, basePath)
+        assert headerFiles == sourceFiles(component.headers.files, basePath)
     }
 
     void assertHasComponentSources(TestNativeComponent component, String basePath, TestNativeComponent component2, String basePath2) {

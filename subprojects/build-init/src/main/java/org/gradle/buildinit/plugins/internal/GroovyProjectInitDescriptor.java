@@ -17,51 +17,67 @@
 package org.gradle.buildinit.plugins.internal;
 
 import org.gradle.api.internal.DocumentationRegistry;
-import org.gradle.api.internal.file.FileResolver;
-import org.gradle.buildinit.plugins.internal.modifiers.BuildInitDsl;
 import org.gradle.buildinit.plugins.internal.modifiers.BuildInitTestFramework;
+import org.gradle.buildinit.plugins.internal.modifiers.Language;
+
+import java.util.Collections;
+import java.util.Optional;
+import java.util.Set;
 
 import static org.gradle.buildinit.plugins.internal.modifiers.BuildInitTestFramework.SPOCK;
 
-public abstract class GroovyProjectInitDescriptor extends LanguageLibraryProjectInitDescriptor {
-
+public abstract class GroovyProjectInitDescriptor extends JvmProjectInitDescriptor {
+    private final TemplateLibraryVersionProvider libraryVersionProvider;
     private final DocumentationRegistry documentationRegistry;
 
-    public GroovyProjectInitDescriptor(TemplateOperationFactory templateOperationFactory, FileResolver fileResolver,
-                                       TemplateLibraryVersionProvider libraryVersionProvider, ProjectInitDescriptor globalSettingsDescriptor, DocumentationRegistry documentationRegistry) {
-        super("groovy", templateOperationFactory, fileResolver, libraryVersionProvider, globalSettingsDescriptor);
+    public GroovyProjectInitDescriptor(TemplateLibraryVersionProvider libraryVersionProvider, DocumentationRegistry documentationRegistry) {
+        this.libraryVersionProvider = libraryVersionProvider;
         this.documentationRegistry = documentationRegistry;
     }
 
     @Override
-    public void generate(BuildInitDsl dsl, BuildInitTestFramework testFramework) {
-        globalSettingsDescriptor.generate(dsl, testFramework);
-
-        BuildScriptBuilder buildScriptBuilder = new BuildScriptBuilder(dsl, fileResolver, "build")
-            .fileComment("This generated file contains a sample Groovy project to get you started.")
-            .fileComment("For more details take a look at the Groovy Quickstart chapter in the Gradle")
-            .fileComment("user guide available at " + documentationRegistry.getDocumentationFor("tutorial_groovy_projects"))
-            .plugin("Apply the groovy plugin to add support for Groovy", "groovy")
-            .compileDependency("Use the latest Groovy version for building this library",
-                "org.codehaus.groovy:groovy-all:" + libraryVersionProvider.getVersion("groovy"))
-            .testCompileDependency("Use the awesome Spock testing and specification framework",
-                "org.spockframework:spock-core:" + libraryVersionProvider.getVersion("spock"));
-        configureBuildScript(buildScriptBuilder);
-        buildScriptBuilder.create().generate();
-
-        TemplateOperation groovySourceTemplate = sourceTemplateOperation();
-        whenNoSourcesAvailable(groovySourceTemplate, testTemplateOperation(testFramework)).generate();
+    public Language getLanguage() {
+        return Language.GROOVY;
     }
 
     @Override
-    public boolean supports(BuildInitTestFramework testFramework) {
-        return testFramework == SPOCK;
+    public void generate(InitSettings settings, BuildScriptBuilder buildScriptBuilder, TemplateFactory templateFactory) {
+        super.generate(settings, buildScriptBuilder, templateFactory);
+
+        buildScriptBuilder
+            .fileComment("This generated file contains a sample Groovy project to get you started.")
+            .fileComment("For more details take a look at the Groovy Quickstart chapter in the Gradle")
+            .fileComment("User Manual available at " + documentationRegistry.getDocumentationFor("tutorial_groovy_projects"))
+            .plugin("Apply the groovy plugin to add support for Groovy", "groovy")
+            .implementationDependency("Use the latest Groovy version for building this library",
+                "org.codehaus.groovy:groovy-all:" + libraryVersionProvider.getVersion("groovy"))
+            .testImplementationDependency("Use the awesome Spock testing and specification framework",
+                "org.spockframework:spock-core:" + libraryVersionProvider.getVersion("spock"));
+        configureBuildScript(settings, buildScriptBuilder);
+
+        TemplateOperation sourceTemplate = sourceTemplateOperation(templateFactory);
+        TemplateOperation testSourceTemplate = testTemplateOperation(templateFactory);
+        templateFactory.whenNoSourcesAvailable(sourceTemplate, testSourceTemplate).generate();
     }
 
-    protected abstract TemplateOperation sourceTemplateOperation();
-
-    protected abstract TemplateOperation testTemplateOperation(BuildInitTestFramework testFramework);
-
-    protected void configureBuildScript(BuildScriptBuilder buildScriptBuilder) {
+    @Override
+    public Optional<String> getFurtherReading() {
+        return Optional.of(documentationRegistry.getDocumentationFor("tutorial_groovy_projects"));
     }
+
+    @Override
+    public BuildInitTestFramework getDefaultTestFramework() {
+        return SPOCK;
+    }
+
+    @Override
+    public Set<BuildInitTestFramework> getTestFrameworks() {
+        return Collections.singleton(SPOCK);
+    }
+
+    protected abstract TemplateOperation sourceTemplateOperation(TemplateFactory templateFactory);
+
+    protected abstract TemplateOperation testTemplateOperation(TemplateFactory templateFactory);
+
+    protected abstract void configureBuildScript(InitSettings settings, BuildScriptBuilder buildScriptBuilder);
 }

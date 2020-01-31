@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 package org.gradle.nativeplatform
+
 import org.gradle.api.reporting.model.ModelReportOutput
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.NativePlatformsTestFixture
 import org.gradle.nativeplatform.fixtures.app.CHelloWorldApp
 import org.gradle.nativeplatform.fixtures.app.CppCallingCHelloWorldApp
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
-import org.hamcrest.Matchers
 import spock.lang.Ignore
 
 import static org.gradle.util.Matchers.containsText
@@ -33,6 +34,7 @@ class NativeBinariesIntegrationTest extends AbstractInstalledToolChainIntegratio
         settingsFile << "rootProject.name = 'test'"
     }
 
+    @ToBeFixedForInstantExecution
     def "skips building executable binary with no source"() {
         given:
         buildFile << """
@@ -51,6 +53,7 @@ model {
         executable("build/binaries/mainExecutable/main").assertDoesNotExist()
     }
 
+    @ToBeFixedForInstantExecution
     def "assemble task constructs all buildable binaries"() {
         given:
         new CHelloWorldApp().writeSources(file("src/main"))
@@ -89,6 +92,7 @@ model {
         executable("build/exe/main/unknown/main").assertDoesNotExist()
     }
 
+    @ToBeFixedForInstantExecution
     def "assemble task produces sensible error when there are no buildable binaries" () {
         buildFile << """
 apply plugin: 'c'
@@ -119,16 +123,24 @@ model {
 
         then:
         failureDescriptionContains("Execution failed for task ':assemble'.")
-        failure.assertThatCause(Matchers.<String>allOf(
-                Matchers.startsWith("No buildable binaries found:"),
-                Matchers.containsString("shared library 'hello:sharedLibrary': No tool chain is available to build for platform 'unknown'"),
-                Matchers.containsString("static library 'hello:staticLibrary': No tool chain is available to build for platform 'unknown'"),
-                Matchers.containsString("executable 'main:executable': No tool chain is available to build for platform 'unknown'"),
-                Matchers.containsString("static library 'another:staticLibrary': Disabled by user"),
-                Matchers.containsString("shared library 'another:sharedLibrary': Disabled by user")
-        ))
+        failure.assertHasCause("""No buildable binaries found:
+  - shared library 'another:sharedLibrary': Disabled by user
+  - static library 'another:staticLibrary': Disabled by user
+  - shared library 'hello:sharedLibrary':
+      - No tool chain is available to build for platform 'unknown':
+          - ${toolChain.instanceDisplayName}:
+              - Don't know how to build for platform 'unknown'.
+  - static library 'hello:staticLibrary':
+      - No tool chain is available to build for platform 'unknown':
+          - ${toolChain.instanceDisplayName}:
+              - Don't know how to build for platform 'unknown'.
+  - executable 'main:executable':
+      - No tool chain is available to build for platform 'unknown':
+          - ${toolChain.instanceDisplayName}:
+              - Don't know how to build for platform 'unknown'.""")
     }
 
+    @ToBeFixedForInstantExecution
     def "assemble executable from component with multiple language source sets"() {
         given:
         useMixedSources()
@@ -163,6 +175,7 @@ model {
         executable("build/exe/main/main").exec().out == helloWorldApp.englishOutput
     }
 
+    @ToBeFixedForInstantExecution
     def "assemble executable binary directly from language source sets"() {
         given:
         useMixedSources()
@@ -240,6 +253,7 @@ model {
         helloWorldApp.writeSources(file("src/test"))
     }
 
+    @ToBeFixedForInstantExecution
     def "build fails when link executable fails"() {
         given:
         buildFile << """
@@ -264,6 +278,7 @@ model {
         failure.assertThatCause(containsText("Linker failed while linking ${exeName}"))
     }
 
+    @ToBeFixedForInstantExecution
     def "build fails when link library fails"() {
         given:
         buildFile << """
@@ -297,6 +312,7 @@ model {
         failure.assertThatCause(containsText("Linker failed while linking ${libName}"))
     }
 
+    @ToBeFixedForInstantExecution
     def "build fails when create static library fails"() {
         given:
         buildFile << """
@@ -331,6 +347,7 @@ model {
     }
 
     @Requires(TestPrecondition.CAN_INSTALL_EXECUTABLE)
+    @ToBeFixedForInstantExecution
     def "installed executable receives command-line parameters"() {
         buildFile << """
 apply plugin: 'c'

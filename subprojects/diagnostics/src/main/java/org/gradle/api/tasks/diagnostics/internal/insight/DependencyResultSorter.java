@@ -16,6 +16,7 @@
 
 package org.gradle.api.tasks.diagnostics.internal.insight;
 
+import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
@@ -24,6 +25,7 @@ import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
 import org.gradle.api.artifacts.component.ProjectComponentSelector;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.VersionInfo;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionComparator;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionParser;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelectorScheme;
 import org.gradle.api.tasks.diagnostics.internal.graph.nodes.DependencyEdge;
 import org.gradle.util.CollectionUtils;
@@ -31,23 +33,25 @@ import org.gradle.util.CollectionUtils;
 import java.util.Collection;
 import java.util.Comparator;
 
-public class DependencyResultSorter {
+public abstract class DependencyResultSorter {
     /**
      * sorts by group:name:version mostly.
      * If requested matches selected then it will override the version comparison
      * so that the dependency that was selected is more prominent.
      */
-    public static Collection<DependencyEdge> sort(Collection<DependencyEdge> input, VersionSelectorScheme versionSelectorScheme, VersionComparator versionComparator) {
-        return CollectionUtils.sort(input, new DependencyComparator(versionSelectorScheme, versionComparator));
+    public static Collection<DependencyEdge> sort(Collection<DependencyEdge> input, VersionSelectorScheme versionSelectorScheme, VersionComparator versionComparator, VersionParser versionParser) {
+        return CollectionUtils.sort(input, new DependencyComparator(versionSelectorScheme, versionComparator, versionParser));
     }
 
     private static class DependencyComparator implements Comparator<DependencyEdge> {
         private final VersionSelectorScheme versionSelectorScheme;
         private final VersionComparator versionComparator;
+        private final VersionParser versionParser;
 
-        private DependencyComparator(VersionSelectorScheme versionSelectorScheme, VersionComparator versionComparator) {
+        private DependencyComparator(VersionSelectorScheme versionSelectorScheme, VersionComparator versionComparator, VersionParser versionParser) {
             this.versionSelectorScheme = versionSelectorScheme;
             this.versionComparator = versionComparator;
+            this.versionParser = versionParser;
         }
 
         @Override
@@ -119,7 +123,7 @@ public class DependencyResultSorter {
                 return byModule;
             }
 
-            //if selected matches requested version comparison is overridden
+            // Prefer a selector that strictly matches the selected version
             boolean leftMatches = leftRequested.matchesStrictly(left.getActual());
             boolean rightMatches = rightRequested.matchesStrictly(right.getActual());
             if (leftMatches && !rightMatches) {
@@ -128,28 +132,34 @@ public class DependencyResultSorter {
                 return 1;
             }
 
-            //order dynamic selectors after static selectors
-            boolean leftDynamic = versionSelectorScheme.parseSelector(leftRequested.getVersionConstraint().getPreferredVersion()).isDynamic();
-            boolean rightDynamic = versionSelectorScheme.parseSelector(rightRequested.getVersionConstraint().getPreferredVersion()).isDynamic();
-            if (leftDynamic && !rightDynamic) {
-                return 1;
-            } else if (!leftDynamic && rightDynamic) {
-                return -1;
-            }
-
-            int byVersion;
-            if (leftDynamic && rightDynamic) {
-                // order dynamic selectors lexicographically
-                byVersion = leftRequested.getVersionConstraint().getPreferredVersion().compareTo(rightRequested.getVersionConstraint().getPreferredVersion());
-            } else {
-                // order static selectors semantically
-                byVersion = compareVersions(leftRequested.getVersionConstraint().getPreferredVersion(), rightRequested.getVersionConstraint().getPreferredVersion());
-            }
+            // Sort based on version
+            int byVersion = compareVersions(leftRequested.getVersionConstraint(), rightRequested.getVersionConstraint());
             if (byVersion != 0) {
                 return byVersion;
             }
 
+            // Sort based on from component
             return compareFromComponentIdentifiers(left.getFrom(), right.getFrom());
+        }
+
+        private int compareVersions(VersionConstraint left, VersionConstraint right) {
+            String leftRequiredVersion = left.getRequiredVersion();
+            String rightRequiredVersion = right.getRequiredVersion();
+            boolean leftDynamic = versionSelectorScheme.parseSelector(leftRequiredVersion).isDynamic();
+            boolean rightDynamic = versionSelectorScheme.parseSelector(rightRequiredVersion).isDynamic();
+
+            // Order dynamic selectors after static selectors
+            if (leftDynamic && !rightDynamic) {
+                return 1;
+            } else if (!leftDynamic && rightDynamic) {
+                return -1;
+            } else if (leftDynamic && rightDynamic) {
+                // Compare 2 dynamic selectors lexicographically
+                return leftRequiredVersion.compareTo(rightRequiredVersion);
+            } else {
+                // Compare 2 static selectors semantically
+                return compareVersions(leftRequiredVersion, rightRequiredVersion);
+            }
         }
 
         private int compareRequestedProjectComponentSelectors(DependencyEdge left, DependencyEdge right) {
@@ -193,7 +203,7 @@ public class DependencyResultSorter {
         }
 
         private int compareVersions(String left, String right) {
-            return versionComparator.compare(new VersionInfo(left), new VersionInfo(right));
+            return versionComparator.compare(new VersionInfo(versionParser.transform(left)), new VersionInfo(versionParser.transform(right)));
         }
 
         private boolean isLeftAndRightFromProjectComponentIdentifier(ComponentIdentifier left, ComponentIdentifier right) {

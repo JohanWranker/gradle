@@ -15,11 +15,12 @@
  */
 package org.gradle.integtests.tooling.m5
 
-import org.gradle.integtests.tooling.r18.NullAction
-import org.gradle.integtests.tooling.fixture.TargetGradleVersion
+
 import org.gradle.integtests.tooling.fixture.ToolingApiLoggingSpecification
+import org.gradle.integtests.tooling.r18.NullAction
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.tooling.model.GradleProject
+import org.gradle.util.GradleVersion
 
 class ToolingApiReceivingStandardStreamsCrossVersionSpec extends ToolingApiLoggingSpecification {
 
@@ -40,11 +41,16 @@ class ToolingApiReceivingStandardStreamsCrossVersionSpec extends ToolingApiLoggi
 
         then:
         stdout.toString().contains('this is stdout')
-        stderr.toString().contains('this is stderr')
         stdout.toString().contains('A warning using SLF4j')
         stdout.toString().contains('A warning using JCL')
         stdout.toString().contains('A warning using Log4j')
         stdout.toString().contains('A warning using JUL')
+        if (targetVersion.baseVersion >= GradleVersion.version('4.7')) {
+            // Changed handling of error log messages
+            stdout.toString().contains('this is stderr')
+        } else {
+            stderr.toString().contains('this is stderr')
+        }
     }
 
     def "receives standard streams while the model is building"() {
@@ -64,14 +70,18 @@ class ToolingApiReceivingStandardStreamsCrossVersionSpec extends ToolingApiLoggi
 
         then:
         stdout.toString().contains('this is stdout')
-        stderr.toString().contains('this is stderr')
         stdout.toString().contains('A warning using SLF4j')
         stdout.toString().contains('A warning using JCL')
         stdout.toString().contains('A warning using Log4j')
         stdout.toString().contains('A warning using JUL')
+        if (targetVersion.baseVersion >= GradleVersion.version('4.7')) {
+            // Changed handling of error log messages
+            stdout.toString().contains('this is stderr')
+        } else {
+            stderr.toString().contains('this is stderr')
+        }
     }
 
-    @TargetGradleVersion(">=1.8")
     def "receives standard streams while client action is running"() {
         given:
         loggingBuildScript()
@@ -89,11 +99,16 @@ class ToolingApiReceivingStandardStreamsCrossVersionSpec extends ToolingApiLoggi
 
         then:
         stdout.toString().contains('this is stdout')
-        stderr.toString().contains('this is stderr')
         stdout.toString().contains('A warning using SLF4j')
         stdout.toString().contains('A warning using JCL')
         stdout.toString().contains('A warning using Log4j')
         stdout.toString().contains('A warning using JUL')
+        if (targetVersion.baseVersion >= GradleVersion.version('4.7')) {
+            // Changed handling of error log messages
+            stdout.toString().contains('this is stderr')
+        } else {
+            stderr.toString().contains('this is stderr')
+        }
     }
 
     private TestFile loggingBuildScript() {

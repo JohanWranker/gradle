@@ -16,6 +16,7 @@
 
 package org.gradle.play.integtest.continuous
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.play.integtest.fixtures.AbstractMultiVersionPlayContinuousBuildIntegrationTest
 import org.gradle.play.integtest.fixtures.MultiProjectRunningPlayApp
 import org.gradle.play.integtest.fixtures.RunningPlayApp
@@ -24,15 +25,18 @@ import org.gradle.play.integtest.fixtures.PlayApp
 import org.gradle.play.integtest.fixtures.app.PlayMultiProject
 import org.gradle.test.fixtures.file.TestFile
 
+import static org.gradle.play.integtest.fixtures.PlayMultiVersionRunApplicationIntegrationTest.*
+
 
 class PlayMultiProjectContinuousBuildIntegrationTest extends AbstractMultiVersionPlayContinuousBuildIntegrationTest {
-    PlayApp playApp = new PlayMultiProject()
-    PlayApp childApp = new BasicPlayApp()
+    PlayApp playApp = new PlayMultiProject(versionNumber)
+    PlayApp childApp = new BasicPlayApp(versionNumber)
     TestFile childDirectory = testDirectory.file('child')
     RunningPlayApp runningApp = new MultiProjectRunningPlayApp(testDirectory)
     RunningPlayApp runningChildApp = new RunningPlayApp(childDirectory)
     TestFile playRunBuildFile = file("primary/build.gradle")
 
+    @ToBeFixedForInstantExecution
     def "can run multiproject play app with continuous build" () {
         when:
         succeeds(":primary:runPlayBinary")
@@ -48,6 +52,7 @@ class PlayMultiProjectContinuousBuildIntegrationTest extends AbstractMultiVersio
         appIsStopped()
     }
 
+    @ToBeFixedForInstantExecution
     def "can run play apps in multiple projects in multiproject continuous build" () {
         includeChildApp()
 
@@ -84,6 +89,7 @@ class PlayMultiProjectContinuousBuildIntegrationTest extends AbstractMultiVersio
         childAppIsStopped()
     }
 
+    @ToBeFixedForInstantExecution
     def "show build failures in play apps in multiple projects in multiproject continuous build" () {
         includeChildApp()
 
@@ -117,6 +123,7 @@ class PlayMultiProjectContinuousBuildIntegrationTest extends AbstractMultiVersio
             model {
                 tasks.runPlayBinary {
                     httpPort = 0
+                    ${java9AddJavaSqlModuleArgs()}
                 }
             }
 

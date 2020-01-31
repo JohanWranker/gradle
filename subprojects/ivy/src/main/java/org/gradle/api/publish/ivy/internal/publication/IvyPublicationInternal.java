@@ -16,30 +16,34 @@
 
 package org.gradle.api.publish.ivy.internal.publication;
 
-import org.gradle.api.file.FileCollection;
+import org.gradle.api.Task;
 import org.gradle.api.publish.internal.PublicationInternal;
+import org.gradle.api.publish.ivy.IvyArtifact;
 import org.gradle.api.publish.ivy.IvyPublication;
 import org.gradle.api.publish.ivy.internal.dependency.IvyDependencyInternal;
+import org.gradle.api.publish.ivy.internal.dependency.IvyExcludeRule;
 import org.gradle.api.publish.ivy.internal.publisher.IvyNormalizedPublication;
 import org.gradle.api.publish.ivy.internal.publisher.IvyPublicationIdentity;
+import org.gradle.api.tasks.TaskProvider;
 
 import java.util.Set;
 
-public interface IvyPublicationInternal extends IvyPublication, PublicationInternal {
+public interface IvyPublicationInternal extends IvyPublication, PublicationInternal<IvyArtifact> {
 
     IvyPublicationIdentity getIdentity();
 
+    @Override
     IvyModuleDescriptorSpecInternal getDescriptor();
 
-    void setIvyDescriptorFile(FileCollection descriptorFile);
+    void setIvyDescriptorGenerator(TaskProvider<? extends Task> descriptorGenerator);
 
-    void setGradleModuleDescriptorFile(FileCollection descriptorFile);
-
-    FileCollection getPublishableFiles();
+    void setModuleDescriptorGenerator(TaskProvider<? extends Task> descriptorGenerator);
 
     Set<IvyDependencyInternal> getDependencies();
 
+    Set<IvyExcludeRule> getGlobalExcludes();
+
     IvyNormalizedPublication asNormalisedPublication();
 
-    boolean canPublishModuleMetadata();
+    boolean writeGradleMetadataMarker();
 }

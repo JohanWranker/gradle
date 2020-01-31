@@ -16,10 +16,8 @@
 
 package org.gradle.integtests.tooling
 
-import org.apache.commons.io.output.TeeOutputStream
 import org.gradle.integtests.tooling.fixture.GradleBuildCancellation
 import org.gradle.integtests.tooling.fixture.ProgressEvents
-import org.gradle.integtests.tooling.fixture.TestOutputStream
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.test.fixtures.ConcurrentTestUtil
 import org.gradle.tooling.BuildException
@@ -30,12 +28,10 @@ import org.gradle.tooling.TestLauncher
 import org.gradle.tooling.events.task.TaskFinishEvent
 import org.gradle.tooling.events.task.TaskOperationDescriptor
 import org.gradle.tooling.events.test.TestOperationDescriptor
+import org.gradle.util.GradleVersion
 import org.junit.Rule
 
 abstract class TestLauncherSpec extends ToolingApiSpecification {
-    TestOutputStream stderr = new TestOutputStream()
-    TestOutputStream stdout = new TestOutputStream()
-
     ProgressEvents events = ProgressEvents.create()
 
     @Rule
@@ -43,6 +39,10 @@ abstract class TestLauncherSpec extends ToolingApiSpecification {
 
     def setup() {
         testCode()
+    }
+
+    boolean supportsEfficientClassFiltering() {
+        return getTargetVersion() >= GradleVersion.version('4.7')
     }
 
     void launchTests(Collection<TestOperationDescriptor> testsToLaunch) {
@@ -62,15 +62,7 @@ abstract class TestLauncherSpec extends ToolingApiSpecification {
             .withCancellationToken(cancellationToken)
             .addProgressListener(events)
 
-        if (toolingApi.isEmbedded()) {
-            testLauncher
-                .setStandardOutput(stdout)
-                .setStandardError(stderr)
-        } else {
-            testLauncher
-                .setStandardOutput(new TeeOutputStream(stdout, System.out))
-                .setStandardError(new TeeOutputStream(stderr, System.err))
-        }
+        collectOutputs(testLauncher)
 
         configurationClosure.call(testLauncher)
 
@@ -88,7 +80,7 @@ abstract class TestLauncherSpec extends ToolingApiSpecification {
     }
 
     void waitingForBuild() {
-        ConcurrentTestUtil.poll {
+        ConcurrentTestUtil.poll(30) {
             assert stdout.toString().contains("Waiting for changes to input files of tasks...");
         }
         stdout.reset()
@@ -171,7 +163,7 @@ abstract class TestLauncherSpec extends ToolingApiSpecification {
             sourceSets {
                 moreTests {
                     java.srcDir "src/test"
-                    output.classesDir = file("build/classes/moreTests")
+                    ${separateClassesDirs(targetVersion) ? "java.outputDir" : "output.classesDir"} = file("build/classes/moreTests")
                     compileClasspath = compileClasspath + sourceSets.test.compileClasspath
                     runtimeClasspath = runtimeClasspath + sourceSets.test.runtimeClasspath
                 }
@@ -179,7 +171,7 @@ abstract class TestLauncherSpec extends ToolingApiSpecification {
 
             task secondTest(type:Test) {
                 classpath = sourceSets.moreTests.runtimeClasspath
-                testClassesDir = sourceSets.moreTests.output.classesDir
+                ${separateClassesDirs(targetVersion) ? "testClassesDirs" : "testClassesDir"} = sourceSets.moreTests.output.${separateClassesDirs(targetVersion) ? "classesDirs" : "classesDir"}
             }
 
             build.dependsOn secondTest
@@ -213,6 +205,10 @@ abstract class TestLauncherSpec extends ToolingApiSpecification {
                 }
             }
         """
+    }
+
+    static boolean separateClassesDirs(GradleVersion version) {
+        version.baseVersion >= GradleVersion.version("4.0")
     }
 
     def changeTestSource() {

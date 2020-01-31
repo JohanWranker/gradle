@@ -16,30 +16,20 @@
 
 package org.gradle.api.internal.tasks;
 
-import org.gradle.api.internal.changedetection.TaskArtifactState;
-import org.gradle.api.internal.tasks.execution.TaskProperties;
-import org.gradle.caching.internal.tasks.TaskOutputCachingBuildCacheKey;
+import org.gradle.api.internal.changedetection.TaskExecutionMode;
+import org.gradle.api.internal.tasks.properties.TaskProperties;
+import org.gradle.execution.plan.LocalTaskNode;
+import org.gradle.internal.operations.ExecutingBuildOperation;
 
-import javax.annotation.Nullable;
-import java.util.List;
+import java.util.Optional;
 
 public interface TaskExecutionContext {
 
-    TaskArtifactState getTaskArtifactState();
+    LocalTaskNode getLocalTaskNode();
 
-    void setTaskArtifactState(TaskArtifactState taskArtifactState);
+    TaskExecutionMode getTaskExecutionMode();
 
-    TaskOutputCachingBuildCacheKey getBuildCacheKey();
-
-    void setBuildCacheKey(TaskOutputCachingBuildCacheKey cacheKey);
-
-    /**
-     * The information about the origin where the tasks outputs were first created, if reusing outputs.
-     */
-    @Nullable
-    OriginTaskExecutionMetadata getOriginExecutionMetadata();
-
-    void setOriginExecutionMetadata(OriginTaskExecutionMetadata originExecutionMetadata);
+    void setTaskExecutionMode(TaskExecutionMode taskExecutionMode);
 
     /**
      * Sets the execution time of the task to be the elapsed time since start to now.
@@ -54,19 +44,19 @@ public interface TaskExecutionContext {
      */
     long markExecutionTime();
 
-    /**
-     * The previously marked execution time.
-     *
-     * Throws if the execution time was not previously marked.
-     */
-    long getExecutionTime();
-
-    @Nullable
-    List<String> getUpToDateMessages();
-
-    void setUpToDateMessages(List<String> upToDateMessages);
-
-    void setTaskProperties(TaskProperties taskProperties);
+    void setTaskProperties(TaskProperties properties);
 
     TaskProperties getTaskProperties();
+
+    /**
+     * Gets and clears the build operation designed to measure the time taken
+     * by capturing input snapshotting and cache key calculation.
+     */
+    Optional<ExecutingBuildOperation> removeSnapshotTaskInputsBuildOperation();
+
+    /**
+     * Sets the build operation designed to measure the time taken
+     * by capturing input snapshotting and cache key calculation.
+     */
+    void setSnapshotTaskInputsBuildOperation(ExecutingBuildOperation  operation);
 }

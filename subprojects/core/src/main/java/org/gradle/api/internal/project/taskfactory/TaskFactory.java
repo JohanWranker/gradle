@@ -15,139 +15,70 @@
  */
 package org.gradle.api.internal.project.taskfactory;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
-import groovy.lang.Closure;
-import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Task;
 import org.gradle.api.internal.AbstractTask;
-import org.gradle.api.internal.ClassGenerator;
-import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.reflect.ObjectInstantiationException;
 import org.gradle.api.tasks.TaskInstantiationException;
-import org.gradle.internal.reflect.Instantiator;
-import org.gradle.util.GUtil;
+import org.gradle.internal.instantiation.InstantiationScheme;
 import org.gradle.util.NameValidator;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import javax.annotation.Nullable;
 import java.util.concurrent.Callable;
 
 public class TaskFactory implements ITaskFactory {
-    private static final Set<String> VALID_TASK_ARGUMENTS = ImmutableSet.of(
-        Task.TASK_ACTION, Task.TASK_DEPENDS_ON, Task.TASK_DESCRIPTION, Task.TASK_GROUP, Task.TASK_NAME, Task.TASK_OVERWRITE, Task.TASK_TYPE
-    );
-    private static final Set<String> MANDATORY_TASK_ARGUMENTS = ImmutableSet.of(
-        Task.TASK_NAME, Task.TASK_TYPE
-    );
-    private final ClassGenerator generator;
     private final ProjectInternal project;
-    private final Instantiator instantiator;
+    private final InstantiationScheme instantiationScheme;
 
-    public TaskFactory(ClassGenerator generator) {
-        this(generator, null, null);
+    public TaskFactory() {
+        this(null, null);
     }
 
-    TaskFactory(ClassGenerator generator, ProjectInternal project, Instantiator instantiator) {
-        this.generator = generator;
+    private TaskFactory(ProjectInternal project, InstantiationScheme instantiationScheme) {
         this.project = project;
-        this.instantiator = instantiator;
-    }
-
-    public ITaskFactory createChild(ProjectInternal project, Instantiator instantiator) {
-        return new TaskFactory(generator, project, instantiator);
-    }
-
-    public TaskInternal createTask(Map<String, ?> args) {
-        Map<String, ?> actualArgs = checkTaskArgsAndCreateDefaultValues(args);
-
-        String name = actualArgs.get(Task.TASK_NAME).toString();
-        if (!GUtil.isTrue(name)) {
-            throw new InvalidUserDataException("The task name must be provided.");
-        }
-
-        Class<? extends TaskInternal> type = (Class) actualArgs.get(Task.TASK_TYPE);
-        TaskInternal task = create(name, type);
-
-        Object dependsOnTasks = actualArgs.get(Task.TASK_DEPENDS_ON);
-        if (dependsOnTasks != null) {
-            task.dependsOn(dependsOnTasks);
-        }
-        Object description = actualArgs.get(Task.TASK_DESCRIPTION);
-        if (description != null) {
-            task.setDescription(description.toString());
-        }
-        Object group = actualArgs.get(Task.TASK_GROUP);
-        if (group != null) {
-            task.setGroup(group.toString());
-        }
-        Object action = actualArgs.get(Task.TASK_ACTION);
-        if (action instanceof Action) {
-            Action<? super Task> taskAction = (Action<? super Task>) action;
-            task.doFirst(taskAction);
-        } else if (action != null) {
-            Closure closure = (Closure) action;
-            task.doFirst(closure);
-        }
-
-        return task;
+        this.instantiationScheme = instantiationScheme;
     }
 
     @Override
-    public <S extends TaskInternal> S create(String name, final Class<S> type) {
-        if (!Task.class.isAssignableFrom(type)) {
+    public ITaskFactory createChild(ProjectInternal project, InstantiationScheme instantiationScheme) {
+        return new TaskFactory(project, instantiationScheme);
+    }
+
+    @Override
+    public <S extends Task> S create(final TaskIdentity<S> identity, @Nullable final Object[] constructorArgs) {
+        if (!Task.class.isAssignableFrom(identity.type)) {
             throw new InvalidUserDataException(String.format(
                 "Cannot create task of type '%s' as it does not implement the Task interface.",
-                type.getSimpleName()));
+                identity.type.getSimpleName()));
         }
-        NameValidator.validate(name, "task name", "");
 
-        final Class<? extends Task> generatedType;
-        if (type.isAssignableFrom(DefaultTask.class)) {
-            generatedType = generator.generate(DefaultTask.class);
+        NameValidator.validate(identity.name, "task name", "");
+
+        final Class<? extends AbstractTask> implType;
+        if (identity.type.isAssignableFrom(DefaultTask.class)) {
+            implType = DefaultTask.class;
         } else {
-            generatedType = generator.generate(type);
+            implType = identity.type.asSubclass(AbstractTask.class);
         }
 
-        return type.cast(AbstractTask.injectIntoNewInstance(project, name, type, new Callable<Task>() {
-            public Task call() throws Exception {
+        return AbstractTask.injectIntoNewInstance(project, identity, new Callable<S>() {
+            @Override
+            public S call() {
                 try {
-                    return instantiator.newInstance(generatedType);
+                    Task instance;
+                    if (constructorArgs != null) {
+                        instance = instantiationScheme.instantiator().newInstance(implType, constructorArgs);
+                    } else {
+                        instance = instantiationScheme.deserializationInstantiator().newInstance(implType, AbstractTask.class);
+                    }
+                    return identity.type.cast(instance);
                 } catch (ObjectInstantiationException e) {
-                    throw new TaskInstantiationException(String.format("Could not create task of type '%s'.", type.getSimpleName()),
+                    throw new TaskInstantiationException(String.format("Could not create task of type '%s'.", identity.type.getSimpleName()),
                         e.getCause());
                 }
             }
-        }));
-    }
-
-    private Map<String, ?> checkTaskArgsAndCreateDefaultValues(Map<String, ?> args) {
-        validateArgs(args);
-        if (!args.keySet().containsAll(MANDATORY_TASK_ARGUMENTS)) {
-            Map<String, Object> argsWithDefaults = Maps.newHashMap(args);
-            setIfNull(argsWithDefaults, Task.TASK_NAME, "");
-            setIfNull(argsWithDefaults, Task.TASK_TYPE, DefaultTask.class);
-            return argsWithDefaults;
-        }
-        return args;
-    }
-
-    private void validateArgs(Map<String, ?> args) {
-        if (!VALID_TASK_ARGUMENTS.containsAll(args.keySet())) {
-            Map unknownArguments = new HashMap<String, Object>(args);
-            unknownArguments.keySet().removeAll(VALID_TASK_ARGUMENTS);
-            throw new InvalidUserDataException(String.format("Could not create task '%s': Unknown argument(s) in task definition: %s",
-                args.get(Task.TASK_NAME), unknownArguments.keySet()));
-        }
-    }
-
-    private void setIfNull(Map<String, Object> map, String key, Object defaultValue) {
-        if (map.get(key) == null) {
-            map.put(key, defaultValue);
-        }
+        });
     }
 }

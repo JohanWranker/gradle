@@ -15,13 +15,23 @@
  */
 package org.gradle.api.internal.artifacts.configurations;
 
+import org.gradle.api.Action;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.artifacts.ExcludeRule;
 import org.gradle.api.internal.artifacts.ResolveContext;
+import org.gradle.api.internal.artifacts.transform.ExtraExecutionGraphDependenciesResolverFactory;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.internal.deprecation.DeprecatableConfiguration;
 import org.gradle.util.Path;
 
-public interface ConfigurationInternal extends ResolveContext, Configuration, DependencyMetaDataProvider {
-    enum InternalState {UNRESOLVED, GRAPH_RESOLVED, ARTIFACTS_RESOLVED}
+import java.util.Set;
+
+public interface ConfigurationInternal extends ResolveContext, Configuration, DeprecatableConfiguration, DependencyMetaDataProvider {
+    enum InternalState {
+        UNRESOLVED,
+        BUILD_DEPENDENCIES_RESOLVED,
+        GRAPH_RESOLVED,
+        ARTIFACTS_RESOLVED}
 
     @Override
     ResolutionStrategyInternal getResolutionStrategy();
@@ -51,5 +61,18 @@ public interface ConfigurationInternal extends ResolveContext, Configuration, De
      */
     OutgoingVariant convertToOutgoingVariant();
 
+    /**
+     * Registers an action to execute before locking for further mutation.
+     */
+    void beforeLocking(Action<? super ConfigurationInternal> action);
+
     void preventFromFurtherMutation();
+
+    /**
+     * Gets the complete set of exclude rules including those contributed by
+     * superconfigurations.
+     */
+    Set<ExcludeRule> getAllExcludeRules();
+
+    ExtraExecutionGraphDependenciesResolverFactory getDependenciesResolver();
 }

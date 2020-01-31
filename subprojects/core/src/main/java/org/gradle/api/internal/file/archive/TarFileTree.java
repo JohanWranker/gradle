@@ -23,19 +23,17 @@ import org.gradle.api.file.FileVisitDetails;
 import org.gradle.api.file.FileVisitor;
 import org.gradle.api.file.RelativePath;
 import org.gradle.api.internal.file.AbstractFileTreeElement;
-import org.gradle.api.internal.file.DefaultFileVisitDetails;
-import org.gradle.api.internal.file.FileSystemSubset;
+import org.gradle.api.internal.file.collections.ArchiveFileTree;
 import org.gradle.api.internal.file.collections.DirectoryFileTree;
 import org.gradle.api.internal.file.collections.DirectoryFileTreeFactory;
-import org.gradle.api.internal.file.collections.FileSystemMirroringFileTree;
 import org.gradle.api.internal.file.collections.MinimalFileTree;
-import org.gradle.api.internal.file.collections.SingletonFileTree;
 import org.gradle.api.resources.ResourceException;
 import org.gradle.api.resources.internal.ReadableResourceInternal;
 import org.gradle.internal.IoActions;
+import org.gradle.internal.file.Chmod;
+import org.gradle.internal.hash.FileHasher;
+import org.gradle.internal.hash.HashCode;
 import org.gradle.internal.hash.StreamHasher;
-import org.gradle.internal.nativeintegration.filesystem.Chmod;
-import org.gradle.internal.nativeintegration.filesystem.Stat;
 import org.gradle.util.GFileUtils;
 
 import javax.annotation.Nullable;
@@ -45,33 +43,36 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class TarFileTree implements MinimalFileTree, FileSystemMirroringFileTree {
+public class TarFileTree implements MinimalFileTree, ArchiveFileTree {
     private final File tarFile;
     private final ReadableResourceInternal resource;
     private final Chmod chmod;
-    private final Stat stat;
     private final DirectoryFileTreeFactory directoryFileTreeFactory;
     private final File tmpDir;
     private final StreamHasher streamHasher;
+    private final FileHasher fileHasher;
 
-    public TarFileTree(@Nullable File tarFile, ReadableResourceInternal resource, File tmpDir, Chmod chmod, Stat stat, DirectoryFileTreeFactory directoryFileTreeFactory, StreamHasher streamHasher) {
+    public TarFileTree(@Nullable File tarFile, ReadableResourceInternal resource, File tmpDir, Chmod chmod, DirectoryFileTreeFactory directoryFileTreeFactory, StreamHasher streamHasher, FileHasher fileHasher) {
         this.tarFile = tarFile;
         this.resource = resource;
         this.chmod = chmod;
-        this.stat = stat;
         this.directoryFileTreeFactory = directoryFileTreeFactory;
         this.tmpDir = tmpDir;
         this.streamHasher = streamHasher;
+        this.fileHasher = fileHasher;
     }
 
+    @Override
     public String getDisplayName() {
         return String.format("TAR '%s'", resource.getDisplayName());
     }
 
+    @Override
     public DirectoryFileTree getMirror() {
         return directoryFileTreeFactory.create(getExpandedDir());
     }
 
+    @Override
     public void visit(FileVisitor visitor) {
         InputStream inputStream;
         try {
@@ -109,7 +110,8 @@ public class TarFileTree implements MinimalFileTree, FileSystemMirroringFileTree
         }
     }
 
-    private File getBackingFile() {
+    @Override
+    public File getBackingFile() {
         if (tarFile != null) {
             return tarFile;
         }
@@ -117,11 +119,24 @@ public class TarFileTree implements MinimalFileTree, FileSystemMirroringFileTree
     }
 
     private File getExpandedDir() {
+        HashCode fileHash = tarFile != null ? hashFile(tarFile) : hashResource(resource);
+        String expandedDirName = resource.getBaseName() + "_" + fileHash;
+        return new File(tmpDir, expandedDirName);
+    }
+
+    private HashCode hashFile(File tarFile) {
+        try {
+            return fileHasher.hash(tarFile);
+        } catch (Exception e) {
+            throw cannotExpand(e);
+        }
+    }
+
+    private HashCode hashResource(ReadableResourceInternal resource) {
         InputStream inputStream = null;
         try {
             inputStream = new BufferedInputStream(resource.read());
-            String expandedDirName = resource.getBaseName() + "_" + streamHasher.hash(inputStream);
-            return new File(tmpDir, expandedDirName);
+            return streamHasher.hash(inputStream);
         } catch (ResourceException e) {
             throw cannotExpand(e);
         } finally {
@@ -131,38 +146,6 @@ public class TarFileTree implements MinimalFileTree, FileSystemMirroringFileTree
 
     private RuntimeException cannotExpand(Exception e) {
         throw new InvalidUserDataException(String.format("Cannot expand %s.", getDisplayName()), e);
-    }
-
-    @Override
-    public void registerWatchPoints(FileSystemSubset.Builder builder) {
-        File backingFile = getBackingFile();
-        if (backingFile != null) {
-            builder.add(backingFile);
-        }
-    }
-
-    @Override
-    public void visitTreeOrBackingFile(final FileVisitor visitor) {
-        File backingFile = getBackingFile();
-        if (backingFile != null) {
-            new SingletonFileTree(backingFile).visit(visitor);
-        } else {
-            // We need to wrap the visitor so that the file seen by the visitor has already
-            // been extracted from the archive and we do not try to extract it again.
-            // It's unsafe to keep the FileVisitDetails provided by TarFileTree directly
-            // because we do not expect to visit the same paths again (after extracting everything).
-            visit(new FileVisitor() {
-                @Override
-                public void visitDir(FileVisitDetails dirDetails) {
-                    visitor.visitDir(new DefaultFileVisitDetails(dirDetails.getFile(), chmod, stat));
-                }
-
-                @Override
-                public void visitFile(FileVisitDetails fileDetails) {
-                    visitor.visitFile(new DefaultFileVisitDetails(fileDetails.getFile(), chmod, stat));
-                }
-            });
-        }
     }
 
     private static class DetailsImpl extends AbstractFileTreeElement implements FileVisitDetails {
@@ -183,14 +166,17 @@ public class TarFileTree implements MinimalFileTree, FileSystemMirroringFileTree
             this.stopFlag = stopFlag;
         }
 
+        @Override
         public String getDisplayName() {
             return String.format("tar entry %s!%s", resource.getDisplayName(), entry.getName());
         }
 
+        @Override
         public void stopVisiting() {
             stopFlag.set(true);
         }
 
+        @Override
         public File getFile() {
             if (file == null) {
                 file = new File(expandedDir, entry.getName());
@@ -201,18 +187,22 @@ public class TarFileTree implements MinimalFileTree, FileSystemMirroringFileTree
             return file;
         }
 
+        @Override
         public long getLastModified() {
             return entry.getModTime().getTime();
         }
 
+        @Override
         public boolean isDirectory() {
             return entry.isDirectory();
         }
 
+        @Override
         public long getSize() {
             return entry.getSize();
         }
 
+        @Override
         public InputStream open() {
             if (read && file != null) {
                 return GFileUtils.openInputStream(file);
@@ -224,10 +214,12 @@ public class TarFileTree implements MinimalFileTree, FileSystemMirroringFileTree
             return tar;
         }
 
+        @Override
         public RelativePath getRelativePath() {
             return new RelativePath(!entry.isDirectory(), entry.getName().split("/"));
         }
 
+        @Override
         public int getMode() {
             return entry.getMode() & 0777;
         }

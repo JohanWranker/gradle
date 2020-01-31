@@ -16,6 +16,7 @@
 
 package org.gradle.plugins.ide.idea
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.plugins.ide.AbstractIdeIntegrationTest
@@ -28,11 +29,15 @@ class IdeaModuleIntegrationTest extends AbstractIdeIntegrationTest {
     public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Test
+    @ToBeFixedForInstantExecution
     void enablesCustomizationsOnNewModel() {
         //given
         testResources.dir.create {
             additionalCustomSources {}
             additionalCustomTestSources {}
+            additionalCustomResources {}
+            additionalCustomTestResources {}
+            additionalCustomGeneratedResources {}
             muchBetterOutputDir {}
             muchBetterTestOutputDir {}
             customImlFolder {}
@@ -48,7 +53,7 @@ apply plugin: "idea"
 
 configurations {
   provided
-  provided.extendsFrom(compile)
+  compileClasspath.extendsFrom(provided)
 }
 
 idea {
@@ -60,9 +65,13 @@ idea {
 
         sourceDirs += file('additionalCustomSources')
         testSourceDirs += file('additionalCustomTestSources')
+        resourceDirs += file('additionalCustomResources')
+        resourceDirs += file('additionalCustomGeneratedResources')
+        testResourceDirs += file('additionalCustomTestResources')
+        generatedSourceDirs += file('additionalCustomGeneratedResources')
         excludeDirs += file('excludeMePlease')
 
-        scopes.PROVIDED.plus += [ configurations.compile ]
+        scopes.PROVIDED.plus += [ configurations.compileClasspath ]
         downloadJavadoc = true
         downloadSources = false
 
@@ -86,9 +95,18 @@ idea {
 
         //then
         def iml = parseImlFile('customImlFolder/foo')
-        ['additionalCustomSources', 'additionalCustomTestSources', 'src/main/java'].each { expectedSrcFolder ->
+        ['additionalCustomSources', 'additionalCustomTestSources',
+         'additionalCustomResources', 'additionalCustomTestResources',
+         'additionalCustomGeneratedResources',
+         'src/main/java'].each { expectedSrcFolder ->
             assert iml.component.content.sourceFolder.find { it.@url.text().contains(expectedSrcFolder) }
         }
+        ['additionalCustomResources', 'additionalCustomGeneratedResources'].each { expectedSrcFolder ->
+            assert iml.component.content.sourceFolder.find { it.@url.text().contains(expectedSrcFolder) && it.@type.text() == 'java-resource'}
+        }
+        assert iml.component.content.sourceFolder.find { it.@url.text().contains('additionalCustomTestResources') && it.@type == 'java-test-resource' }
+        assert iml.component.content.sourceFolder.find { it.@url.text().contains('additionalCustomGeneratedResources') && it.@generated.text() == 'true'}
+
         ['customModuleContentRoot', 'CUSTOM_VARIABLE'].each {
             assert iml.component.content.@url.text().contains(it)
         }
@@ -102,6 +120,54 @@ idea {
     }
 
     @Test
+    @Issue("https://github.com/gradle/gradle/issues/6547")
+    @ToBeFixedForInstantExecution
+    void "omit resource declaration if directory is also a source directory"() {
+        //given
+        testResources.dir.create {
+            src {
+                main {
+                    java {}
+                }
+
+                test {
+                    java {}
+                }
+            }
+        }
+
+        //when
+        runIdeaTask '''
+apply plugin: 'java'
+apply plugin: 'idea'
+
+sourceSets {
+   main {
+      resources {
+         srcDir 'src/main/java'
+      }
+   }
+   test {
+      resources {
+         srcDir 'src/test/java'
+      }
+   }
+}
+'''
+
+        //then
+        def iml = parseImlFile('root')
+        def source = iml.component.content.sourceFolder.find { it.@url.text().contains('src/main/java') }
+        def testSource = iml.component.content.sourceFolder.find { it.@url.text().contains('src/test/java') }
+
+        assert source
+        assert testSource
+        assert source.@type.text() != 'java-resource'
+        assert testSource.@type.text() != 'java-test-resource'
+    }
+
+    @Test
+    @ToBeFixedForInstantExecution
     void plusMinusConfigurationsWorkFineForSelfResolvingFileDependencies() {
         //when
         runTask 'idea', '''
@@ -140,6 +206,7 @@ idea {
 
     @Issue("GRADLE-3101")
     @Test
+    @ToBeFixedForInstantExecution
     void scopesCustomizedUsingPlusEqualOperator() {
         //when
         runTask 'idea', '''
@@ -167,6 +234,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void allowsReconfiguringBeforeOrAfterMerging() {
         //given
         def existingIml = file('root.iml')
@@ -207,6 +275,7 @@ idea {
 
     @Issue("GRADLE-1504")
     @Test
+    @ToBeFixedForInstantExecution
     void shouldNotPutSourceSetsOutputDirOnClasspath() {
         //when
         runTask 'idea', '''
@@ -239,6 +308,7 @@ sourceSets.test.output.dir "$buildDir/ws/test"
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void theBuiltByTaskBeExecuted() {
         //when
         def result = runIdeaTask('''
@@ -256,6 +326,7 @@ task generateForTest
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void enablesTogglingJavadocAndSourcesOff() {
         //given
         def repoDir = file("repo")
@@ -274,7 +345,7 @@ repositories {
 }
 
 dependencies {
-    compile 'coolGroup:niceArtifact:1.0'
+    implementation 'coolGroup:niceArtifact:1.0'
 }
 
 idea.module {
@@ -290,6 +361,7 @@ idea.module {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "respects external dependencies order"() {
         //given
         def repoDir = file("repo")
@@ -306,8 +378,8 @@ repositories {
 }
 
 dependencies {
-    compile 'org.gradle:artifact1:1.0'
-    compile 'org.gradle:artifact2:1.0'
+    implementation 'org.gradle:artifact1:1.0'
+    implementation 'org.gradle:artifact2:1.0'
 }
 """
         def content = getFile([:], 'root.iml').text
@@ -320,6 +392,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "respects local dependencies order"() {
         //given
         file('artifact1.jar').createNewFile()
@@ -331,8 +404,8 @@ apply plugin: 'java'
 apply plugin: 'idea'
 
 dependencies {
-    compile files('artifact1.jar')
-    compile files('artifact2.jar')
+    implementation files('artifact1.jar')
+    implementation files('artifact2.jar')
 }
 """
         def content = getFile([:], 'root.iml').text
@@ -345,6 +418,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "works with artifacts without group and version"() {
         //given
         testFile('repo/hibernate-core.jar').createFile()
@@ -359,7 +433,7 @@ repositories {
 }
 
 dependencies {
-    compile ':hibernate-core:'
+    implementation ':hibernate-core:'
 }
 """
         def content = getFile([:], 'root.iml').text
@@ -369,6 +443,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void doesNotBreakWhenSomeDependenciesCannotBeResolved() {
         //given
         def repoDir = file("repo")
@@ -390,10 +465,10 @@ project(':impl') {
     }
 
     dependencies {
-        compile 'groupOne:artifactTwo:1.0'
-        compile project(':someApiProject')
-        compile 'i.dont:Exist:1.0'
-        compile files('someDependency.jar')
+        implementation 'groupOne:artifactTwo:1.0'
+        implementation project(':someApiProject')
+        implementation 'i.dont:Exist:1.0'
+        implementation files('someDependency.jar')
     }
 }
 """
@@ -408,6 +483,7 @@ project(':impl') {
 
     @Issue("GRADLE-2017")
     @Test
+    @ToBeFixedForInstantExecution
     void "create external dependency in more scopes when needed"() {
         //given
         def repoDir = file("repo")
@@ -424,9 +500,9 @@ repositories {
 }
 
 dependencies {
-    compile 'org.gradle:api-artifact:1.0'
-    testCompile 'org.gradle:impl-artifact:1.0'
-    runtime 'org.gradle:impl-artifact:1.0'
+    implementation 'org.gradle:api-artifact:1.0'
+    testImplementation 'org.gradle:impl-artifact:1.0'
+    runtimeOnly 'org.gradle:impl-artifact:1.0'
 }
 """
         //then
@@ -438,6 +514,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "custom configuration is added to all specified scopes considering IDEA scope inclusion"() {
         //given
         def repoDir = file("repo")
@@ -475,6 +552,7 @@ idea {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "custom configuration can be added to TEST and RUNTIME"() {
         //given
         def repoDir = file("repo")
@@ -496,7 +574,7 @@ configurations {
 
 dependencies {
     myCustom 'foo:bar:1.0'
-    compile 'org.gradle:api-artifact:1.0'
+    implementation 'org.gradle:api-artifact:1.0'
 }
 
 idea {
@@ -514,6 +592,7 @@ idea {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "no libraries generated without java plugin"() {
         //given
         def repoDir = file("repo")
@@ -543,6 +622,7 @@ dependencies {
 
     @Test
     @Issue("GRADLE-1945")
+    @ToBeFixedForInstantExecution
     void unresolvedDependenciesAreLogged() {
         //given
         def module = mavenRepo.module('myGroup', 'existing-artifact', '1.0')
@@ -566,8 +646,8 @@ dependencies {
     myPlusConfig group: 'myGroup', name: 'missing-extra-artifact', version: '1.0'
     myPlusConfig group: 'myGroup', name: 'filtered-artifact', version: '1.0'
     myMinusConfig group: 'myGroup', name: 'filtered-artifact', version: '1.0'
-    runtime  group: 'myGroup', name: 'missing-artifact', version: '1.0'
-    compile  group: 'myGroup', name: 'existing-artifact', version: '1.0'
+    runtimeOnly group: 'myGroup', name: 'missing-artifact', version: '1.0'
+    implementation group: 'myGroup', name: 'existing-artifact', version: '1.0'
 
     idea {
         module {
@@ -577,17 +657,14 @@ dependencies {
     }
 }
 """
-        String expected = """:ideaModule
-Could not resolve: myGroup:missing-extra-artifact:1.0
+        String expected = """Could not resolve: myGroup:missing-extra-artifact:1.0
 Could not resolve: myGroup:missing-artifact:1.0
-:ideaProject
-:ideaWorkspace
-:idea
 """
-        result.assertOutputContains(expected)
+        result.groupedOutput.task(":ideaModule").output == expected
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "compile only dependencies handled correctly"() {
         // given
         def shared = mavenRepo.module('org.gradle.test', 'shared', '1.0').publish()
@@ -605,7 +682,7 @@ repositories {
 }
 
 dependencies {
-    compile 'org.gradle.test:compile:1.0'
+    implementation 'org.gradle.test:compile:1.0'
     compileOnly 'org.gradle.test:compileOnly:1.0'
     testCompileOnly 'org.gradle.test:testCompileOnly:1.0'
 }
@@ -621,6 +698,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "test compile only dependencies mapped to IDEA scopes"() {
         // given
         def shared = mavenRepo.module('org.gradle.test', 'shared', '1.0').publish()
@@ -637,7 +715,7 @@ dependencies {
             }
 
             dependencies {
-                testCompile 'org.gradle.test:compile:1.0'
+                testImplementation 'org.gradle.test:compile:1.0'
                 testCompileOnly 'org.gradle.test:compileOnly:1.0'
             }
         """.stripIndent()
@@ -651,6 +729,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "conflicting versions of the same library requested for compile and compile-only mapped to IDEA scopes"() {
         // given
         mavenRepo.module('org.gradle.test', 'bothCompileAndCompileOnly', '1.0').publish()
@@ -666,7 +745,7 @@ dependencies {
             }
 
             dependencies {
-                compile 'org.gradle.test:bothCompileAndCompileOnly:1.0'
+                implementation 'org.gradle.test:bothCompileAndCompileOnly:1.0'
                 compileOnly 'org.gradle.test:bothCompileAndCompileOnly:2.0'
             }
         """.stripIndent()
@@ -680,6 +759,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "conflicting versions of the same library requested for runtime and compile-only mapped to IDEA scopes"() {
         // given
         mavenRepo.module('org.gradle.test', 'bothCompileAndCompileOnly', '1.0').publish()
@@ -696,7 +776,7 @@ dependencies {
 
             dependencies {
                 compileOnly 'org.gradle.test:bothCompileAndCompileOnly:2.0'
-                runtime 'org.gradle.test:bothCompileAndCompileOnly:1.0'
+                runtimeOnly 'org.gradle.test:bothCompileAndCompileOnly:1.0'
             }
         """.stripIndent()
 
@@ -709,6 +789,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "conflicting versions of the same library requested for test-compile and test-compile-only mapped to IDEA scopes"() {
         // given
         mavenRepo.module('org.gradle.test', 'bothCompileAndCompileOnly', '1.0').publish()
@@ -724,7 +805,7 @@ dependencies {
             }
 
             dependencies {
-                testCompile 'org.gradle.test:bothCompileAndCompileOnly:1.0'
+                testImplementation 'org.gradle.test:bothCompileAndCompileOnly:1.0'
                 testCompileOnly 'org.gradle.test:bothCompileAndCompileOnly:2.0'
             }
         """.stripIndent()
@@ -737,6 +818,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "providedCompile dependencies are added to PROVIDED only"() {
         // given
         mavenRepo.module('org.gradle.test', 'foo', '1.0').publish()
@@ -762,6 +844,7 @@ dependencies {
     }
 
     @Test
+    @ToBeFixedForInstantExecution
     void "providedRuntime dependencies are added to PROVIDED only"() {
         // given
         mavenRepo.module('org.gradle.test', 'foo', '1.0').publish()

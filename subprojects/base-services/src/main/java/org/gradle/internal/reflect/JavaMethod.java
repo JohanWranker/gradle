@@ -19,6 +19,7 @@ import org.apache.commons.lang.StringUtils;
 import org.gradle.api.GradleException;
 import org.gradle.internal.UncheckedException;
 
+import javax.annotation.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -27,6 +28,36 @@ import java.util.Arrays;
 public class JavaMethod<T, R> {
     private final Method method;
     private final Class<R> returnType;
+
+    /**
+     * Locates the given method. Searches all methods, including private methods.
+     */
+    public static <T, R> JavaMethod<T, R> of(Class<T> target, Class<R> returnType, String name, Class<?>... paramTypes) throws NoSuchMethodException {
+        return new JavaMethod<T, R>(target, returnType, name, paramTypes);
+    }
+
+    /**
+     * Locates the given static method. Searches all methods, including private methods.
+     */
+    public static <T, R> JavaMethod<T, R> ofStatic(Class<T> target, Class<R> returnType, String name, Class<?>... paramTypes) throws NoSuchMethodException {
+        return new JavaMethod<T, R>(target, returnType, name, true, paramTypes);
+    }
+
+    /**
+     * Locates the given method. Searches all methods, including private methods.
+     */
+    public static <T, R> JavaMethod<T, R> of(T target, Class<R> returnType, String name, Class<?>... paramTypes) throws NoSuchMethodException {
+        @SuppressWarnings("unchecked")
+        Class<T> targetClass = (Class<T>) target.getClass();
+        return of(targetClass, returnType, name, paramTypes);
+    }
+
+    /**
+     * Locates the given method. Searches all methods, including private methods.
+     */
+    public static <T, R> JavaMethod<T, R> of(Class<R> returnType, Method method) throws NoSuchMethodException {
+        return new JavaMethod<T, R>(returnType, method);
+    }
 
     public JavaMethod(Class<T> target, Class<R> returnType, String name, boolean allowStatic, Class<?>... paramTypes) {
         this(returnType, findMethod(target, target, name, allowStatic, paramTypes));
@@ -68,7 +99,7 @@ public class JavaMethod<T, R> {
         return invoke(null, args);
     }
 
-    public R invoke(T target, Object... args) {
+    public R invoke(@Nullable T target, Object... args) {
         try {
             Object result = method.invoke(target, args);
             return returnType.cast(result);
@@ -85,5 +116,10 @@ public class JavaMethod<T, R> {
 
     public Class<?>[] getParameterTypes(){
         return method.getParameterTypes();
+    }
+
+    @Override
+    public String toString() {
+        return method.toString();
     }
 }

@@ -39,7 +39,7 @@ public class DefaultDeployerFactory implements DeployerFactory {
     private final LocalMavenRepositoryLocator mavenRepositoryLocator;
 
     public DefaultDeployerFactory(MavenFactory mavenFactory, Factory<LoggingManagerInternal> loggingManagerFactory, FileResolver fileResolver, MavenPomMetaInfoProvider pomMetaInfoProvider,
-                                  ConfigurationContainer configurationContainer, Conf2ScopeMappingContainer scopeMapping, 
+                                  ConfigurationContainer configurationContainer, Conf2ScopeMappingContainer scopeMapping,
                                   MavenSettingsProvider mavenSettingsProvider, LocalMavenRepositoryLocator mavenRepositoryLocator) {
         this.mavenFactory = mavenFactory;
         this.loggingManagerFactory = loggingManagerFactory;
@@ -51,6 +51,7 @@ public class DefaultDeployerFactory implements DeployerFactory {
         this.mavenRepositoryLocator = mavenRepositoryLocator;
     }
 
+    @Override
     public DefaultGroovyMavenDeployer createMavenDeployer() {
         PomFilterContainer pomFilterContainer = createPomFilterContainer(
                 mavenFactory.createMavenPomFactory(configurationContainer, scopeMapping, fileResolver));
@@ -59,6 +60,7 @@ public class DefaultDeployerFactory implements DeployerFactory {
                 mavenSettingsProvider, mavenRepositoryLocator);
     }
 
+    @Override
     public MavenResolver createMavenInstaller() {
         PomFilterContainer pomFilterContainer = createPomFilterContainer(
                 mavenFactory.createMavenPomFactory(configurationContainer, scopeMapping, fileResolver));

@@ -17,35 +17,48 @@ package org.gradle.api.internal.tasks;
 
 import org.gradle.api.Namer;
 import org.gradle.api.internal.AbstractValidatingNamedDomainObjectContainer;
+import org.gradle.api.internal.CollectionCallbackActionDecorator;
+import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileResolver;
-import org.gradle.api.internal.file.SourceDirectorySetFactory;
+import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.reflect.TypeOf;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.internal.reflect.Instantiator;
 
+import javax.inject.Inject;
+
+import static org.gradle.api.reflect.TypeOf.typeOf;
+
 public class DefaultSourceSetContainer extends AbstractValidatingNamedDomainObjectContainer<SourceSet> implements SourceSetContainer {
-    private final SourceDirectorySetFactory sourceDirectorySetFactory;
+    private final ObjectFactory objectFactory;
     private final FileResolver fileResolver;
-    private final TaskResolver taskResolver;
+    private final FileCollectionFactory fileCollectionFactory;
     private final Instantiator instantiator;
 
-    public DefaultSourceSetContainer(FileResolver fileResolver, TaskResolver taskResolver, Instantiator classGenerator, SourceDirectorySetFactory sourceDirectorySetFactory) {
-        super(SourceSet.class, classGenerator, new Namer<SourceSet>() {
+    @Inject
+    public DefaultSourceSetContainer(FileResolver fileResolver, FileCollectionFactory fileCollectionFactory, Instantiator instantiator, ObjectFactory objectFactory, CollectionCallbackActionDecorator collectionCallbackActionDecorator) {
+        super(SourceSet.class, instantiator, new Namer<SourceSet>() {
+            @Override
             public String determineName(SourceSet ss) {
                 return ss.getName();
             }
-        });
+        }, collectionCallbackActionDecorator);
         this.fileResolver = fileResolver;
-        this.taskResolver = taskResolver;
-        this.instantiator = classGenerator;
-        this.sourceDirectorySetFactory = sourceDirectorySetFactory;
+        this.fileCollectionFactory = fileCollectionFactory;
+        this.instantiator = instantiator;
+        this.objectFactory = objectFactory;
     }
 
     @Override
     protected SourceSet doCreate(String name) {
-        DefaultSourceSet sourceSet = instantiator.newInstance(DefaultSourceSet.class, name, sourceDirectorySetFactory);
-        sourceSet.setClasses(instantiator.newInstance(DefaultSourceSetOutput.class, sourceSet.getDisplayName(), fileResolver, taskResolver));
-
+        DefaultSourceSet sourceSet = instantiator.newInstance(DefaultSourceSet.class, name, objectFactory);
+        sourceSet.setClasses(instantiator.newInstance(DefaultSourceSetOutput.class, sourceSet.getDisplayName(), fileResolver, fileCollectionFactory));
         return sourceSet;
+    }
+
+    @Override
+    public TypeOf<?> getPublicType() {
+        return typeOf(SourceSetContainer.class);
     }
 }

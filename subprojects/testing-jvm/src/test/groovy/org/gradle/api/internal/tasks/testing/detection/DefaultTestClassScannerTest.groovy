@@ -14,24 +14,31 @@
  * limitations under the License.
  */
 
-
 package org.gradle.api.internal.tasks.testing.detection
 
 import org.gradle.api.file.FileTree
 import org.gradle.api.file.FileVisitDetails
 import org.gradle.api.file.FileVisitor
+import org.gradle.api.file.RelativePath
+import org.gradle.api.internal.file.DefaultFileVisitDetails
 import org.gradle.api.internal.tasks.testing.TestClassProcessor
 import org.junit.Test
 import spock.lang.Specification
+import spock.lang.Subject
 
-public class DefaultTestClassScannerTest extends Specification {
-    private final TestFrameworkDetector detector = Mock()
-    private final TestClassProcessor processor = Mock()
-    private final FileTree files = Mock()
+class DefaultTestClassScannerTest extends Specification {
+    def files = Mock(FileTree)
+    def detector = Mock(TestFrameworkDetector)
+    def processor = Stub(TestClassProcessor)
+
+    @Subject
+    def scanner = new DefaultTestClassScanner(files, detector, processor)
 
     @Test
-    public void passesEachClassFileToTestClassDetector() {
-        DefaultTestClassScanner scanner = new DefaultTestClassScanner(files, detector, processor)
+    void passesEachClassFileToTestClassDetector() {
+        given:
+        def class1 = stubFileVisitDetails('class1')
+        def class2 = stubFileVisitDetails('class2')
 
         when:
         scanner.run()
@@ -39,17 +46,39 @@ public class DefaultTestClassScannerTest extends Specification {
         then:
         1 * detector.startDetection(processor)
         then:
-        1 * detector.processTestClass(new File("class1.class"))
+        1 * files.visit(_) >> { args ->
+            FileVisitor visitor = args[0]
+            assert visitor
+            visitor.visitFile(class1)
+            visitor.visitFile(class2)
+        }
         then:
-        1 * detector.processTestClass(new File("class2.class"))
+        1 * detector.processTestClass({ it.file.is(class1.file) && it.relativePath.is(class1.relativePath) })
+        then:
+        1 * detector.processTestClass({ it.file.is(class2.file) && it.relativePath.is(class2.relativePath) })
+
+        0 * _._
+    }
+
+    @Test
+    void skipAnonymousClass() {
+        when:
+        scanner.run()
+
+        then:
+        1 * detector.startDetection(processor)
         then:
         1 * files.visit(_) >> { args ->
             FileVisitor visitor = args[0]
             assert visitor
-            visitor.visitFile({new File('class1.class')} as FileVisitDetails)
-            visitor.visitFile({new File('class2.class')} as FileVisitDetails)
+            visitor.visitFile(stubFileVisitDetails('AnonymousClass$1'))
+            visitor.visitFile(stubFileVisitDetails('AnonymousClass$1$22'))
         }
 
         0 * _._
+    }
+
+    FileVisitDetails stubFileVisitDetails(String className) {
+        return new DefaultFileVisitDetails(new File("${className}.class"), new RelativePath(false, "${className}.class"), null, null, null)
     }
 }

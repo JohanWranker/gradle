@@ -15,10 +15,13 @@
  */
 package org.gradle.api.tasks.diagnostics;
 
+import com.google.common.base.Strings;
+import org.gradle.api.Incubating;
 import org.gradle.api.Project;
 import org.gradle.api.Rule;
+import org.gradle.api.internal.project.ProjectState;
+import org.gradle.api.internal.project.ProjectStateRegistry;
 import org.gradle.api.internal.project.ProjectTaskLister;
-import org.gradle.api.tasks.options.Option;
 import org.gradle.api.tasks.Console;
 import org.gradle.api.tasks.diagnostics.internal.AggregateMultiProjectTaskReportModel;
 import org.gradle.api.tasks.diagnostics.internal.DefaultGroupTaskReportModel;
@@ -27,6 +30,8 @@ import org.gradle.api.tasks.diagnostics.internal.SingleProjectTaskReportModel;
 import org.gradle.api.tasks.diagnostics.internal.TaskDetails;
 import org.gradle.api.tasks.diagnostics.internal.TaskDetailsFactory;
 import org.gradle.api.tasks.diagnostics.internal.TaskReportRenderer;
+import org.gradle.api.tasks.options.Option;
+import org.gradle.internal.Factory;
 
 import javax.inject.Inject;
 import java.io.IOException;
@@ -43,6 +48,7 @@ public class TaskReportTask extends AbstractReportTask {
     private TaskReportRenderer renderer = new TaskReportRenderer();
 
     private boolean detail;
+    private String group;
 
     @Override
     public ReportRenderer getRenderer() {
@@ -63,22 +69,41 @@ public class TaskReportTask extends AbstractReportTask {
         return detail;
     }
 
+    /**
+     * Set a specific task group to be displayed.
+     *
+     * @since 5.1
+     */
+    @Incubating
+    @Option(option = "group", description = "Show tasks for a specific group.")
+    public void setDisplayGroup(String group) {
+        this.group = group;
+    }
+
+    /**
+     * Get the task group to be displayed.
+     *
+     * @since 5.1
+     */
+    @Incubating
+    @Console
+    public String getDisplayGroup() {
+        return group;
+    }
+
     @Override
     public void generate(Project project) throws IOException {
         renderer.showDetail(isDetail());
         renderer.addDefaultTasks(project.getDefaultTasks());
 
-        AggregateMultiProjectTaskReportModel aggregateModel = new AggregateMultiProjectTaskReportModel(!isDetail(), isDetail());
-        TaskDetailsFactory taskDetailsFactory = new TaskDetailsFactory(project);
+        AggregateMultiProjectTaskReportModel aggregateModel = new AggregateMultiProjectTaskReportModel(!isDetail(), isDetail(), getDisplayGroup());
+        final TaskDetailsFactory taskDetailsFactory = new TaskDetailsFactory(project);
 
-        SingleProjectTaskReportModel projectTaskModel = new SingleProjectTaskReportModel(taskDetailsFactory);
-        projectTaskModel.build(getProjectTaskLister().listProjectTasks(project));
+        SingleProjectTaskReportModel projectTaskModel = buildTaskReportModelFor(taskDetailsFactory, project);
         aggregateModel.add(projectTaskModel);
 
-        for (Project subproject : project.getSubprojects()) {
-            SingleProjectTaskReportModel subprojectTaskModel = new SingleProjectTaskReportModel(taskDetailsFactory);
-            subprojectTaskModel.build(getProjectTaskLister().listProjectTasks(subproject));
-            aggregateModel.add(subprojectTaskModel);
+        for (final Project subproject : project.getSubprojects()) {
+            aggregateModel.add(buildTaskReportModelFor(taskDetailsFactory, subproject));
         }
 
         aggregateModel.build();
@@ -94,9 +119,33 @@ public class TaskReportTask extends AbstractReportTask {
         }
         renderer.completeTasks();
 
-        for (Rule rule : project.getTasks().getRules()) {
-            renderer.addRule(rule);
+        if (Strings.isNullOrEmpty(group)) {
+            for (Rule rule : project.getTasks().getRules()) {
+                renderer.addRule(rule);
+            }
         }
+    }
+
+    private SingleProjectTaskReportModel buildTaskReportModelFor(final TaskDetailsFactory taskDetailsFactory, final Project subproject) {
+        ProjectState projectState = getProjectStateRegistry().stateFor(subproject);
+        return projectState.withMutableState(new Factory<SingleProjectTaskReportModel>() {
+            @Override
+            public SingleProjectTaskReportModel create() {
+                SingleProjectTaskReportModel subprojectTaskModel = new SingleProjectTaskReportModel(taskDetailsFactory);
+                subprojectTaskModel.build(getProjectTaskLister().listProjectTasks(subproject));
+                return subprojectTaskModel;
+            }
+        });
+    }
+
+    /**
+     * Injects a {@code ProjectStateRegistry} service.
+     *
+     * @since 5.0
+     */
+    @Inject
+    protected ProjectStateRegistry getProjectStateRegistry() {
+        throw new UnsupportedOperationException();
     }
 
     @Inject

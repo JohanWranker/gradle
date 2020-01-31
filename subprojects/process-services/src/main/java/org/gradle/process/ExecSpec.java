@@ -96,4 +96,11 @@ public interface ExecSpec extends BaseExecSpec {
      * Returns the arguments for the command to be executed. Defaults to an empty list.
      */
     List<String> getArgs();
+
+    /**
+     * Argument providers for the application.
+     *
+     * @since 4.6
+     */
+    List<CommandLineArgumentProvider> getArgumentProviders();
 }

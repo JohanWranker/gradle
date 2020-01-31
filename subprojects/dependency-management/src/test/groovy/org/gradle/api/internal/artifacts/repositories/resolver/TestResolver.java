@@ -16,31 +16,31 @@
 
 package org.gradle.api.internal.artifacts.repositories.resolver;
 
-import org.gradle.api.artifacts.ComponentMetadataSupplier;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ModuleComponentRepositoryAccess;
 import org.gradle.api.internal.artifacts.repositories.metadata.ImmutableMetadataSources;
 import org.gradle.api.internal.artifacts.repositories.metadata.MetadataArtifactProvider;
 import org.gradle.api.internal.component.ArtifactType;
-import org.gradle.caching.internal.BuildCacheHasher;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata;
 import org.gradle.internal.component.external.model.MutableModuleComponentResolveMetadata;
+import org.gradle.internal.component.model.ConfigurationMetadata;
+import org.gradle.internal.hash.Hasher;
 import org.gradle.internal.resolve.result.BuildableArtifactSetResolveResult;
 import org.gradle.internal.resolve.result.BuildableComponentArtifactsResolveResult;
 import org.gradle.internal.resource.ExternalResourceRepository;
 import org.gradle.internal.resource.local.FileStore;
 import org.gradle.internal.resource.local.LocallyAvailableResourceFinder;
 import org.gradle.internal.resource.transfer.CacheAwareExternalResourceAccessor;
+import org.gradle.util.TestUtil;
 
 public class TestResolver extends ExternalResourceResolver<ModuleComponentResolveMetadata> {
     ExternalResourceArtifactResolver artifactResolver;
 
     protected TestResolver(String name, boolean local, ExternalResourceRepository repository, CacheAwareExternalResourceAccessor cachingResourceAccessor, LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> locallyAvailableResourceFinder, FileStore<ModuleComponentArtifactIdentifier> artifactFileStore, ImmutableModuleIdentifierFactory moduleIdentifierFactory, ImmutableMetadataSources metadataSources, MetadataArtifactProvider metadataArtifactProvider) {
-        super(name, local, repository, cachingResourceAccessor, locallyAvailableResourceFinder, artifactFileStore, moduleIdentifierFactory, metadataSources, metadataArtifactProvider);
+        super(name, local, repository, cachingResourceAccessor, locallyAvailableResourceFinder, artifactFileStore, metadataSources, metadataArtifactProvider, null, null, null, TestUtil.getChecksumService());
     }
-
 
     @Override
     protected Class<ModuleComponentResolveMetadata> getSupportedMetadataType() {
@@ -53,7 +53,7 @@ public class TestResolver extends ExternalResourceResolver<ModuleComponentResolv
     }
 
     @Override
-    protected void appendId(BuildCacheHasher hasher) {
+    protected void appendId(Hasher hasher) {
         throw new UnsupportedOperationException();
     }
 
@@ -71,7 +71,7 @@ public class TestResolver extends ExternalResourceResolver<ModuleComponentResolv
     public ModuleComponentRepositoryAccess getRemoteAccess() {
         return new RemoteRepositoryAccess() {
             @Override
-            protected void resolveModuleArtifacts(ModuleComponentResolveMetadata module, BuildableComponentArtifactsResolveResult result) {
+            protected void resolveModuleArtifacts(ModuleComponentResolveMetadata module, ConfigurationMetadata variant, BuildableComponentArtifactsResolveResult result) {
                 throw new UnsupportedOperationException();
             }
 
@@ -84,12 +84,8 @@ public class TestResolver extends ExternalResourceResolver<ModuleComponentResolv
             protected void resolveSourceArtifacts(ModuleComponentResolveMetadata module, BuildableArtifactSetResolveResult result) {
                 throw new UnsupportedOperationException();
             }
-        };
-    }
 
-    @Override
-    public ComponentMetadataSupplier createMetadataSupplier() {
-        throw new UnsupportedOperationException();
+        };
     }
 
     interface MutableTestResolveMetadata extends MutableModuleComponentResolveMetadata {}

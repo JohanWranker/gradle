@@ -16,6 +16,7 @@
 
 package org.gradle.api.internal.file.copy
 
+import org.gradle.api.internal.provider.DefaultProviderFactory
 import org.gradle.internal.typeconversion.NotationParser
 import org.gradle.internal.typeconversion.UnsupportedNotationException
 
@@ -86,6 +87,16 @@ class PathNotationConverterTest extends Specification {
         null == pathNotationParser.parseNotation({ null });
     }
 
+    def "with Callable of unsupported return value"() {
+        def customObj = new DefaultExcludeRule()
+
+        when:
+        pathNotationParser.parseNotation({ customObj } as Callable);
+
+        then:
+        thrown(UnsupportedNotationException)
+    }
+
     def "with closure of unsupported return value"() {
         def customObj = new DefaultExcludeRule()
 
@@ -94,6 +105,17 @@ class PathNotationConverterTest extends Specification {
 
         then:
         thrown(UnsupportedNotationException)
+    }
+
+    def "with Provider of String"() {
+        DefaultProviderFactory providerFactory = new DefaultProviderFactory();
+        def provider = providerFactory.provider(new Callable<String>() {
+            String call() {
+                return "provider/path";
+            }
+        })
+        expect:
+        "provider/path" == pathNotationParser.parseNotation(provider);
     }
 
     def "with Callable that throws exception"() {

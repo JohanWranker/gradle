@@ -20,6 +20,17 @@ import org.gradle.test.fixtures.file.TestFile
 
 abstract class AbstractProjectRelocationIntegrationTest extends AbstractIntegrationSpec implements DirectoryBuildCacheFixture {
 
+    @ToBeFixedForInstantExecution(bottomSpecs = [
+        "JavaGradlePluginRelocationTest",
+        "Antlr2RelocationIntegrationTest",
+        "Antlr3RelocationIntegrationTest",
+        "Antlr4RelocationIntegrationTest",
+        "CheckstyleRelocationIntegrationTest",
+        "PmdRelocationIntegrationTest",
+        "CodeNarcRelocationIntegrationTest",
+        "JacocoTestRelocationIntegrationTest",
+        "ScalaCompileRelocationIntegrationTest"
+    ])
     def "project is relocatable"() {
         def originalDir = file("original-dir")
         originalDir.file("settings.gradle") << localCacheConfiguration()
@@ -40,14 +51,14 @@ abstract class AbstractProjectRelocationIntegrationTest extends AbstractIntegrat
         inDirectory(originalDir)
         run taskName
         then: "it is UP-TO-DATE"
-        skipped taskName
+        result.assertTaskSkipped taskName
 
         when: "it is executed in the new location"
         prepareForRelocation(relocatedDir)
         inDirectory(relocatedDir)
         withBuildCache().run taskName
         then: "it is loaded from cache"
-        skipped taskName
+        result.assertTaskSkipped taskName
 
         when: "it is re-executed with a clean project in the new location"
         removeResults(relocatedDir)

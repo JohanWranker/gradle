@@ -31,6 +31,8 @@ import static org.gradle.internal.logging.text.StyledTextOutput.Style.Error;
 import static org.gradle.internal.logging.text.StyledTextOutput.Style.Normal;
 
 public class StyledTextOutputBackedRenderer implements OutputEventListener {
+    public static final String ISO_8601_DATE_TIME_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSZ";
+
     private final OutputEventTextOutputImpl textOutput;
     private boolean debugOutput;
     private SimpleDateFormat dateFormat;
@@ -40,13 +42,15 @@ public class StyledTextOutputBackedRenderer implements OutputEventListener {
         this.textOutput = new OutputEventTextOutputImpl(textOutput);
     }
 
+    @Override
     public void onOutput(OutputEvent event) {
         if (event instanceof LogLevelChangeEvent) {
             LogLevelChangeEvent changeEvent = (LogLevelChangeEvent) event;
-            debugOutput = changeEvent.getNewLogLevel() == LogLevel.DEBUG;
-            if (debugOutput && dateFormat == null) {
-                dateFormat = new SimpleDateFormat("HH:mm:ss.SSS");
+            boolean newLogLevelIsDebug = changeEvent.getNewLogLevel() == LogLevel.DEBUG;
+            if (newLogLevelIsDebug && dateFormat == null) {
+                dateFormat = new SimpleDateFormat(ISO_8601_DATE_TIME_FORMAT);
             }
+            debugOutput = newLogLevelIsDebug;
         }
         if (event instanceof RenderableOutputEvent) {
             RenderableOutputEvent outputEvent = (RenderableOutputEvent) event;
@@ -68,7 +72,7 @@ public class StyledTextOutputBackedRenderer implements OutputEventListener {
         }
     }
 
-    private class OutputEventTextOutputImpl extends AbstractLineChoppingStyledTextOutput {
+    private static class OutputEventTextOutputImpl extends AbstractLineChoppingStyledTextOutput {
         private final StyledTextOutput textOutput;
         private boolean atEndOfLine = true;
 

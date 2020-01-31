@@ -18,24 +18,27 @@ package org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact;
 
 import org.gradle.api.artifacts.ResolvedArtifact;
 import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
+import org.gradle.api.internal.tasks.TaskDependencyContainer;
 
 import java.io.File;
 
 /**
  * Represents an artifact that can be resolved. Call {@link #getFile()} or {@link ResolvedArtifact#getFile()} to resolve.
  */
-public interface ResolvableArtifact {
+public interface ResolvableArtifact extends TaskDependencyContainer {
     ComponentArtifactIdentifier getId();
 
     /**
-     * Has this artifact already resolved, so that calls to {@link #getFile()} are cheap. For example, is the result available in memory or can it be calculated quickly without IO calls?
+     * Should this artifact be resolved synchronously? For example, is the result of {@link #getFile()} available in memory or can it be calculated quickly without IO calls? Or is the implementation of {@link #getFile()} not parallel safe?
      */
-    boolean isResolved();
+    boolean isResolveSynchronously();
 
     /**
      * Resolves the file, if not already, blocking until complete.
      */
     File getFile();
+
+    ResolvableArtifact transformedTo(File file);
 
     ResolvedArtifact toPublicView();
 }

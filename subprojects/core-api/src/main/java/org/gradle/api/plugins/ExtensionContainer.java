@@ -17,13 +17,11 @@
 package org.gradle.api.plugins;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.UnknownDomainObjectException;
 import org.gradle.api.reflect.TypeOf;
 import org.gradle.internal.HasInternalProtocol;
 
 import javax.annotation.Nullable;
-import java.util.Map;
 
 /**
  * Allows adding 'namespaced' DSL extensions to a target object.
@@ -48,7 +46,6 @@ public interface ExtensionContainer {
      * @throws IllegalArgumentException When an extension with the given name already exists.
      * @since 3.5
      */
-    @Incubating
     <T> void add(Class<T> publicType, String name, T extension);
 
     /**
@@ -68,7 +65,6 @@ public interface ExtensionContainer {
      * @throws IllegalArgumentException When an extension with the given name already exists.
      * @since 3.5
      */
-    @Incubating
     <T> void add(TypeOf<T> publicType, String name, T extension);
 
     /**
@@ -105,7 +101,6 @@ public interface ExtensionContainer {
      * @see #add(Class, String, Object)
      * @since 3.5
      */
-    @Incubating
     <T> T create(Class<T> publicType, String name, Class<? extends T> instanceType, Object... constructionArguments);
 
     /**
@@ -125,7 +120,6 @@ public interface ExtensionContainer {
      * @see #add(Class, String, Object)
      * @since 3.5
      */
-    @Incubating
     <T> T create(TypeOf<T> publicType, String name, Class<? extends T> instanceType, Object... constructionArguments);
 
     /**
@@ -145,21 +139,10 @@ public interface ExtensionContainer {
     <T> T create(String name, Class<T> type, Object... constructionArguments);
 
     /**
-     * Provides access to all known extensions types.
-     *
-     * @return A map of extensions public types, keyed by name
-     * @since 3.5
-     */
-    @Incubating
-    @Deprecated
-    Map<String, TypeOf<?>> getSchema();
-
-    /**
      * Provides access to the schema of all known extensions.
      *
      * @since 4.5
      */
-    @Incubating
     ExtensionsSchema getExtensionsSchema();
 
     /**
@@ -179,7 +162,6 @@ public interface ExtensionContainer {
      * @throws UnknownDomainObjectException When the given extension is not found.
      * @since 3.5
      */
-    @Incubating
     <T> T getByType(TypeOf<T> type) throws UnknownDomainObjectException;
 
     /**
@@ -198,7 +180,6 @@ public interface ExtensionContainer {
      * @return extension or null
      * @since 3.5
      */
-    @Incubating
     @Nullable
     <T> T findByType(TypeOf<T> type);
 
@@ -227,7 +208,6 @@ public interface ExtensionContainer {
      * @param action the configure action
      * @throws UnknownDomainObjectException if no extension is found.
      */
-    @Incubating
     <T> void configure(Class<T> type, Action<? super T> action);
 
     /**
@@ -238,7 +218,6 @@ public interface ExtensionContainer {
      * @throws UnknownDomainObjectException if no extension is found.
      * @since 3.5
      */
-    @Incubating
     <T> void configure(TypeOf<T> type, Action<? super T> action);
 
     /**
@@ -249,7 +228,6 @@ public interface ExtensionContainer {
      * @throws UnknownDomainObjectException if no extension is found.
      * @since 4.0
      */
-    @Incubating
     <T> void configure(String name, Action<? super T> action);
 
     /**

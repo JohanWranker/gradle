@@ -21,9 +21,11 @@ import org.gradle.api.artifacts.maven.MavenDeployer;
 import org.gradle.api.artifacts.maven.PomFilterContainer;
 import org.gradle.api.internal.artifacts.mvnsettings.LocalMavenRepositoryLocator;
 import org.gradle.api.internal.artifacts.mvnsettings.MavenSettingsProvider;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.publication.maven.internal.ArtifactPomContainer;
 import org.gradle.api.publication.maven.internal.action.MavenPublishAction;
 import org.gradle.api.publication.maven.internal.action.MavenWagonDeployAction;
+import org.gradle.api.publish.maven.internal.publisher.MavenProjectIdentity;
 import org.gradle.internal.logging.LoggingManagerInternal;
 
 import java.io.File;
@@ -41,18 +43,15 @@ public class BaseMavenDeployer extends AbstractMavenResolver implements MavenDep
     // todo remove this property once configuration can handle normal file system dependencies
     private List<File> protocolProviderJars = new ArrayList<File>();
 
-    private boolean uniqueVersion = true;
-
     public BaseMavenDeployer(PomFilterContainer pomFilterContainer, ArtifactPomContainer artifactPomContainer, LoggingManagerInternal loggingManager,
-                             MavenSettingsProvider mavenSettingsProvider, LocalMavenRepositoryLocator mavenRepositoryLocator) {
-        super(pomFilterContainer, artifactPomContainer, loggingManager, mavenSettingsProvider, mavenRepositoryLocator);
+                             MavenSettingsProvider mavenSettingsProvider, LocalMavenRepositoryLocator mavenRepositoryLocator, ObjectFactory objectFactory) {
+        super(pomFilterContainer, artifactPomContainer, loggingManager, mavenSettingsProvider, mavenRepositoryLocator, objectFactory);
     }
 
-    protected MavenPublishAction createPublishAction(File pomFile, File metadataFile, LocalMavenRepositoryLocator mavenRepositoryLocator) {
-        MavenWagonDeployAction deployAction = new MavenWagonDeployAction(pomFile, metadataFile, getJars());
+    @Override
+    protected MavenPublishAction createPublishAction(String packaging, MavenProjectIdentity projectIdentity, LocalMavenRepositoryLocator mavenRepositoryLocator) {
+        MavenWagonDeployAction deployAction = new MavenWagonDeployAction(packaging, projectIdentity, getJars());
         deployAction.setLocalMavenRepositoryLocation(mavenRepositoryLocator.getLocalMavenRepository());
-        deployAction.produceLegacyMavenMetadata();
-        deployAction.setUniqueVersion(isUniqueVersion());
         deployAction.setRepositories(remoteRepository, remoteSnapshotRepository);
         return deployAction;
     }
@@ -61,22 +60,27 @@ public class BaseMavenDeployer extends AbstractMavenResolver implements MavenDep
         return configuration != null ? new ArrayList<File>(configuration.resolve()) : protocolProviderJars;
     }
 
+    @Override
     public RemoteRepository getRepository() {
         return remoteRepository;
     }
 
+    @Override
     public void setRepository(Object remoteRepository) {
         this.remoteRepository = (RemoteRepository) remoteRepository;
     }
 
+    @Override
     public RemoteRepository getSnapshotRepository() {
         return remoteSnapshotRepository;
     }
 
+    @Override
     public void setSnapshotRepository(Object remoteSnapshotRepository) {
         this.remoteSnapshotRepository = (RemoteRepository) remoteSnapshotRepository;
     }
 
+    @Override
     public void addProtocolProviderJars(Collection<File> jars) {
         protocolProviderJars.addAll(jars);
     }
@@ -87,13 +91,5 @@ public class BaseMavenDeployer extends AbstractMavenResolver implements MavenDep
 
     public void setConfiguration(Configuration configuration) {
         this.configuration = configuration;
-    }
-
-    public boolean isUniqueVersion() {
-        return uniqueVersion;
-    }
-
-    public void setUniqueVersion(boolean uniqueVersion) {
-        this.uniqueVersion = uniqueVersion;
     }
 }

@@ -16,7 +16,6 @@
 
 package org.gradle.tooling;
 
-import org.gradle.api.Incubating;
 import org.gradle.tooling.events.OperationType;
 
 import java.io.File;
@@ -37,7 +36,7 @@ public interface ConfigurableLauncher<T extends ConfigurableLauncher> extends Lo
      * @since 1.0
      */
     @Override
-    T withArguments(String ... arguments);
+    T withArguments(String... arguments);
 
     /**
      * {@inheritDoc}
@@ -45,6 +44,20 @@ public interface ConfigurableLauncher<T extends ConfigurableLauncher> extends Lo
      */
     @Override
     T withArguments(Iterable<String> arguments);
+
+    /**
+     * {@inheritDoc}
+     * @since 5.0
+     */
+    @Override
+    T addArguments(String... arguments);
+
+    /**
+     * {@inheritDoc}
+     * @since 5.0
+     */
+    @Override
+    T addArguments(Iterable<String> arguments);
 
     /**
      * {@inheritDoc}
@@ -64,7 +77,6 @@ public interface ConfigurableLauncher<T extends ConfigurableLauncher> extends Lo
      * {@inheritDoc}
      * @since 2.3
      */
-    @Incubating
     @Override
     T setColorOutput(boolean colorOutput);
 
@@ -98,10 +110,23 @@ public interface ConfigurableLauncher<T extends ConfigurableLauncher> extends Lo
 
     /**
      * {@inheritDoc}
+     * @since 5.0
+     */
+    @Override
+    T addJvmArguments(String... jvmArguments);
+
+    /**
+     * {@inheritDoc}
+     * @since 5.0
+     */
+    @Override
+    T addJvmArguments(Iterable<String> jvmArguments);
+
+    /**
+     * {@inheritDoc}
      * @since 3.5
      */
     @Override
-    @Incubating
     T setEnvironmentVariables(Map<String, String> envVariables);
 
     /**
@@ -115,7 +140,6 @@ public interface ConfigurableLauncher<T extends ConfigurableLauncher> extends Lo
      * {@inheritDoc}
      * @since 2.5
      */
-    @Incubating
     @Override
     T addProgressListener(org.gradle.tooling.events.ProgressListener listener);
 
@@ -123,7 +147,6 @@ public interface ConfigurableLauncher<T extends ConfigurableLauncher> extends Lo
      * {@inheritDoc}
      * @since 2.5
      */
-    @Incubating
     @Override
     T addProgressListener(org.gradle.tooling.events.ProgressListener listener, Set<OperationType> eventTypes);
 
@@ -131,7 +154,6 @@ public interface ConfigurableLauncher<T extends ConfigurableLauncher> extends Lo
      * {@inheritDoc}
      * @since 2.6
      */
-    @Incubating
     @Override
     T addProgressListener(org.gradle.tooling.events.ProgressListener listener, OperationType... operationTypes);
 
@@ -139,7 +161,6 @@ public interface ConfigurableLauncher<T extends ConfigurableLauncher> extends Lo
      * {@inheritDoc}
      * @since 2.3
      */
-    @Incubating
     @Override
     T withCancellationToken(CancellationToken cancellationToken);
 }

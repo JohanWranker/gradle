@@ -15,7 +15,6 @@
  */
 package org.gradle.tooling;
 
-import org.gradle.api.Incubating;
 import org.gradle.tooling.events.OperationType;
 
 import javax.annotation.Nullable;
@@ -71,7 +70,6 @@ public interface LongRunningOperation {
      * @return this
      * @since 2.3
      */
-    @Incubating
     LongRunningOperation setColorOutput(boolean colorOutput);
 
     /**
@@ -114,6 +112,24 @@ public interface LongRunningOperation {
     LongRunningOperation setJvmArguments(@Nullable String... jvmArguments);
 
     /**
+     * Appends Java VM arguments to the existing list.
+     *
+     * @param jvmArguments the argument to use for the Gradle process
+     * @return this
+     * @since 5.0
+     */
+    LongRunningOperation addJvmArguments(String... jvmArguments);
+
+    /**
+     * Appends Java VM arguments to the existing list.
+     *
+     * @param jvmArguments the argument to use for the Gradle process
+     * @return this
+     * @since 5.0
+     */
+    LongRunningOperation addJvmArguments(Iterable<String> jvmArguments);
+
+    /**
      * Specifies the Java VM arguments to use for this operation.
      * <p>
      * {@link org.gradle.tooling.model.build.BuildEnvironment} model contains information such as Java or Gradle environment.
@@ -133,14 +149,14 @@ public interface LongRunningOperation {
      * Be aware that not all of the Gradle command line options are supported!
      * Only the build arguments that configure the build execution are supported.
      * They are modelled in the Gradle API via {@link org.gradle.StartParameter}.
-     * Examples of supported build arguments: '--info', '-u', '-p'.
+     * Examples of supported build arguments: '--info', '-p'.
      * The command line instructions that are actually separate commands (like '-?' and '-v') are not supported.
      * Some other instructions like '--daemon' are also not supported - the tooling API always runs with the daemon.
      * <p>
      * If an unknown or unsupported command line option is specified, {@link org.gradle.tooling.exceptions.UnsupportedBuildArgumentException}
      * will be thrown at the time the operation is executed via {@link BuildLauncher#run()} or {@link ModelBuilder#get()}.
      * <p>
-     * For the list of all Gradle command line options please refer to the user guide
+     * For the list of all Gradle command line options please refer to the User Manual
      * or take a look at the output of the 'gradle -?' command. Majority of arguments modeled by
      * {@link org.gradle.StartParameter} are supported.
      * <p>
@@ -176,6 +192,24 @@ public interface LongRunningOperation {
     LongRunningOperation withArguments(@Nullable Iterable<String> arguments);
 
     /**
+     * Appends new command line arguments to the existing list. Useful mostly for running tasks via {@link BuildLauncher}.
+     *
+     * @param arguments Gradle command line arguments
+     * @return this
+     * @since 5.0
+     */
+    LongRunningOperation addArguments(String... arguments);
+
+    /**
+     * Appends new command line arguments to the existing list. Useful mostly for running tasks via {@link BuildLauncher}.
+     *
+     * @param arguments Gradle command line arguments
+     * @return this
+     * @since 5.0
+     */
+    LongRunningOperation addArguments(Iterable<String> arguments);
+
+    /**
      * Specifies the environment variables to use for this operation.
      * <p>
      * {@link org.gradle.tooling.model.build.BuildEnvironment} model contains information such as Java or Gradle environment.
@@ -187,7 +221,6 @@ public interface LongRunningOperation {
      * @return this
      * @since 3.5
      */
-    @Incubating
     LongRunningOperation setEnvironmentVariables(@Nullable Map<String, String> envVariables);
 
     /**
@@ -195,8 +228,7 @@ public interface LongRunningOperation {
      *
      * <p>This method is intended to be replaced by {@link #addProgressListener(org.gradle.tooling.events.ProgressListener)}. The new progress listener type
      * provides much richer information and much better handling of parallel operations that run during the build, such as tasks that run in parallel.
-     * You should prefer using the new listener interface where possible. Note, however, that the new interface is supported only for Gradle 2.5 and later
-     * and is currently {@link Incubating}. It may change in later Gradle releases.
+     * You should prefer using the new listener interface where possible. Note, however, that the new interface is supported only for Gradle 2.5.
      * </p>
      *
      * @param listener The listener
@@ -218,7 +250,6 @@ public interface LongRunningOperation {
      * @return this
      * @since 2.5
      */
-    @Incubating
     LongRunningOperation addProgressListener(org.gradle.tooling.events.ProgressListener listener);
 
     /**
@@ -235,7 +266,6 @@ public interface LongRunningOperation {
      * @return this
      * @since 2.5
      */
-    @Incubating
     LongRunningOperation addProgressListener(org.gradle.tooling.events.ProgressListener listener, Set<OperationType> operationTypes);
 
     /**
@@ -261,6 +291,5 @@ public interface LongRunningOperation {
      *
      * @since 2.1
      */
-    @Incubating
     LongRunningOperation withCancellationToken(CancellationToken cancellationToken);
 }

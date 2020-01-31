@@ -28,7 +28,7 @@ class LifecycleBasePluginIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Unroll
-    def "throws deprecation warning when applied in build with #taskName"() {
+    def "fails when applied in build with #taskName"() {
         buildFile << """
 
         task $taskName {
@@ -42,7 +42,7 @@ class LifecycleBasePluginIntegrationTest extends AbstractIntegrationSpec {
         fails(taskName)
 
         then:
-        failure.assertHasCause("Declaring custom '$taskName' task when using the standard Gradle lifecycle plugins is not allowed.")
+        failure.assertHasCause("Cannot add task '$taskName' as a task with that name already exists.")
         where:
         taskName << ["check", "clean", "build", "assemble"]
     }
@@ -56,9 +56,26 @@ class LifecycleBasePluginIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         succeeds(taskName)
-        ":myTask" in executedTasks
+        executed(":myTask")
 
         where:
         taskName << ["check", "build"]
+    }
+
+    def "clean task honors changes to build dir location"() {
+        buildFile << """
+            buildDir = 'target'
+        """
+        def buildDir = file("build")
+        buildDir.mkdirs()
+        def targetDir = file("target")
+        targetDir.mkdirs()
+
+        when:
+        succeeds("clean")
+
+        then:
+        buildDir.directory
+        !targetDir.exists()
     }
 }

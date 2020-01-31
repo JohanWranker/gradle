@@ -21,6 +21,7 @@ import groovy.lang.MissingPropertyException;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.dsl.ArtifactHandler;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
+import org.gradle.api.artifacts.dsl.DependencyLockingHandler;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
 import org.gradle.api.component.SoftwareComponentContainer;
 import org.gradle.api.file.ConfigurableFileCollection;
@@ -38,7 +39,6 @@ import org.gradle.api.plugins.Convention;
 import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.plugins.ExtensionContainer;
 import org.gradle.api.plugins.PluginAware;
-import org.gradle.api.provider.PropertyState;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.resources.ResourceHandler;
@@ -115,7 +115,7 @@ import java.util.concurrent.Callable;
  * Plugins can be applied using the {@link PluginAware#apply(java.util.Map)} method, or by using the {@link org.gradle.plugin.use.PluginDependenciesSpec} plugins script block.
  * </p>
  *
- * <a name="properties"></a> <h3>Properties</h3>
+ * <a name="properties"></a> <h3>Dynamic Project Properties</h3>
  *
  * <p>Gradle executes the project's build file against the <code>Project</code> instance to configure the project. Any
  * property or method which your script uses is delegated through to the associated <code>Project</code> object.  This
@@ -402,7 +402,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      * @param name The name of the property
      * @param value The value of the property
      */
-    void setProperty(String name, Object value) throws MissingPropertyException;
+    void setProperty(String name, @Nullable Object value) throws MissingPropertyException;
 
     /**
      * <p>Returns this project. This method is useful in build files to explicitly access project properties and
@@ -518,6 +518,21 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
     Task task(String name, Closure configureClosure);
 
     /**
+     * <p>Creates a {@link Task} with the given name and adds it to this project. Before the task is returned, the given
+     * action is executed to configure the task.</p> <p>After the task is added to the project, it is made
+     * available as a property of the project, so that you can reference the task by name in your build file.  See <a
+     * href="#properties">here</a> for more details</p>
+     *
+     * @param name The name of the task to be created
+     * @param configureAction The action to use to configure the created task.
+     * @return The newly created task object
+     * @throws InvalidUserDataException If a task with the given name already exists in this project.
+     * @see TaskContainer#create(String, Action)
+     * @since 4.10
+     */
+    Task task(String name, Action<? super Task> configureAction);
+
+    /**
      * <p>Returns the path of this project.  The path is the fully qualified name of the project.</p>
      *
      * @return The path. Never returns null.
@@ -615,7 +630,10 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
     Map<Project, Set<Task>> getAllTasks(boolean recursive);
 
     /**
-     * <p>Returns the set of tasks with the given name contained in this project, and optionally its subprojects.</p>
+     * <p>Returns the set of tasks with the given name contained in this project, and optionally its subprojects.
+     *
+     * <b>NOTE:</b> This is an expensive operation since it requires all projects to be configured.
+     * </p>
      *
      * @param name The name of the task to locate.
      * @param recursive If true, returns the tasks of this project and its subprojects. If false, returns the tasks of
@@ -651,7 +669,9 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * <li>A {@link Provider} of any supported type. The provider's value is resolved recursively.</li>
      *
-     * <li>A {@link Closure} that returns any supported type. The closure's return value is resolved recursively.</li>
+     * <li>A {@link org.gradle.api.resources.TextResource}.</li>
+     *
+     * <li>A Groovy {@link Closure} or Kotlin function that returns any supported type. The closure's return value is resolved recursively.</li>
      *
      * <li>A {@link java.util.concurrent.Callable} that returns any supported type. The callable's return value is resolved recursively.</li>
      *
@@ -700,7 +720,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * <li>A {@link File}. Interpreted relative to the project directory, as per {@link #file(Object)}.</li>
      *
-     * <li>A {@link java.nio.file.Path} as defined by {@link #file(Object)}.</li>
+     * <li>A {@link java.nio.file.Path}, as per {@link #file(Object)}.</li>
      *
      * <li>A {@link java.net.URI} or {@link java.net.URL}. The URL's path is interpreted as a file path. Only {@code file:} URLs are supported.</li>
      *
@@ -710,17 +730,19 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * <li>A {@link org.gradle.api.file.FileCollection}. The contents of the collection are included in the returned collection.</li>
      *
+     * <li>A {@link org.gradle.api.file.FileTree} or {@link org.gradle.api.file.DirectoryTree}. The contents of the tree are included in the returned collection.</li>
+     *
      * <li>A {@link Provider} of any supported type. The provider's value is recursively converted to files. If the provider represents an output of a task, that task is executed if the file collection is used as an input to another task.
      *
      * <li>A {@link java.util.concurrent.Callable} that returns any supported type. The return value of the {@code call()} method is recursively converted to files. A {@code null} return value is treated as an empty collection.</li>
      *
-     * <li>A {@link Closure} that returns any of the types listed here. The return value of the closure is recursively converted to files. A {@code null} return value is treated as an empty collection.</li>
+     * <li>A Groovy {@link Closure} or Kotlin function that returns any of the types listed here. The return value of the closure is recursively converted to files. A {@code null} return value is treated as an empty collection.</li>
      *
      * <li>A {@link Task}. Converted to the task's output files. The task is executed if the file collection is used as an input to another task.</li>
      *
      * <li>A {@link org.gradle.api.tasks.TaskOutputs}. Converted to the output files the related task. The task is executed if the file collection is used as an input to another task.</li>
      *
-     * <li>Anything else is treated as a failure.</li>
+     * <li>Anything else is treated as an error.</li>
      *
      * </ul>
      *
@@ -933,29 +955,13 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      * @see org.gradle.api.provider.ProviderFactory#provider(Callable)
      * @since 4.0
      */
-    @Incubating
     <T> Provider<T> provider(Callable<T> value);
-
-    /**
-     * Creates a {@code PropertyState} implementation based on the provided class.
-     *
-     * @param clazz The class to be used for property state.
-     * @return The property state. Never returns null.
-     * @throws org.gradle.api.InvalidUserDataException If the provided class is null.
-     * @see org.gradle.api.provider.ProviderFactory#property(Class)
-     * @since 4.0
-     * @deprecated Use {@link ObjectFactory#property(Class)} instead.
-     */
-    @Incubating
-    @Deprecated
-    <T> PropertyState<T> property(Class<T> clazz);
 
     /**
      * Provides access to methods to create various kinds of {@link Provider} instances.
      *
      * @since 4.0
      */
-    @Incubating
     ProviderFactory getProviders();
 
     /**
@@ -963,7 +969,6 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * @since 4.0
      */
-    @Incubating
     ObjectFactory getObjects();
 
     /**
@@ -971,7 +976,6 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * @since 4.1
      */
-    @Incubating
     ProjectLayout getLayout();
 
     /**
@@ -1229,7 +1233,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
 
     /**
      * <p>Returns the {@link Convention} for this project.</p> <p>You can access this property in your build file
-     * using <code>convention</code>. You can also can also access the properties and methods of the convention object
+     * using <code>convention</code>. You can also access the properties and methods of the convention object
      * as if they were properties and methods of this project. See <a href="#properties">here</a> for more details</p>
      *
      * @return The <code>Convention</code>. Never returns null.
@@ -1407,7 +1411,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      * @return The value of the property, possibly null or null if not found.
      * @see Project#property(String)
      */
-    @Incubating @Nullable
+    @Nullable
     Object findProperty(String propertyName);
 
     /**
@@ -1546,7 +1550,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      * copy the files. Example:
      * <pre>
      * copy {
-     *    from configurations.runtime
+     *    from configurations.runtimeClasspath
      *    into 'build/deploy/lib'
      * }
      * </pre>
@@ -1702,6 +1706,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * @return Returned instance allows adding DSL extensions to the project
      */
+    @Override
     ExtensionContainer getExtensions();
 
     /**
@@ -1716,7 +1721,6 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * @return The components for this project.
      */
-    @Incubating
     SoftwareComponentContainer getComponents();
 
     /**
@@ -1724,7 +1728,6 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * @since 4.0
      */
-    @Incubating
     InputNormalizationHandler getNormalization();
 
     /**
@@ -1732,6 +1735,19 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      *
      * @since 4.0
      */
-    @Incubating
     void normalization(Action<? super InputNormalizationHandler> configuration);
+
+    /**
+     * Configures dependency locking
+     *
+     * @since 4.8
+     */
+    void dependencyLocking(Action<? super DependencyLockingHandler> configuration);
+
+    /**
+     * Provides access to configuring dependency locking
+     *
+     * @since 4.8
+     */
+    DependencyLockingHandler getDependencyLocking();
 }

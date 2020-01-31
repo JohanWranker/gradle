@@ -15,21 +15,25 @@
  */
 package org.gradle.plugins.ear;
 
+import com.google.common.collect.ImmutableList;
 import groovy.lang.Closure;
 import groovy.lang.DelegatesTo;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
+import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.DuplicatesStrategy;
 import org.gradle.api.file.FileCopyDetails;
 import org.gradle.api.internal.file.collections.FileTreeAdapter;
-import org.gradle.api.internal.file.collections.MapFileTree;
+import org.gradle.api.internal.file.collections.GeneratedSingletonFileTree;
 import org.gradle.api.internal.file.copy.CopySpecInternal;
 import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.bundling.Jar;
+import org.gradle.internal.execution.OutputChangeListener;
 import org.gradle.plugins.ear.descriptor.DeploymentDescriptor;
 import org.gradle.plugins.ear.descriptor.EarModule;
 import org.gradle.plugins.ear.descriptor.internal.DefaultDeploymentDescriptor;
@@ -38,8 +42,9 @@ import org.gradle.plugins.ear.descriptor.internal.DefaultEarWebModule;
 import org.gradle.util.ConfigureUtil;
 import org.gradle.util.GUtil;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
-import java.io.OutputStream;
+import java.io.File;
 import java.io.OutputStreamWriter;
 import java.util.concurrent.Callable;
 
@@ -52,50 +57,22 @@ public class Ear extends Jar {
     public static final String EAR_EXTENSION = "ear";
 
     private String libDirName;
+    private final Property<Boolean> generateDeploymentDescriptor;
     private DeploymentDescriptor deploymentDescriptor;
     private CopySpec lib;
 
     public Ear() {
-        setExtension(EAR_EXTENSION);
+        getArchiveExtension().set(EAR_EXTENSION);
         setMetadataCharset("UTF-8");
-        lib = getRootSpec().addChildBeforeSpec(getMainSpec()).into(new Callable<String>() {
-            public String call() {
-                return GUtil.elvis(getLibDirName(), DEFAULT_LIB_DIR_NAME);
-            }
-        });
-        getMainSpec().appendCachingSafeCopyAction(
-            new Action<FileCopyDetails>() {
-                @Override
-                public void execute(FileCopyDetails details) {
+        generateDeploymentDescriptor = getObjectFactory().property(Boolean.class);
+        generateDeploymentDescriptor.convention(true);
+        lib = getRootSpec().addChildBeforeSpec(getMainSpec()).into(
+            (Callable<String>) () -> GUtil.elvis(getLibDirName(), DEFAULT_LIB_DIR_NAME)
+        );
+        getMainSpec().appendCachingSafeCopyAction(details -> {
+                if(generateDeploymentDescriptor.get()) {
                     checkIfShouldGenerateDeploymentDescriptor(details);
                     recordTopLevelModules(details);
-                }
-
-                private void recordTopLevelModules(FileCopyDetails details) {
-                    DeploymentDescriptor deploymentDescriptor = getDeploymentDescriptor();
-                    // since we might generate the deployment descriptor, record each top-level module
-                    if (deploymentDescriptor != null && details.getPath().lastIndexOf("/") <= 0) {
-                        EarModule module;
-                        if (details.getPath().toLowerCase().endsWith(".war")) {
-                            module = new DefaultEarWebModule(details.getPath(), details.getPath().substring(0, details.getPath().lastIndexOf(".")));
-                        } else {
-                            module = new DefaultEarModule(details.getPath());
-                        }
-
-                        if (!deploymentDescriptor.getModules().contains(module)) {
-                            deploymentDescriptor.getModules().add(module);
-                        }
-                    }
-                }
-
-                private void checkIfShouldGenerateDeploymentDescriptor(FileCopyDetails details) {
-                    DeploymentDescriptor deploymentDescriptor = getDeploymentDescriptor();
-                    String descriptorPath = deploymentDescriptor != null ? "META-INF/" + deploymentDescriptor.getFileName() : null;
-                    if (details.getPath().equalsIgnoreCase(descriptorPath)) {
-                        // the deployment descriptor already exists; no need to generate it
-                        setDeploymentDescriptor(null);
-                        details.setDuplicatesStrategy(DuplicatesStrategy.EXCLUDE);
-                    }
                 }
             }
         );
@@ -103,35 +80,60 @@ public class Ear extends Jar {
         // create our own metaInf which runs after mainSpec's files
         // this allows us to generate the deployment descriptor after recording all modules it contains
         CopySpecInternal metaInf = (CopySpecInternal) getMainSpec().addChild().into("META-INF");
-        metaInf.addChild().from(new Callable<FileTreeAdapter>() {
-            public FileTreeAdapter call() {
+        CopySpecInternal descriptorChild = metaInf.addChild();
+        OutputChangeListener outputChangeListener = getServices().get(OutputChangeListener.class);
+        descriptorChild.from((Callable<FileTreeAdapter>) () -> {
                 final DeploymentDescriptor descriptor = getDeploymentDescriptor();
-                if (descriptor != null) {
-                    MapFileTree descriptorSource = new MapFileTree(getTemporaryDirFactory(), getFileSystem(), getDirectoryFileTreeFactory());
+
+                if (descriptor != null && generateDeploymentDescriptor.get()) {
                     if (descriptor.getLibraryDirectory() == null) {
                         descriptor.setLibraryDirectory(getLibDirName());
                     }
 
-                    descriptorSource.add(descriptor.getFileName(), new Action<OutputStream>() {
-                        public void execute(OutputStream outputStream) {
-                            descriptor.writeTo(new OutputStreamWriter(outputStream));
-                        }
+                String descriptorFileName = descriptor.getFileName();
+                if (descriptorFileName.contains("/") || descriptorFileName.contains(File.separator)) {
+                    throw new InvalidUserDataException("Deployment descriptor file name must be a simple name but was " + descriptorFileName);
+                    }
+                GeneratedSingletonFileTree descriptorSource = new GeneratedSingletonFileTree(
+                    getTemporaryDirFactory(),
+                    descriptorFileName,
+                    absolutePath -> outputChangeListener.beforeOutputChange(ImmutableList.of(absolutePath)),
+                    outputStream -> descriptor.writeTo(new OutputStreamWriter(outputStream))
+                );
 
-                    });
+
                     return new FileTreeAdapter(descriptorSource);
                 }
 
                 return null;
-            }
         });
     }
 
-    /**
-     * Injects and returns an instance of {@link org.gradle.api.model.ObjectFactory}.
-     *
-     * @since 4.2
-     */
-    @Incubating
+    private void recordTopLevelModules(FileCopyDetails details) {
+        DeploymentDescriptor deploymentDescriptor = getDeploymentDescriptor();
+        // since we might generate the deployment descriptor, record each top-level module
+        if (deploymentDescriptor != null && details.getPath().lastIndexOf("/") <= 0) {
+            EarModule module;
+            if (details.getPath().toLowerCase().endsWith(".war")) {
+                module = new DefaultEarWebModule(details.getPath(), details.getPath().substring(0, details.getPath().lastIndexOf(".")));
+            } else {
+                module = new DefaultEarModule(details.getPath());
+            }
+
+            deploymentDescriptor.getModules().add(module);
+        }
+    }
+
+    private void checkIfShouldGenerateDeploymentDescriptor(FileCopyDetails details) {
+        DeploymentDescriptor deploymentDescriptor = getDeploymentDescriptor();
+        String descriptorPath = deploymentDescriptor != null ? "META-INF/" + deploymentDescriptor.getFileName() : null;
+        if (details.getPath().equalsIgnoreCase(descriptorPath)) {
+            // the deployment descriptor already exists; no need to generate it
+            setDeploymentDescriptor(null);
+            details.setDuplicatesStrategy(DuplicatesStrategy.EXCLUDE);
+        }
+    }
+
     @Inject
     protected ObjectFactory getObjectFactory() {
         throw new UnsupportedOperationException();
@@ -166,7 +168,7 @@ public class Ear extends Jar {
 
     private DeploymentDescriptor forceDeploymentDescriptor() {
         if (deploymentDescriptor == null) {
-            deploymentDescriptor = getObjectFactory().newInstance(DefaultDeploymentDescriptor.class, getFileResolver(), getObjectFactory());
+            deploymentDescriptor = getObjectFactory().newInstance(DefaultDeploymentDescriptor.class);
         }
         return deploymentDescriptor;
     }
@@ -209,14 +211,26 @@ public class Ear extends Jar {
     /**
      * The name of the library directory in the EAR file. Default is "lib".
      */
+    @Nullable
     @Optional
     @Input
     public String getLibDirName() {
         return libDirName;
     }
 
-    public void setLibDirName(String libDirName) {
+    public void setLibDirName(@Nullable String libDirName) {
         this.libDirName = libDirName;
+    }
+
+    /**
+     * Should deploymentDescriptor be generated?
+     *
+     * @since 6.0
+     */
+    @Input
+    @Incubating
+    public Property<Boolean> getGenerateDeploymentDescriptor() {
+        return generateDeploymentDescriptor;
     }
 
     /**

@@ -34,7 +34,8 @@ import java.util.concurrent.Callable;
  */
 public class CheckstylePlugin extends AbstractCodeQualityPlugin<Checkstyle> {
 
-    public static final String DEFAULT_CHECKSTYLE_VERSION = "6.19";
+    public static final String DEFAULT_CHECKSTYLE_VERSION = "8.27";
+    private static final String CONFIG_DIR_NAME = "config/checkstyle";
     private CheckstyleExtension extension;
 
     @Override
@@ -51,21 +52,19 @@ public class CheckstylePlugin extends AbstractCodeQualityPlugin<Checkstyle> {
     protected CodeQualityExtension createExtension() {
         extension = project.getExtensions().create("checkstyle", CheckstyleExtension.class, project);
         extension.setToolVersion(DEFAULT_CHECKSTYLE_VERSION);
-
-        extension.setConfigDir(project.file("config/checkstyle"));
-        extension.setConfig(project.getResources().getText().fromFile(new Callable<File>() {
-            @Override
-            public File call() throws Exception {
-                return new File(extension.getConfigDir(), "checkstyle.xml");
-            }
-        }));
+        extension.getConfigDirectory().convention(project.getRootProject().getLayout().getProjectDirectory().dir(CONFIG_DIR_NAME));
+        extension.setConfig(project.getResources().getText().fromFile(extension.getConfigDirectory().file("checkstyle.xml")));
         return extension;
     }
 
     @Override
-    protected void configureTaskDefaults(Checkstyle task, final String baseName) {
-        Configuration configuration = project.getConfigurations().getAt("checkstyle");
+    protected void configureConfiguration(Configuration configuration) {
         configureDefaultDependencies(configuration);
+    }
+
+    @Override
+    protected void configureTaskDefaults(Checkstyle task, final String baseName) {
+        Configuration configuration = project.getConfigurations().getAt(getConfigurationName());
         configureTaskConventionMapping(configuration, task);
         configureReportsConventionMapping(task, baseName);
     }
@@ -119,26 +118,15 @@ public class CheckstylePlugin extends AbstractCodeQualityPlugin<Checkstyle> {
             }
         });
 
-        task.setConfigDir(project.provider(new Callable<File>() {
-            @Override
-            public File call() throws Exception {
-                return extension.getConfigDir();
-            }
-        }));
+        task.getConfigDirectory().convention(extension.getConfigDirectory());
     }
 
     private void configureReportsConventionMapping(Checkstyle task, final String baseName) {
         task.getReports().all(new Action<SingleFileReport>() {
             @Override
             public void execute(final SingleFileReport report) {
-                ConventionMapping reportMapping = conventionMappingOf(report);
-                reportMapping.map("enabled", Callables.returning(true));
-                reportMapping.map("destination", new Callable<File>() {
-                    @Override
-                    public File call() {
-                        return new File(extension.getReportsDir(), baseName + "." + report.getName());
-                    }
-                });
+                report.getRequired().convention(true);
+                report.getOutputLocation().convention(project.getLayout().getProjectDirectory().file(project.provider(() -> new File(extension.getReportsDir(), baseName + "." + report.getName()).getAbsolutePath())));
             }
         });
     }

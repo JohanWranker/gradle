@@ -20,6 +20,7 @@ import org.gradle.api.UncheckedIOException;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
@@ -41,11 +42,12 @@ public class FileBackedBlockStore implements BlockStore {
         return "cache '" + cacheFile + "'";
     }
 
+    @Override
     public void open(Runnable runnable, Factory factory) {
         this.factory = factory;
         try {
             cacheFile.getParentFile().mkdirs();
-            file = new RandomAccessFile(cacheFile, "rw");
+            file = openRandomAccessFile();
             output = new ByteOutput(file);
             input = new ByteInput(file);
             currentFileSize = file.length();
@@ -58,6 +60,19 @@ public class FileBackedBlockStore implements BlockStore {
         }
     }
 
+    private RandomAccessFile openRandomAccessFile() throws FileNotFoundException {
+        try {
+            return randomAccessFile("rw");
+        } catch (FileNotFoundException e) {
+            return randomAccessFile("r");
+        }
+    }
+
+    private RandomAccessFile randomAccessFile(String mode) throws FileNotFoundException {
+        return new RandomAccessFile(cacheFile, mode);
+    }
+
+    @Override
     public void close() {
         try {
             file.close();
@@ -66,6 +81,7 @@ public class FileBackedBlockStore implements BlockStore {
         }
     }
 
+    @Override
     public void clear() {
         try {
             file.setLength(0);
@@ -76,24 +92,29 @@ public class FileBackedBlockStore implements BlockStore {
         nextBlock = 0;
     }
 
+    @Override
     public void attach(BlockPayload block) {
         if (block.getBlock() == null) {
             block.setBlock(new BlockImpl(block));
         }
     }
 
+    @Override
     public void remove(BlockPayload block) {
         BlockImpl blockImpl = (BlockImpl) block.getBlock();
         blockImpl.detach();
     }
 
+    @Override
     public void flush() {
     }
 
+    @Override
     public <T extends BlockPayload> T readFirst(Class<T> payloadType) {
         return read(BlockPointer.pos(0), payloadType);
     }
 
+    @Override
     public <T extends BlockPayload> T read(BlockPointer pos, Class<T> payloadType) {
         assert !pos.isNull();
         try {
@@ -108,6 +129,7 @@ public class FileBackedBlockStore implements BlockStore {
         }
     }
 
+    @Override
     public void write(BlockPayload block) {
         BlockImpl blockImpl = (BlockImpl) block.getBlock();
         try {
@@ -162,6 +184,7 @@ public class FileBackedBlockStore implements BlockStore {
             this.pos = pos;
         }
 
+        @Override
         public int getSize() {
             if (payloadSize < 0) {
                 payloadSize = getPayload().getSize();
@@ -239,6 +262,7 @@ public class FileBackedBlockStore implements BlockStore {
             input.done();
         }
 
+        @Override
         public RuntimeException blockCorruptedException() {
             return new CorruptedCacheException(String.format("Corrupted %s found in %s.", this,
                     FileBackedBlockStore.this));

@@ -43,7 +43,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 public class TestNGTestFramework implements TestFramework {
-    private TestNGOptions options;
+    private final TestNGOptions options;
     private final TestNGDetector detector;
     private final Test testTask;
     private final DefaultTestFilter filter;
@@ -60,6 +60,7 @@ public class TestNGTestFramework implements TestFramework {
 
     private static void conventionMapOutputDirectory(TestNGOptions options, final DirectoryReport html) {
         new DslObject(options).getConventionMapping().map("outputDirectory", new Callable<File>() {
+            @Override
             public File call() {
                 return html.getDestination();
             }
@@ -114,6 +115,7 @@ public class TestNGTestFramework implements TestFramework {
     @Override
     public Action<WorkerProcessBuilder> getWorkerConfigurationAction() {
         return new Action<WorkerProcessBuilder>() {
+            @Override
             public void execute(WorkerProcessBuilder workerProcessBuilder) {
                 workerProcessBuilder.sharedPackages("org.testng");
             }
@@ -123,10 +125,6 @@ public class TestNGTestFramework implements TestFramework {
     @Override
     public TestNGOptions getOptions() {
         return options;
-    }
-
-    void setOptions(TestNGOptions options) {
-        this.options = options;
     }
 
     @Override

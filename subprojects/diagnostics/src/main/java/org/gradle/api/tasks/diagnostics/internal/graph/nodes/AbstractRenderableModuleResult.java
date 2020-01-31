@@ -20,9 +20,9 @@ import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.result.ResolvedComponentResult;
 import org.gradle.api.artifacts.result.ResolvedVariantResult;
 
-import java.util.Set;
+import java.util.List;
 
-public abstract class AbstractRenderableModuleResult implements RenderableDependency {
+public abstract class AbstractRenderableModuleResult extends AbstractRenderableDependency {
 
     protected final ResolvedComponentResult module;
 
@@ -41,8 +41,8 @@ public abstract class AbstractRenderableModuleResult implements RenderableDepend
     }
 
     @Override
-    public ResolvedVariantResult getResolvedVariant() {
-        return module.getVariant();
+    public List<ResolvedVariantResult> getResolvedVariants() {
+        return module.getVariants();
     }
 
     @Override
@@ -54,9 +54,6 @@ public abstract class AbstractRenderableModuleResult implements RenderableDepend
     public ResolutionState getResolutionState() {
         return ResolutionState.RESOLVED;
     }
-
-    @Override
-    public abstract Set<RenderableDependency> getChildren();
 
     @Override
     public String toString() {

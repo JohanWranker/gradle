@@ -17,9 +17,9 @@ package org.gradle.api.artifacts;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.artifacts.result.ResolutionResult;
 import org.gradle.api.file.FileCollection;
+import org.gradle.internal.HasInternalProtocol;
 
 /**
  * A set of {@link Dependency} objects which can be resolved to a set of files. There are various methods on this type that you can use to get the result in different forms:
@@ -32,6 +32,7 @@ import org.gradle.api.file.FileCollection;
  *
  * <p>The dependencies are resolved once only, when the result is first requested. The result is reused and returned for subsequent calls. Once resolved, any mutation to the dependencies will result in an error.</p>
  */
+@HasInternalProtocol
 public interface ResolvableDependencies extends ArtifactView {
     /**
      * Returns the name of this set.
@@ -54,6 +55,7 @@ public interface ResolvableDependencies extends ArtifactView {
      *
      * @return The collection. Never null.
      */
+    @Override
     FileCollection getFiles();
 
     /**
@@ -62,6 +64,15 @@ public interface ResolvableDependencies extends ArtifactView {
      * @return the dependencies. Never null.
      */
     DependencySet getDependencies();
+
+    /**
+     * Returns the set of dependency constraints which will be considered during resolution.
+     *
+     * @return the dependency constraints. Never null.
+     *
+     * @since 4.6
+     */
+    DependencyConstraintSet getDependencyConstraints();
 
     /**
      * Adds an action to be executed before the dependencies in this set are resolved.
@@ -99,7 +110,6 @@ public interface ResolvableDependencies extends ArtifactView {
      * @return the resolution result
      * @since 1.3
      */
-    @Incubating
     ResolutionResult getResolutionResult();
 
     /**
@@ -108,7 +118,7 @@ public interface ResolvableDependencies extends ArtifactView {
      * @throws ResolveException On failure to resolve or download any artifact.
      * @since 3.4
      */
-    @Incubating
+    @Override
     ArtifactCollection getArtifacts() throws ResolveException;
 
     /**
@@ -117,6 +127,5 @@ public interface ResolvableDependencies extends ArtifactView {
      *
      * @since 3.4
      */
-    @Incubating
     ArtifactView artifactView(Action<? super ArtifactView.ViewConfiguration> configAction);
 }

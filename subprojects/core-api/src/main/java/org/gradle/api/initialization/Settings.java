@@ -18,10 +18,10 @@ package org.gradle.api.initialization;
 
 import org.gradle.StartParameter;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.UnknownProjectException;
 import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.api.invocation.Gradle;
+import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.plugins.PluginAware;
 import org.gradle.caching.configuration.BuildCacheConfiguration;
 import org.gradle.internal.HasInternalProtocol;
@@ -70,7 +70,7 @@ import java.io.File;
  * </ul>
  */
 @HasInternalProtocol
-public interface Settings extends PluginAware {
+public interface Settings extends PluginAware, ExtensionAware {
     /**
      * <p>The default name for the settings file.</p>
      */
@@ -140,7 +140,6 @@ public interface Settings extends PluginAware {
      *
      * @since 4.4
      */
-    @Incubating
     ScriptHandler getBuildscript();
 
     /**
@@ -221,7 +220,6 @@ public interface Settings extends PluginAware {
      *
      * @since 3.1
      */
-    @Incubating
     void includeBuild(Object rootProject);
 
     /**
@@ -231,7 +229,6 @@ public interface Settings extends PluginAware {
      *
      * @since 3.1
      */
-    @Incubating
     void includeBuild(Object rootProject, Action<ConfigurableIncludedBuild> configuration);
 
     /**
@@ -253,7 +250,6 @@ public interface Settings extends PluginAware {
      *
      * @since 3.5
      */
-    @Incubating
     void pluginManagement(Action<? super PluginManagementSpec> pluginManagementSpec);
 
     /**
@@ -261,7 +257,6 @@ public interface Settings extends PluginAware {
      *
      * @since 3.5
      */
-    @Incubating
     PluginManagementSpec getPluginManagement();
 
     /**
@@ -269,7 +264,6 @@ public interface Settings extends PluginAware {
      *
      * @since 4.4
      */
-    @Incubating
     void sourceControl(Action<? super SourceControl> configuration);
 
     /**
@@ -277,6 +271,14 @@ public interface Settings extends PluginAware {
      *
      * @since 4.4
      */
-    @Incubating
     SourceControl getSourceControl();
+
+    /**
+     * Enables a feature preview by name.
+     *
+     * @param name the name of the feature to enable
+     *
+     * @since 4.6
+     */
+    void enableFeaturePreview(String name);
 }

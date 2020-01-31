@@ -17,31 +17,31 @@
 package org.gradle.api.internal.file;
 
 import org.gradle.api.internal.file.collections.MinimalFileSet;
-import org.gradle.api.internal.tasks.LifecycleAwareTaskProperty;
+import org.gradle.api.internal.tasks.properties.LifecycleAwareValue;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-public class CalculatedTaskInputFileCollection extends AbstractFileCollection implements LifecycleAwareTaskProperty {
+public class CalculatedTaskInputFileCollection extends AbstractFileCollection implements LifecycleAwareValue {
     private final String taskPath;
     private MinimalFileSet calculatedFiles;
-    private List<LifecycleAwareTaskProperty> targets;
+    private List<LifecycleAwareValue> targets;
     private Set<File> cachedFiles;
     private boolean taskIsExecuting;
 
     public CalculatedTaskInputFileCollection(String taskPath, MinimalFileSet calculatedFiles, Object[] inputs) {
         this.taskPath = taskPath;
         this.calculatedFiles = calculatedFiles;
-        targets = new ArrayList<LifecycleAwareTaskProperty>(1 + inputs.length);
+        targets = new ArrayList<>(1 + inputs.length);
         for (Object input : inputs) {
-            if (input instanceof LifecycleAwareTaskProperty) {
-                targets.add((LifecycleAwareTaskProperty) input);
+            if (input instanceof LifecycleAwareValue) {
+                targets.add((LifecycleAwareValue) input);
             }
         }
-        if (calculatedFiles instanceof LifecycleAwareTaskProperty) {
-            targets.add((LifecycleAwareTaskProperty) calculatedFiles);
+        if (calculatedFiles instanceof LifecycleAwareValue) {
+            targets.add((LifecycleAwareValue) calculatedFiles);
         }
     }
 
@@ -64,7 +64,7 @@ public class CalculatedTaskInputFileCollection extends AbstractFileCollection im
     @Override
     public void prepareValue() {
         taskIsExecuting = true;
-        for (LifecycleAwareTaskProperty target : targets) {
+        for (LifecycleAwareValue target : targets) {
             target.prepareValue();
         }
     }
@@ -73,7 +73,7 @@ public class CalculatedTaskInputFileCollection extends AbstractFileCollection im
     public void cleanupValue() {
         taskIsExecuting = false;
         cachedFiles = null;
-        for (LifecycleAwareTaskProperty target : targets) {
+        for (LifecycleAwareValue target : targets) {
             target.cleanupValue();
         }
         targets = null;

@@ -16,44 +16,75 @@
 package org.gradle.api.internal;
 
 import groovy.lang.Closure;
+import org.gradle.api.Action;
 import org.gradle.api.DomainObjectSet;
 import org.gradle.api.internal.collections.CollectionEventRegister;
 import org.gradle.api.internal.collections.CollectionFilter;
-import org.gradle.api.internal.collections.FilteredSet;
+import org.gradle.api.internal.collections.ElementSource;
+import org.gradle.api.internal.collections.IterationOrderRetainingSetElementSource;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
+import org.gradle.internal.ImmutableActionSet;
+import org.gradle.internal.deprecation.DeprecationLogger;
 
-import java.util.Collection;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class DefaultDomainObjectSet<T> extends DefaultDomainObjectCollection<T> implements DomainObjectSet<T> {
+    // TODO: Combine these with MutationGuard
+    private ImmutableActionSet<Void> beforeContainerChange = ImmutableActionSet.empty();
 
+    /**
+     * This internal constructor is used by the 'com.android.application' plugin which we test as part of our ci pipeline.
+     */
+    @Deprecated
     public DefaultDomainObjectSet(Class<? extends T> type) {
-        this(type, new LinkedHashSet<T>());
+        super(type, new IterationOrderRetainingSetElementSource<T>(), CollectionCallbackActionDecorator.NOOP);
+        DeprecationLogger.deprecateInternalApi("constructor DefaultDomainObjectSet(Class<T>)")
+            .replaceWith("ObjectFactory.domainObjectSet(Class<T>)")
+            .withUserManual("custom_gradle_types", "domainobjectset")
+            .nagUser();
     }
 
-    public DefaultDomainObjectSet(Class<? extends T> type, Collection<T> store) {
-        super(type, store);
+    public DefaultDomainObjectSet(Class<? extends T> type, CollectionCallbackActionDecorator decorator) {
+        super(type, new IterationOrderRetainingSetElementSource<T>(), decorator);
+    }
+
+    /**
+     * Adds an action which is executed before this collection is mutated with the addition or removal of elements.
+     * Any exception thrown by the action will veto the mutation.
+     *
+     * TODO: Combine this with the MutationGuard or rework CompositeDomainObject to behave with MutationGuard/MutationValidator.
+     * The mutation validators used in DefaultConfiguration only expect to be used with add/remove methods and fail when we
+     * correctly try to also prevent all/withType/etc mutation methods.
+     *
+     * assertMutableCollectionContents is only used by add/remove methods, but we should remove this special handling and fix
+     * DefaultConfiguration and CompositeDomainObjects.
+     */
+    public void beforeCollectionChanges(Action<Void> action) {
+        beforeContainerChange = beforeContainerChange.add(action);
+    }
+
+    @Override
+    protected void assertMutableCollectionContents() {
+        beforeContainerChange.execute(null);
+    }
+
+    public DefaultDomainObjectSet(Class<? extends T> type, ElementSource<T> store, CollectionCallbackActionDecorator decorator) {
+        super(type, store, decorator);
     }
 
     protected DefaultDomainObjectSet(DefaultDomainObjectSet<? super T> store, CollectionFilter<T> filter) {
         this(filter.getType(), store.filteredStore(filter), store.filteredEvents(filter));
     }
 
-    protected DefaultDomainObjectSet(Class<? extends T> type, Collection<T> store, CollectionEventRegister<T> eventRegister) {
+    protected DefaultDomainObjectSet(Class<? extends T> type, ElementSource<T> store, CollectionEventRegister<T> eventRegister) {
         super(type, store, eventRegister);
     }
 
     @Override
     protected <S extends T> DefaultDomainObjectSet<S> filtered(CollectionFilter<S> filter) {
         return new DefaultDomainObjectSet<S>(this, filter);
-    }
-
-    @Override
-    protected <S extends T> Set<S> filteredStore(CollectionFilter<S> filter) {
-        return new FilteredSet<T, S>(this, filter);
     }
 
     @Override
@@ -75,10 +106,4 @@ public class DefaultDomainObjectSet<T> extends DefaultDomainObjectCollection<T> 
     public Set<T> findAll(Closure cl) {
         return findAll(cl, new LinkedHashSet<T>());
     }
-
-    @Override
-    public Iterator<T> iterator() {
-        return new IteratorImpl(SetIterator.of(getStore()));
-    }
-
 }

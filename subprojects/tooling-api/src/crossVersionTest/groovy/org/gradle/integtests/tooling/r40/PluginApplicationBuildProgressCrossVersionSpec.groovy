@@ -19,12 +19,15 @@ package org.gradle.integtests.tooling.r40
 import org.gradle.integtests.tooling.fixture.ProgressEvents
 import org.gradle.integtests.tooling.fixture.TargetGradleVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
-import org.gradle.integtests.tooling.fixture.ToolingApiVersion
 import org.gradle.tooling.BuildException
 import org.gradle.tooling.ProjectConnection
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
+import spock.lang.Issue
 
-@ToolingApiVersion(">=2.5")
-@TargetGradleVersion(">=4.0")
+import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.gradlePluginRepositoryMirrorUrl
+
+@TargetGradleVersion(">=4.0 <5.1")
 class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecification {
 
     def "generates plugin application events for single project build"() {
@@ -89,6 +92,8 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
         base.parent == javaBase
     }
 
+    @Requires(TestPrecondition.JDK8_OR_LATER)
+    @Issue('https://github.com/gradle/gradle-private/issues/1341')
     def "generates plugin application events for community plugin applied through plugins dsl"() {
         given:
         def events = ProgressEvents.create()
@@ -101,7 +106,7 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
 
         when:
         withConnection {
-            ProjectConnection connection -> connection.newBuild().addProgressListener(events).run()
+            ProjectConnection connection -> connection.newBuild().withArguments("-Dorg.gradle.internal.plugins.portal.url.override=${gradlePluginRepositoryMirrorUrl()}").addProgressListener(events).run()
         }
 
         then:
@@ -174,7 +179,8 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
         examplePlugin.parent == applyInitScript
     }
 
-    def "generates plugin application events for project plugin applied in init script to root project"() {
+    @TargetGradleVersion(">=4.0 <4.10")
+    def "generates plugin application events for project plugin applied in init script to root project pre execute listener ops"() {
         given:
         def events = ProgressEvents.create()
         settingsFile << "rootProject.name = 'single'"
@@ -207,7 +213,42 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
         base.parent == javaBase
     }
 
-    def "generates plugin application events for project plugin applied in init script to all projects"() {
+    @TargetGradleVersion(">=4.10")
+    def "generates plugin application events for project plugin applied in init script to root project"() {
+        given:
+        def events = ProgressEvents.create()
+        settingsFile << "rootProject.name = 'single'"
+        def initScript = file('init.gradle')
+        buildFile << ""
+        initScript  << """
+            rootProject { 
+                apply plugin: 'java'
+            }
+        """
+
+        when:
+        withConnection {
+            ProjectConnection connection -> connection.newBuild().addProgressListener(events)
+                .withArguments('--init-script', initScript.toString()).run()
+        }
+
+        then:
+        events.assertIsABuild()
+
+        def rootOperation = events.operations[0]
+
+        def java = events.operation("Apply plugin org.gradle.java to root project 'single'")
+        def javaBase = events.operation("Apply plugin org.gradle.api.plugins.JavaBasePlugin to root project 'single'")
+        def base = events.operation("Apply plugin org.gradle.api.plugins.BasePlugin to root project 'single'")
+        def rootProjectAction = rootOperation.descendant("Execute 'rootProject {}' action")
+
+        java.parent == rootProjectAction.child("Cross-configure project :").child('Execute Gradle.rootProject listener')
+        javaBase.parent == java
+        base.parent == javaBase
+    }
+
+    @TargetGradleVersion(">=4.0 <4.10")
+    def "generates plugin application events for project plugin applied in init script to all projects pre execute listener ops"() {
         given:
         def events = ProgressEvents.create()
         settingsFile << "rootProject.name = 'single'"
@@ -236,6 +277,44 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
         def rootProjectAction = rootOperation.descendant("Execute 'rootProject {}' action")
 
         java.parent == rootProjectAction.child("Cross-configure project :").child("Execute 'allprojects {}' action").child("Cross-configure project :")
+        javaBase.parent == java
+        base.parent == javaBase
+    }
+
+    @TargetGradleVersion(">=4.10")
+    def "generates plugin application events for project plugin applied in init script to all projects"() {
+        given:
+        def events = ProgressEvents.create()
+        settingsFile << "rootProject.name = 'single'"
+        def initScript = file('init.gradle')
+        buildFile << ""
+        initScript  << """
+            allprojects { 
+                apply plugin: 'java'
+            }
+        """
+
+        when:
+        withConnection {
+            ProjectConnection connection -> connection.newBuild().addProgressListener(events)
+                .withArguments('--init-script', initScript.toString()).run()
+        }
+
+        then:
+        events.assertIsABuild()
+
+        def rootOperation = events.operations[0]
+
+        def java = events.operation("Apply plugin org.gradle.java to root project 'single'")
+        def javaBase = events.operation("Apply plugin org.gradle.api.plugins.JavaBasePlugin to root project 'single'")
+        def base = events.operation("Apply plugin org.gradle.api.plugins.BasePlugin to root project 'single'")
+        def rootProjectAction = rootOperation.descendant("Execute 'rootProject {}' action")
+
+        java.parent == rootProjectAction.
+            child("Cross-configure project :").
+            child('Execute Gradle.allprojects listener').
+            child("Execute 'allprojects {}' action").
+            child("Cross-configure project :")
         javaBase.parent == java
         base.parent == javaBase
     }
@@ -359,7 +438,6 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
 
         def applyBuildGradle = events.operation("Apply script build.gradle to root project 'multi'")
 
-        applyBuildGradle.children.size() == 1
         applyBuildGradle.child("Execute 'subprojects {}' action").child("Cross-configure project :a").child("Apply plugin org.gradle.java to project ':a'")
         applyBuildGradle.child("Execute 'subprojects {}' action").child("Cross-configure project :b").child("Apply plugin org.gradle.java to project ':b'")
     }
@@ -385,7 +463,6 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
 
         def applyBuildGradle = events.operation("Apply script build.gradle to root project 'multi'")
 
-        applyBuildGradle.children.size() == 1
         applyBuildGradle.child("Cross-configure project :a").child("Apply plugin org.gradle.java to project ':a'")
     }
 
@@ -410,7 +487,6 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
 
         def applyBuildGradle = events.operation("Apply script build.gradle to root project 'multi'")
 
-        applyBuildGradle.children.size() == 1
         applyBuildGradle.child("Cross-configure project :b").child("Apply plugin org.gradle.java to project ':b'")
     }
 
@@ -449,10 +525,59 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
         configureBuildSrcB.child("Apply plugin org.gradle.help-tasks to project ':buildSrc:b'")
         configureBuildSrcB.children("Apply plugin org.gradle.java to project ':buildSrc:b'").empty
 
-        groovyPlugin.child("Apply plugin org.gradle.api.plugins.JavaPlugin to project ':buildSrc'")
-        applyBuildSrcBuildGradle.child("Execute 'allprojects {}' action").child("Cross-configure project :buildSrc").children.empty //Java plugin is applied by groovy plugin, so it is not applied again
+        groovyPlugin.child("Apply plugin org.gradle.api.plugins.GroovyBasePlugin to project ':buildSrc'")
+
         applyBuildSrcBuildGradle.child("Execute 'allprojects {}' action").child("Cross-configure project :buildSrc:a").child("Apply plugin org.gradle.java to project ':buildSrc:a'")
         applyBuildSrcBuildGradle.child("Execute 'allprojects {}' action").child("Cross-configure project :buildSrc:b").child("Apply plugin org.gradle.java to project ':buildSrc:b'")
+    }
+    
+    @TargetGradleVersion(">=4.0 <6.0")
+    def "generates Java plugin application events for buildSrc"() {
+        given:
+        def events = ProgressEvents.create()
+        buildSrc()
+        buildFile << """
+            apply plugin: 'java'
+        """
+
+        when:
+        withConnection {
+            ProjectConnection connection -> connection.newBuild().addProgressListener(events).run()
+        }
+
+        then:
+        events.assertIsABuild()
+
+        def buildSrc = events.operation("Build buildSrc")
+        def groovyPlugin = buildSrc.descendant("Apply plugin org.gradle.api.plugins.GroovyPlugin to project ':buildSrc'")
+        def applyBuildSrcBuildGradle = events.operation("Apply script build.gradle to project ':buildSrc'")
+
+        groovyPlugin.child("Apply plugin org.gradle.api.plugins.JavaPlugin to project ':buildSrc'")
+        applyBuildSrcBuildGradle.child("Execute 'allprojects {}' action").child("Cross-configure project :buildSrc").children.empty // Java plugin is applied by groovy plugin, so it is not applied again
+    }
+
+    @TargetGradleVersion(">=6.0")
+    def "generates Java plugin application events for buildSrc in Gradle 6 and above"() {
+        given:
+        def events = ProgressEvents.create()
+        buildSrc()
+        buildFile << """
+            apply plugin: 'java'
+        """
+
+        when:
+        withConnection {
+            ProjectConnection connection -> connection.newBuild().addProgressListener(events).run()
+        }
+
+        then:
+        events.assertIsABuild()
+
+        def buildSrc = events.operation("Build buildSrc")
+        def groovyPlugin = buildSrc.descendant("Apply plugin org.gradle.api.plugins.GroovyPlugin to project ':buildSrc'")
+
+        buildSrc.descendant("Apply plugin org.gradle.api.plugins.JavaLibraryPlugin to project ':buildSrc'")
+        groovyPlugin.children.size() == 2 // Java plugin is not applied by groovy plugin, as we already applied 'java-library'
     }
 
     private buildSrc() {
@@ -462,8 +587,8 @@ class PluginApplicationBuildProgressCrossVersionSpec extends ToolingApiSpecifica
                 apply plugin: 'java'
             }
             dependencies {
-                compile project(':a')
-                compile project(':b')
+                implementation project(':a')
+                implementation project(':b')
             }
         """
     }

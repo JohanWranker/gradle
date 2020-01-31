@@ -16,7 +16,6 @@
 package org.gradle.api.artifacts;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 
 /**
  * <p>An {@code ExternalDependency} is a {@link Dependency} on a source outside the current project hierarchy.</p>
@@ -33,12 +32,16 @@ public interface ExternalDependency extends ModuleDependency, ModuleVersionSelec
      *
      * @param force Whether to force this version or not.
      * @return this
+     *
+     * @deprecated Use {@link MutableVersionConstraint#strictly(String) instead.}
      */
+    @Deprecated
     ExternalDependency setForce(boolean force);
 
     /**
      * {@inheritDoc}
      */
+    @Override
     ExternalDependency copy();
 
     /**
@@ -46,6 +49,13 @@ public interface ExternalDependency extends ModuleDependency, ModuleVersionSelec
      * @param configureAction the configuration action for the module version
      * @since 4.4
      */
-    @Incubating
     void version(Action<? super MutableVersionConstraint> configureAction);
+
+    /**
+     * Returns the version constraint to be used during selection.
+     * @return the version constraint
+     *
+     * @since 4.4
+     */
+    VersionConstraint getVersionConstraint();
 }

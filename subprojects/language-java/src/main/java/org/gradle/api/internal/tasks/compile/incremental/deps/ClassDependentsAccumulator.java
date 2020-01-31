@@ -16,14 +16,13 @@
 
 package org.gradle.api.internal.tasks.compile.incremental.deps;
 
-import com.google.common.collect.HashMultimap;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import it.unimi.dsi.fastutil.ints.IntSet;
 
-import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,48 +31,44 @@ import java.util.Set;
 public class ClassDependentsAccumulator {
 
     private final Set<String> dependenciesToAll = Sets.newHashSet();
-    private final Map<String, String> filePathToClassName = new HashMap<String, String>();
-    private final Map<String, Set<String>> dependents = new HashMap<String, Set<String>>();
-    private final Map<String, IntSet> classesToConstants = new HashMap<String, IntSet>();
+    private final Map<String, Set<String>> privateDependents = new HashMap<String, Set<String>>();
+    private final Map<String, Set<String>> accessibleDependents = new HashMap<String, Set<String>>();
+    private final ImmutableMap.Builder<String, IntSet> classesToConstants = ImmutableMap.builder();
     private final Set<String> seenClasses = Sets.newHashSet();
-    private final Multimap<String, String> parentToChildren = HashMultimap.create();
-
-    public ClassDependentsAccumulator() {
-    }
-
-    public void addClass(File classFile, ClassAnalysis classAnalysis) {
-        addClass(classAnalysis);
-        filePathToClassName.put(classFile.getAbsolutePath(), classAnalysis.getClassName());
-    }
+    private String fullRebuildCause;
 
     public void addClass(ClassAnalysis classAnalysis) {
-        addClass(classAnalysis.getClassName(), classAnalysis.isDependencyToAll(), classAnalysis.getClassDependencies(), classAnalysis.getConstants(), classAnalysis.getSuperTypes());
+        addClass(classAnalysis.getClassName(), classAnalysis.isDependencyToAll(), classAnalysis.getPrivateClassDependencies(), classAnalysis.getAccessibleClassDependencies(), classAnalysis.getConstants());
     }
 
-    public void addClass(String className, boolean dependencyToAll, Iterable<String> classDependencies, IntSet constants, Set<String> superTypes) {
+    public void addClass(String className, boolean dependencyToAll, Iterable<String> privateClassDependencies, Iterable<String> accessibleClassDependencies, IntSet constants) {
         if (seenClasses.contains(className)) {
             // same classes may be found in different classpath trees/jars
             // and we keep only the first one
             return;
         }
         seenClasses.add(className);
-        classesToConstants.put(className, constants);
+        if (!constants.isEmpty()) {
+            classesToConstants.put(className, constants);
+        }
         if (dependencyToAll) {
             dependenciesToAll.add(className);
-            dependents.remove(className);
+            privateDependents.remove(className);
+            accessibleDependents.remove(className);
         }
-        for (String dependency : classDependencies) {
+        for (String dependency : privateClassDependencies) {
             if (!dependency.equals(className) && !dependenciesToAll.contains(dependency)) {
-                Set<String> d = rememberClass(dependency);
-                d.add(className);
+                addDependency(privateDependents, dependency, className);
             }
         }
-        for (String superType : superTypes) {
-            parentToChildren.put(superType, className);
+        for (String dependency : accessibleClassDependencies) {
+            if (!dependency.equals(className) && !dependenciesToAll.contains(dependency)) {
+                addDependency(accessibleDependents, dependency, className);
+            }
         }
     }
 
-    private Set<String> rememberClass(String className) {
+    private Set<String> rememberClass(Map<String, Set<String>> dependents, String className) {
         Set<String> d = dependents.get(className);
         if (d == null) {
             d = Sets.newHashSet();
@@ -82,25 +77,52 @@ public class ClassDependentsAccumulator {
         return d;
     }
 
-    public Map<String, DependentsSet> getDependentsMap() {
-        if (dependenciesToAll.isEmpty() && dependents.isEmpty()) {
+    @VisibleForTesting
+    Map<String, DependentsSet> getDependentsMap() {
+        if (dependenciesToAll.isEmpty() && privateDependents.isEmpty() && accessibleDependents.isEmpty()) {
             return Collections.emptyMap();
         }
         ImmutableMap.Builder<String, DependentsSet> builder = ImmutableMap.builder();
         for (String s : dependenciesToAll) {
-            builder.put(s, DependencyToAll.INSTANCE);
+            builder.put(s, DependentsSet.dependencyToAll());
         }
-        for (Map.Entry<String, Set<String>> entry : dependents.entrySet()) {
-            builder.put(entry.getKey(), new DefaultDependentsSet(ImmutableSet.copyOf(entry.getValue())));
+        Set<String> collected = Sets.newHashSet();
+        for (Map.Entry<String, Set<String>> entry : accessibleDependents.entrySet()) {
+            if (collected.add(entry.getKey())) {
+                builder.put(entry.getKey(), DependentsSet.dependentClasses(privateDependents.getOrDefault(entry.getKey(), Collections.emptySet()), entry.getValue()));
+            }
+        }
+        for (Map.Entry<String, Set<String>> entry : privateDependents.entrySet()) {
+            if (collected.add(entry.getKey())) {
+                builder.put(entry.getKey(), DependentsSet.dependentClasses(entry.getValue(), accessibleDependents.getOrDefault(entry.getKey(), Collections.emptySet())));
+            }
         }
         return builder.build();
     }
 
-    public Map<String, IntSet> getClassesToConstants() {
-        return classesToConstants;
+    @VisibleForTesting
+    Map<String, IntSet> getClassesToConstants() {
+        return classesToConstants.build();
+    }
+
+    private void addDependency(Map<String, Set<String>> dependentsMap, String dependency, String dependent) {
+        Set<String> dependents = rememberClass(dependentsMap, dependency);
+        dependents.add(dependent);
+    }
+
+    public void fullRebuildNeeded(String fullRebuildCause) {
+        this.fullRebuildCause = fullRebuildCause;
     }
 
     public ClassSetAnalysisData getAnalysis() {
-        return new ClassSetAnalysisData(filePathToClassName, getDependentsMap(), getClassesToConstants(), parentToChildren);
+        return new ClassSetAnalysisData(ImmutableSet.copyOf(seenClasses), getDependentsMap(), getClassesToConstants(), fullRebuildCause);
+    }
+
+    private static <K, V> Map<K, Set<V>> asMap(Multimap<K, V> multimap) {
+        ImmutableMap.Builder<K, Set<V>> builder = ImmutableMap.builder();
+        for (K key : multimap.keySet()) {
+            builder.put(key, ImmutableSet.copyOf(multimap.get(key)));
+        }
+        return builder.build();
     }
 }

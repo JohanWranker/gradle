@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 the original author or authors.
+ * Copyright 2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,31 +17,23 @@
 package org.gradle.internal.component.external.model;
 
 import com.google.common.base.Objects;
+import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
-import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
-import org.gradle.api.internal.attributes.EmptySchema;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.project.ProjectInternal;
-import org.gradle.internal.component.external.descriptor.Configuration;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.DefaultIvyArtifactName;
+import org.gradle.internal.component.model.ImmutableModuleSources;
 import org.gradle.internal.component.model.IvyArtifactName;
-import org.gradle.internal.component.model.ModuleSource;
-import org.gradle.internal.hash.HashValue;
+import org.gradle.internal.component.model.ModuleSources;
 
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 abstract class AbstractModuleComponentResolveMetadata implements ModuleComponentResolveMetadata {
     private final ImmutableAttributesFactory attributesFactory;
@@ -50,140 +42,75 @@ abstract class AbstractModuleComponentResolveMetadata implements ModuleComponent
     private final boolean changing;
     private final boolean missing;
     private final List<String> statusScheme;
-    @Nullable
-    private final ModuleSource moduleSource;
-    private final ImmutableMap<String, Configuration> configurationDefinitions;
-    private final VariantMetadataRules variantMetadataRules;
+    private final ImmutableModuleSources moduleSources;
     private final ImmutableList<? extends ComponentVariant> variants;
-    private final HashValue contentHash;
     private final ImmutableAttributes attributes;
+    private final ImmutableList<? extends VirtualComponentIdentifier> platformOwners;
+    private final AttributesSchemaInternal schema;
 
-    // Configurations are built on-demand, but only once.
-    private final Map<String, DefaultConfigurationMetadata> configurations = Maps.newHashMap();
-    private ImmutableList<? extends ConfigurationMetadata> graphVariants;
-
-    AbstractModuleComponentResolveMetadata(AbstractMutableModuleComponentResolveMetadata metadata) {
-        this.componentIdentifier = metadata.getComponentId();
-        this.moduleVersionIdentifier = metadata.getId();
+    public AbstractModuleComponentResolveMetadata(AbstractMutableModuleComponentResolveMetadata metadata) {
+        this.componentIdentifier = metadata.getId();
+        this.moduleVersionIdentifier = metadata.getModuleVersionId();
         changing = metadata.isChanging();
         missing = metadata.isMissing();
         statusScheme = metadata.getStatusScheme();
-        moduleSource = metadata.getSource();
-        configurationDefinitions = metadata.getConfigurationDefinitions();
-        variantMetadataRules = metadata.getVariantMetadataRules();
-        contentHash = metadata.getContentHash();
+        moduleSources = ImmutableModuleSources.of(metadata.getSources());
         attributesFactory = metadata.getAttributesFactory();
+        schema = metadata.getAttributesSchema();
         attributes = extractAttributes(metadata);
         variants = metadata.getVariants();
+        platformOwners = metadata.getPlatformOwners() == null ? ImmutableList.of() : ImmutableList.copyOf(metadata.getPlatformOwners());
+    }
+
+    public AbstractModuleComponentResolveMetadata(AbstractModuleComponentResolveMetadata metadata, ImmutableList<? extends ComponentVariant> variants) {
+        this.componentIdentifier = metadata.getId();
+        this.moduleVersionIdentifier = metadata.getModuleVersionId();
+        changing = metadata.isChanging();
+        missing = metadata.isMissing();
+        statusScheme = metadata.getStatusScheme();
+        moduleSources = ImmutableModuleSources.of(metadata.getSources());
+        attributesFactory = metadata.getAttributesFactory();
+        schema = metadata.getAttributesSchema();
+        attributes = metadata.getAttributes();
+        this.variants = variants;
+        this.platformOwners = metadata.getPlatformOwners();
+    }
+
+    public AbstractModuleComponentResolveMetadata(AbstractModuleComponentResolveMetadata metadata) {
+        this.componentIdentifier = metadata.componentIdentifier;
+        this.moduleVersionIdentifier = metadata.moduleVersionIdentifier;
+        changing = metadata.changing;
+        missing = metadata.missing;
+        statusScheme = metadata.statusScheme;
+        moduleSources = metadata.moduleSources;
+        attributesFactory = metadata.attributesFactory;
+        schema = metadata.schema;
+        attributes = metadata.attributes;
+        variants = metadata.variants;
+        platformOwners = metadata.platformOwners;
+    }
+
+    public AbstractModuleComponentResolveMetadata(AbstractModuleComponentResolveMetadata metadata, ModuleSources sources) {
+        this.componentIdentifier = metadata.componentIdentifier;
+        this.moduleVersionIdentifier = metadata.moduleVersionIdentifier;
+        changing = metadata.changing;
+        missing = metadata.missing;
+        statusScheme = metadata.statusScheme;
+        attributesFactory = metadata.attributesFactory;
+        schema = metadata.schema;
+        attributes = metadata.attributes;
+        variants = metadata.variants;
+        platformOwners = metadata.platformOwners;
+        moduleSources = ImmutableModuleSources.of(sources);
     }
 
     private static ImmutableAttributes extractAttributes(AbstractMutableModuleComponentResolveMetadata metadata) {
         return ((AttributeContainerInternal) metadata.getAttributes()).asImmutable();
     }
 
-
-    /**
-     * Creates a copy of the given metadata
-     */
-    AbstractModuleComponentResolveMetadata(AbstractModuleComponentResolveMetadata metadata, @Nullable ModuleSource source) {
-        this.componentIdentifier = metadata.getComponentId();
-        this.moduleVersionIdentifier = metadata.getId();
-        changing = metadata.changing;
-        missing = metadata.missing;
-        statusScheme = metadata.statusScheme;
-        moduleSource = source;
-        configurationDefinitions = metadata.configurationDefinitions;
-        variantMetadataRules = metadata.variantMetadataRules;
-        contentHash = metadata.contentHash;
-        attributesFactory = metadata.getAttributesFactory();
-        attributes = metadata.attributes;
-        variants = metadata.variants;
-    }
-
-    /**
-     * Clear any cached state, for the case where the inputs are invalidated.
-     * This only happens when constructing a copy
-     */
-    protected void copyCachedState(AbstractModuleComponentResolveMetadata metadata) {
-        // Copy built-on-demand state
-        configurations.putAll(metadata.configurations);
-        this.graphVariants = metadata.graphVariants;
-    }
-
-    private DefaultConfigurationMetadata populateConfigurationFromDescriptor(String name, Map<String, Configuration> configurationDefinitions, Map<String, DefaultConfigurationMetadata> configurations) {
-        DefaultConfigurationMetadata populated = configurations.get(name);
-        if (populated != null) {
-            return populated;
-        }
-
-        Configuration descriptorConfiguration = configurationDefinitions.get(name);
-        if (descriptorConfiguration == null) {
-            return null;
-        }
-
-        ImmutableList<String> hierarchy = constructHierarchy(descriptorConfiguration);
-        boolean transitive = descriptorConfiguration.isTransitive();
-        boolean visible = descriptorConfiguration.isVisible();
-        populated = createConfiguration(componentIdentifier, name, transitive, visible, hierarchy, variantMetadataRules);
-        configurations.put(name, populated);
-        return populated;
-    }
-
-    private ImmutableList<String> constructHierarchy(Configuration descriptorConfiguration) {
-        if (descriptorConfiguration.getExtendsFrom().isEmpty()) {
-            return ImmutableList.of(descriptorConfiguration.getName());
-        }
-        Set<String> accumulator = new LinkedHashSet<String>();
-        populateHierarchy(descriptorConfiguration, accumulator);
-        return ImmutableList.copyOf(accumulator);
-    }
-
-    private void populateHierarchy(Configuration metadata, Set<String> accumulator) {
-        accumulator.add(metadata.getName());
-        for (String parentName : metadata.getExtendsFrom()) {
-            Configuration parent = configurationDefinitions.get(parentName);
-            populateHierarchy(parent, accumulator);
-        }
-    }
-
-    /**
-     * Creates a {@link org.gradle.internal.component.model.ConfigurationMetadata} implementation for this component.
-     */
-    protected abstract DefaultConfigurationMetadata createConfiguration(ModuleComponentIdentifier componentId, String name, boolean transitive, boolean visible, ImmutableList<String> hierarchy, VariantMetadataRules componentMetadataRules);
-
-    /**
-     * If there are no variants defined in the metadata, but the implementation knows how to provide variants it can do that here.
-     * If it can not provide variants, an empty list needs to be returned to fall back to traditional configuration selection.
-     */
-    protected ImmutableList<? extends ConfigurationMetadata> maybeDeriveVariants() {
-        return ImmutableList.of();
-    }
-
-    private ImmutableList<? extends ConfigurationMetadata> buildVariantsForGraphTraversal(List<? extends ComponentVariant> variants) {
-        if (variants.isEmpty()) {
-            return maybeDeriveVariants();
-        }
-        List<VariantBackedConfigurationMetadata> configurations = new ArrayList<VariantBackedConfigurationMetadata>(variants.size());
-        for (ComponentVariant variant : variants) {
-            configurations.add(new VariantBackedConfigurationMetadata(getComponentId(), variant, attributes, attributesFactory, variantMetadataRules));
-        }
-        return ImmutableList.copyOf(configurations);
-    }
-
-    @Nullable
-    @Override
-    public AttributesSchemaInternal getAttributesSchema() {
-        return EmptySchema.INSTANCE;
-    }
-
     @Override
     public ImmutableAttributesFactory getAttributesFactory() {
         return attributesFactory;
-    }
-
-    @Override
-    public HashValue getContentHash() {
-        return contentHash;
     }
 
     @Override
@@ -197,28 +124,44 @@ abstract class AbstractModuleComponentResolveMetadata implements ModuleComponent
     }
 
     @Override
-    public String getStatus() {
-        return attributes.getAttribute(ProjectInternal.STATUS_ATTRIBUTE);
-    }
-
-    @Override
     public List<String> getStatusScheme() {
         return statusScheme;
     }
 
     @Override
-    public ModuleComponentIdentifier getComponentId() {
+    public ModuleComponentIdentifier getId() {
         return componentIdentifier;
     }
 
     @Override
-    public ModuleVersionIdentifier getId() {
+    public ModuleVersionIdentifier getModuleVersionId() {
         return moduleVersionIdentifier;
     }
 
     @Override
-    public ModuleSource getSource() {
-        return moduleSource;
+    public ModuleSources getSources() {
+        return moduleSources;
+    }
+
+    @Override
+    public String toString() {
+        return componentIdentifier.getDisplayName();
+    }
+
+    @Nullable
+    @Override
+    public AttributesSchemaInternal getAttributesSchema() {
+        return schema;
+    }
+
+    @Override
+    public ImmutableAttributes getAttributes() {
+        return attributes;
+    }
+
+    @Override
+    public String getStatus() {
+        return attributes.getAttribute(ProjectInternal.STATUS_ATTRIBUTE);
     }
 
     @Override
@@ -227,37 +170,22 @@ abstract class AbstractModuleComponentResolveMetadata implements ModuleComponent
     }
 
     @Override
-    public synchronized ImmutableList<? extends ConfigurationMetadata> getVariantsForGraphTraversal() {
-        if (graphVariants == null) {
-            graphVariants = buildVariantsForGraphTraversal(variants);
-        }
-        return graphVariants;
-    }
-
-    @Override
-    public String toString() {
-        return componentIdentifier.getDisplayName();
-    }
-
-    @Override
     public ModuleComponentArtifactMetadata artifact(String type, @Nullable String extension, @Nullable String classifier) {
-        IvyArtifactName ivyArtifactName = new DefaultIvyArtifactName(getId().getName(), type, extension, classifier);
-        return new DefaultModuleComponentArtifactMetadata(getComponentId(), ivyArtifactName);
+        IvyArtifactName ivyArtifactName = new DefaultIvyArtifactName(getModuleVersionId().getName(), type, extension, classifier);
+        return new DefaultModuleComponentArtifactMetadata(getId(), ivyArtifactName);
+    }
+
+    /**
+     * If there are no variants defined in the metadata, but the implementation knows how to provide variants it can do that here.
+     * If it can not provide variants, absent must be returned to fall back to traditional configuration selection.
+     */
+    protected Optional<ImmutableList<? extends ConfigurationMetadata>> maybeDeriveVariants() {
+        return Optional.absent();
     }
 
     @Override
-    public Set<String> getConfigurationNames() {
-        return configurationDefinitions.keySet();
-    }
-
-    @Override
-    public synchronized ConfigurationMetadata getConfiguration(final String name) {
-        return populateConfigurationFromDescriptor(name, configurationDefinitions, configurations);
-    }
-
-    @Override
-    public AttributeContainer getAttributes() {
-        return attributes;
+    public ImmutableList<? extends VirtualComponentIdentifier> getPlatformOwners() {
+        return platformOwners;
     }
 
     @Override
@@ -275,11 +203,9 @@ abstract class AbstractModuleComponentResolveMetadata implements ModuleComponent
             && Objects.equal(moduleVersionIdentifier, that.moduleVersionIdentifier)
             && Objects.equal(componentIdentifier, that.componentIdentifier)
             && Objects.equal(statusScheme, that.statusScheme)
-            && Objects.equal(moduleSource, that.moduleSource)
-            && Objects.equal(configurationDefinitions, that.configurationDefinitions)
+            && Objects.equal(moduleSources, that.moduleSources)
             && Objects.equal(attributes, that.attributes)
-            && Objects.equal(variants, that.variants)
-            && Objects.equal(contentHash, that.contentHash);
+            && Objects.equal(variants, that.variants);
     }
 
     @Override
@@ -290,10 +216,8 @@ abstract class AbstractModuleComponentResolveMetadata implements ModuleComponent
             changing,
             missing,
             statusScheme,
-            moduleSource,
-            configurationDefinitions,
+            moduleSources,
             attributes,
-            variants,
-            contentHash);
+            variants);
     }
 }

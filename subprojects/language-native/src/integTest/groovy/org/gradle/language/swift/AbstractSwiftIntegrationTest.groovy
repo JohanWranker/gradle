@@ -16,15 +16,19 @@
 
 package org.gradle.language.swift
 
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
 import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.SourceElement
 import org.gradle.nativeplatform.fixtures.app.Swift3
 import org.gradle.nativeplatform.fixtures.app.Swift4
+import org.gradle.nativeplatform.fixtures.app.Swift5
 import org.gradle.util.Matchers
 
 @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC)
 abstract class AbstractSwiftIntegrationTest extends AbstractSwiftComponentIntegrationTest {
+
+    @ToBeFixedForInstantExecution
     def "skip assemble tasks when no source"() {
         given:
         makeSingleProject()
@@ -36,6 +40,7 @@ abstract class AbstractSwiftIntegrationTest extends AbstractSwiftComponentIntegr
         result.assertTasksSkipped(tasksToAssembleDevelopmentBinary, ":assemble")
     }
 
+    @ToBeFixedForInstantExecution
     def "build fails when compilation fails"() {
         given:
         makeSingleProject()
@@ -50,7 +55,67 @@ abstract class AbstractSwiftIntegrationTest extends AbstractSwiftComponentIntegr
         failure.assertThatCause(Matchers.containsText("Swift compiler failed while compiling swift file(s)"))
     }
 
-    protected abstract List<String> getTasksToAssembleDevelopmentBinary()
+    // TODO Move this to AbstractSwiftComponentIntegrationTest when xcode test works properly with architecture
+    @ToBeFixedForInstantExecution
+    def "can build for current machine when multiple target machines are specified"() {
+        given:
+        makeSingleProject()
+        settingsFile << "rootProject.name = '${componentUnderTest.projectName}'"
+        componentUnderTest.writeToProject(testDirectory)
+
+        and:
+        buildFile << """
+            ${componentUnderTestDsl} {
+                targetMachines = [machines.linux, machines.macOS]
+            }
+        """
+
+        expect:
+        succeeds taskNameToAssembleDevelopmentBinary
+        result.assertTasksExecutedAndNotSkipped getTasksToAssembleDevelopmentBinary(currentOsFamilyName.toLowerCase()), ":${taskNameToAssembleDevelopmentBinary}"
+    }
+
+    // TODO Move this to AbstractSwiftComponentIntegrationTest when xcode test works properly with architecture
+    def "fails when 32-bit architecture is specified"() {
+        given:
+        makeSingleProject()
+        componentUnderTest.writeToProject(testDirectory)
+
+        and:
+        buildFile << """
+            ${componentUnderTestDsl} {
+                targetMachines = [machines.os('${currentOsFamilyName}').x86]
+            }
+        """
+
+        expect:
+        fails taskNameToAssembleDevelopmentBinary
+        failure.assertHasCause("No tool chain has support to build Swift")
+    }
+
+    // TODO Move this to AbstractCppComponentIntegrationTest when unit test works properly with architecture
+    def "ignores duplicate target machines"() {
+        given:
+        makeSingleProject()
+        settingsFile << "rootProject.name = '${componentUnderTest.projectName}'"
+        componentUnderTest.writeToProject(testDirectory)
+
+        and:
+        buildFile << configureTargetMachines("machines.${currentHostOperatingSystemFamilyDsl}", "machines.${currentHostOperatingSystemFamilyDsl}")
+        buildFile << """
+            task verifyTargetMachines {
+                doLast {
+                    assert ${componentUnderTestDsl}.targetMachines.get().size() == 1
+                    assert ${componentUnderTestDsl}.targetMachines.get() == [machines.${currentHostOperatingSystemFamilyDsl}] as Set
+                }
+            }
+        """
+
+        expect:
+        succeeds "verifyTargetMachines"
+    }
+
+    protected abstract List<String> getTasksToAssembleDevelopmentBinary(String variant = "")
 
     @Override
     SourceElement getSwift3Component() {
@@ -63,6 +128,11 @@ abstract class AbstractSwiftIntegrationTest extends AbstractSwiftComponentIntegr
     }
 
     @Override
+    SourceElement getSwift5Component() {
+        return new Swift5('project')
+    }
+
+    @Override
     String getTaskNameToAssembleDevelopmentBinary() {
         return "assemble"
     }
@@ -70,6 +140,11 @@ abstract class AbstractSwiftIntegrationTest extends AbstractSwiftComponentIntegr
     @Override
     String getDevelopmentBinaryCompileTask() {
         return ":compileDebugSwift"
+    }
+
+    @Override
+    String getComponentName() {
+        return "main"
     }
 
     @Override

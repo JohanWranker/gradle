@@ -18,6 +18,7 @@ package org.gradle.internal.component.local.model;
 
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ProjectComponentSelector;
+import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
@@ -26,16 +27,19 @@ import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.ExcludeMetadata;
 import org.gradle.internal.component.model.IvyArtifactName;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
 public class DefaultProjectDependencyMetadata implements DependencyMetadata {
     private final ProjectComponentSelector selector;
     private final DependencyMetadata delegate;
+    private final boolean isTransitive;
 
     public DefaultProjectDependencyMetadata(ProjectComponentSelector selector, DependencyMetadata delegate) {
         this.selector = selector;
         this.delegate = delegate;
+        this.isTransitive = delegate.isTransitive();
     }
 
     @Override
@@ -62,8 +66,13 @@ public class DefaultProjectDependencyMetadata implements DependencyMetadata {
     }
 
     @Override
-    public boolean isPending() {
+    public boolean isConstraint() {
         return false;
+    }
+
+    @Override
+    public boolean isEndorsingStrictVersions() {
+        return delegate.isEndorsingStrictVersions();
     }
 
     @Override
@@ -73,12 +82,12 @@ public class DefaultProjectDependencyMetadata implements DependencyMetadata {
 
     @Override
     public boolean isTransitive() {
-        return delegate.isTransitive();
+        return isTransitive;
     }
 
     @Override
-    public List<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
-        return delegate.selectConfigurations(consumerAttributes, targetComponent, consumerSchema);
+    public List<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema, Collection<? extends Capability> explicitRequestedCapabilities) {
+        return delegate.selectConfigurations(consumerAttributes, targetComponent, consumerSchema, explicitRequestedCapabilities);
     }
 
     @Override
@@ -90,4 +99,5 @@ public class DefaultProjectDependencyMetadata implements DependencyMetadata {
     public DependencyMetadata withReason(String reason) {
         return delegate.withReason(reason);
     }
+
 }

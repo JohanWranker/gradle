@@ -18,7 +18,6 @@ package org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser;
 import com.google.common.collect.Lists;
 import org.apache.commons.io.IOUtils;
 import org.apache.ivy.core.IvyPatternHelper;
-import org.gradle.api.Transformer;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier;
@@ -29,6 +28,7 @@ import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.data.PomPr
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.classloader.ClassLoaderUtils;
 import org.gradle.internal.resource.local.LocallyAvailableExternalResource;
+import org.w3c.dom.Comment;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -51,7 +51,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.PomDomParser.*;
+import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.PomDomParser.AddDTDFilterInputStream;
+import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.PomDomParser.getAllChilds;
+import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.PomDomParser.getFirstChildElement;
+import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.PomDomParser.getFirstChildText;
+import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.PomDomParser.getTextContent;
 
 /**
  * Copied from org.apache.ivy.plugins.parser.m2.PomReader.
@@ -109,6 +113,7 @@ public class PomReader implements PomParent {
     }
 
     private static final EntityResolver M2_ENTITY_RESOLVER = new EntityResolver() {
+        @Override
         public InputSource resolveEntity(String publicId, String systemId)
             throws SAXException, IOException {
             if ((systemId != null) && systemId.endsWith("m2-entities.ent")) {
@@ -135,13 +140,11 @@ public class PomReader implements PomParent {
         this.moduleIdentifierFactory = moduleIdentifierFactory;
         setPomProperties(childPomProperties);
         final String systemId = resource.getFile().toURI().toASCIIString();
-        Document pomDomDoc = resource.withContent(new Transformer<Document, InputStream>() {
-            public Document transform(InputStream inputStream) {
-                try {
-                    return parseToDom(inputStream, systemId);
-                } catch (Exception e) {
-                    throw new MetaDataParseException("POM", resource, e);
-                }
+        Document pomDomDoc = resource.withContent(inputStream -> {
+            try {
+                return parseToDom(inputStream, systemId);
+            } catch (Exception e) {
+                throw new MetaDataParseException("POM", resource, e);
             }
         }).getResult();
         projectElement = pomDomDoc.getDocumentElement();
@@ -262,6 +265,7 @@ public class PomReader implements PomParent {
         return parentElement != null;
     }
 
+    @Override
     public Map<String, String> getProperties() {
         return effectiveProperties;
     }
@@ -344,6 +348,20 @@ public class PomReader implements PomParent {
         return replaceProps(val);
     }
 
+    public boolean hasGradleMetadataMarker() {
+        NodeList childNodes = projectElement.getChildNodes();
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            Node node = childNodes.item(i);
+            if (node instanceof Comment) {
+                String comment = node.getNodeValue();
+                if (comment.contains(MetaDataParser.GRADLE_6_METADATA_MARKER) || comment.contains(MetaDataParser.GRADLE_METADATA_MARKER)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public ModuleVersionIdentifier getRelocation() {
         Element distrMgt = getFirstChildElement(projectElement, DISTRIBUTION_MGT);
         Element relocation = getFirstChildElement(distrMgt, RELOCATION);
@@ -363,6 +381,7 @@ public class PomReader implements PomParent {
     /**
      * Returns all dependencies for this POM, including those inherited from parent POMs.
      */
+    @Override
     public Map<MavenDependencyKey, PomDependencyData> getDependencies() {
         if (resolvedDependencies == null) {
             resolvedDependencies = resolveDependencies();
@@ -412,6 +431,7 @@ public class PomReader implements PomParent {
     /**
      * Returns all dependency management elements for this POM, including those inherited from parent and imported POMs.
      */
+    @Override
     public Map<MavenDependencyKey, PomDependencyMgt> getDependencyMgt() {
         if (resolvedDependencyMgts == null) {
             resolvedDependencyMgts = resolveDependencyMgt();
@@ -468,6 +488,7 @@ public class PomReader implements PomParent {
         return depMgmtElements;
     }
 
+    @Override
     public PomDependencyMgt findDependencyDefaults(MavenDependencyKey dependencyKey) {
         return getDependencyMgt().get(dependencyKey);
     }
@@ -491,6 +512,7 @@ public class PomReader implements PomParent {
             this.depElement = depElement;
         }
 
+        @Override
         public MavenDependencyKey getId() {
             return new MavenDependencyKey(getGroupId(), getArtifactId(), getType(), getClassifier());
         }
@@ -498,6 +520,7 @@ public class PomReader implements PomParent {
         /* (non-Javadoc)
          * @see org.apache.ivy.plugins.parser.m2.PomDependencyMgt#getGroupId()
          */
+        @Override
         public String getGroupId() {
             String val = getFirstChildText(depElement, GROUP_ID);
             checkNotNull(val, GROUP_ID, DEPENDENCY);
@@ -505,8 +528,9 @@ public class PomReader implements PomParent {
         }
 
         /* (non-Javadoc)
-         * @see org.apache.ivy.plugins.parser.m2.PomDependencyMgt#getArtifaceId()
+         * @see org.apache.ivy.plugins.parser.m2.PomDependencyMgt#getArtifactId()
          */
+        @Override
         public String getArtifactId() {
             String val = getFirstChildText(depElement, ARTIFACT_ID);
             checkNotNull(val, ARTIFACT_ID, DEPENDENCY);
@@ -516,16 +540,19 @@ public class PomReader implements PomParent {
         /* (non-Javadoc)
          * @see org.apache.ivy.plugins.parser.m2.PomDependencyMgt#getVersion()
          */
+        @Override
         public String getVersion() {
             String val = getFirstChildText(depElement, VERSION);
             return replaceProps(val);
         }
 
+        @Override
         public String getScope() {
             String val = getFirstChildText(depElement, SCOPE);
             return replaceProps(val);
         }
 
+        @Override
         public String getType() {
             String val = getFirstChildText(depElement, TYPE);
             val = replaceProps(val);
@@ -537,11 +564,13 @@ public class PomReader implements PomParent {
             return val;
         }
 
+        @Override
         public String getClassifier() {
             String val = getFirstChildText(depElement, CLASSIFIER);
             return replaceProps(val);
         }
 
+        @Override
         public List<ModuleIdentifier> getExcludedModules() {
             Element exclusionsElement = getFirstChildElement(depElement, EXCLUSIONS);
             if (exclusionsElement != null) {
@@ -552,8 +581,8 @@ public class PomReader implements PomParent {
                     if (node instanceof Element && EXCLUSION.equals(node.getNodeName())) {
                         String groupId = getFirstChildText((Element) node, GROUP_ID);
                         String artifactId = getFirstChildText((Element) node, ARTIFACT_ID);
-                        if ((groupId != null) && (artifactId != null)) {
-                            exclusions.add(moduleIdentifierFactory.module(groupId, artifactId));
+                        if ((groupId != null) || (artifactId != null)) {
+                            exclusions.add(moduleIdentifierFactory.module(groupId != null ? groupId : "*", artifactId != null ? artifactId : "*"));
                         }
                     }
                 }
@@ -586,14 +615,17 @@ public class PomReader implements PomParent {
             this.element = element;
         }
 
+        @Override
         public String getId() {
             return getFirstChildText(element, PROFILE_ID);
         }
 
+        @Override
         public Map<String, String> getProperties() {
             return parseProperties(element);
         }
 
+        @Override
         public List<PomDependencyMgt> getDependencyMgts() {
             if (declaredDependencyMgts == null) {
                 declaredDependencyMgts = getDependencyMgt(element);
@@ -602,6 +634,7 @@ public class PomReader implements PomParent {
             return declaredDependencyMgts;
         }
 
+        @Override
         public List<PomDependencyData> getDependencies() {
             if (declaredDependencies == null) {
                 declaredDependencies = getDependencyData(element);

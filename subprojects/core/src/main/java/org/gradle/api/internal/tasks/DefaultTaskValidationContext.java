@@ -16,36 +16,41 @@
 
 package org.gradle.api.internal.tasks;
 
-import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.internal.file.FileOperations;
+import org.gradle.internal.file.ReservedFileSystemLocationRegistry;
+import org.gradle.internal.reflect.TypeValidationContext;
 
-import java.util.Collection;
+import javax.annotation.Nullable;
+import java.io.File;
 
-public class DefaultTaskValidationContext implements TaskValidationContext {
-    private final FileResolver resolver;
-    private final Collection<String> messages;
-    private Severity highestSeverity;
+public class DefaultTaskValidationContext implements TaskValidationContext, TypeValidationContext {
+    private final FileOperations fileOperations;
+    private final ReservedFileSystemLocationRegistry reservedFileSystemLocationRegistry;
+    private final TypeValidationContext delegate;
 
-    public DefaultTaskValidationContext(FileResolver resolver, Collection<String> messages) {
-        this.resolver = resolver;
-        this.messages = messages;
-        this.highestSeverity = Severity.WARNING;
+    public DefaultTaskValidationContext(FileOperations fileOperations, ReservedFileSystemLocationRegistry reservedFileSystemLocationRegistry, TypeValidationContext delegate) {
+        this.fileOperations = fileOperations;
+        this.reservedFileSystemLocationRegistry = reservedFileSystemLocationRegistry;
+        this.delegate = delegate;
     }
 
     @Override
-    public FileResolver getResolver() {
-        return resolver;
+    public void visitTypeProblem(Severity severity, Class<?> type, String message) {
+        delegate.visitTypeProblem(severity, type, message);
     }
 
     @Override
-    public void recordValidationMessage(Severity severity, String message) {
-        if (severity.compareTo(highestSeverity) > 0) {
-            highestSeverity = severity;
-        }
-        messages.add(message);
+    public void visitPropertyProblem(Severity severity, @Nullable String parentProperty, @Nullable String property, String message) {
+        delegate.visitPropertyProblem(severity, parentProperty, property, message);
     }
 
     @Override
-    public Severity getHighestSeverity() {
-        return highestSeverity;
+    public FileOperations getFileOperations() {
+        return fileOperations;
+    }
+
+    @Override
+    public boolean isInReservedFileSystemLocation(File location) {
+        return reservedFileSystemLocationRegistry.isInReservedFileSystemLocation(location);
     }
 }

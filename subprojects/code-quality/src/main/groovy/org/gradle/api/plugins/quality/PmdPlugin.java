@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 /**
- * A plugin for the <a href="http://pmd.sourceforge.net/">PMD</a> source code analyzer.
+ * A plugin for the <a href="https://pmd.github.io/">PMD</a> source code analyzer.
  * <p>
  * Declares a <tt>pmd</tt> configuration which needs to be configured with the PMD library to be used.
  * <p>
@@ -48,7 +48,7 @@ import java.util.concurrent.Callable;
  */
 public class PmdPlugin extends AbstractCodeQualityPlugin<Pmd> {
 
-    public static final String DEFAULT_PMD_VERSION = "5.6.1";
+    public static final String DEFAULT_PMD_VERSION = "6.20.0";
     private PmdExtension extension;
 
     @Override
@@ -65,8 +65,8 @@ public class PmdPlugin extends AbstractCodeQualityPlugin<Pmd> {
     protected CodeQualityExtension createExtension() {
         extension = project.getExtensions().create("pmd", PmdExtension.class, project);
         extension.setToolVersion(DEFAULT_PMD_VERSION);
-        extension.setRuleSets(new ArrayList<String>(Arrays.asList("java-basic")));
-        extension.setRuleSetFiles(project.files());
+        extension.setRuleSets(new ArrayList<String>(Arrays.asList("category/java/errorprone.xml")));
+        extension.setRuleSetFiles(project.getLayout().files());
         conventionMappingOf(extension).map("targetJdk", new Callable<Object>() {
             @Override
             public Object call() {
@@ -87,9 +87,13 @@ public class PmdPlugin extends AbstractCodeQualityPlugin<Pmd> {
     }
 
     @Override
-    protected void configureTaskDefaults(Pmd task, String baseName) {
-        Configuration configuration = project.getConfigurations().getAt("pmd");
+    protected void configureConfiguration(Configuration configuration) {
         configureDefaultDependencies(configuration);
+    }
+
+    @Override
+    protected void configureTaskDefaults(Pmd task, String baseName) {
+        Configuration configuration = project.getConfigurations().getAt(getConfigurationName());
         configureTaskConventionMapping(configuration, task);
         configureReportsConventionMapping(task, baseName);
     }
@@ -105,7 +109,7 @@ public class PmdPlugin extends AbstractCodeQualityPlugin<Pmd> {
         });
     }
 
-    private void configureTaskConventionMapping(Configuration configuration, Pmd task) {
+    private void configureTaskConventionMapping(Configuration configuration, final Pmd task) {
         ConventionMapping taskMapping = task.getConventionMapping();
         taskMapping.map("pmdClasspath", Callables.returning(configuration));
         taskMapping.map("ruleSets", new Callable<List<String>>() {
@@ -150,20 +154,16 @@ public class PmdPlugin extends AbstractCodeQualityPlugin<Pmd> {
                 return extension.getTargetJdk();
             }
         });
+
+        task.getIncrementalAnalysis().convention(extension.getIncrementalAnalysis());
     }
 
     private void configureReportsConventionMapping(Pmd task, final String baseName) {
         task.getReports().all(new Action<SingleFileReport>() {
             @Override
             public void execute(final SingleFileReport report) {
-                ConventionMapping reportMapping = AbstractCodeQualityPlugin.conventionMappingOf(report);
-                reportMapping.map("enabled", Callables.returning(true));
-                reportMapping.map("destination", new Callable<File>() {
-                    @Override
-                    public File call() {
-                        return new File(extension.getReportsDir(), baseName + "." + report.getName());
-                    }
-                });
+                report.getRequired().convention(true);
+                report.getOutputLocation().convention(project.getLayout().getProjectDirectory().file(project.provider(() -> new File(extension.getReportsDir(), baseName + "." + report.getName()).getAbsolutePath())));
             }
         });
     }
@@ -184,7 +184,7 @@ public class PmdPlugin extends AbstractCodeQualityPlugin<Pmd> {
         ConventionMapping taskMapping = task.getConventionMapping();
         taskMapping.map("classpath", new Callable<FileCollection>() {
             @Override
-            public FileCollection call() throws Exception {
+            public FileCollection call() {
                 return sourceSet.getOutput().plus(sourceSet.getCompileClasspath());
             }
         });

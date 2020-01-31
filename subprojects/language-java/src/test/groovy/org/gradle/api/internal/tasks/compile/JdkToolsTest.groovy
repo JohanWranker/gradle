@@ -17,13 +17,12 @@
 package org.gradle.api.internal.tasks.compile
 
 import org.gradle.internal.jvm.JavaInfo
-import org.gradle.util.Requires
-import spock.lang.Issue
 import spock.lang.Specification
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 
 import javax.tools.JavaCompiler
 
-import static org.gradle.util.TestPrecondition.FIX_TO_WORK_ON_JAVA9
 import static org.gradle.util.TestPrecondition.JDK
 
 class JdkToolsTest extends Specification {
@@ -36,8 +35,7 @@ class JdkToolsTest extends Specification {
         compiler.class == JdkTools.current().systemJavaCompiler.class
     }
 
-    @Issue("gradle/core-issues#115")
-    @Requires(FIX_TO_WORK_ON_JAVA9)
+    @Requires(TestPrecondition.JDK8_OR_EARLIER)
     def "throws when no tools"() {
         when:
         new JdkTools(Mock(JavaInfo) {
@@ -49,15 +47,32 @@ class JdkToolsTest extends Specification {
         thrown IllegalStateException
     }
 
-    @Issue("gradle/core-issues#115")
-    @Requires(FIX_TO_WORK_ON_JAVA9)
+    @Requires(TestPrecondition.JDK8_OR_EARLIER)
     def "throws when tools doesn't contain compiler"() {
         when:
+        if (defaultCompilerClassAlreadyInjectedIntoExtensionClassLoader()) {
+            throw new IllegalStateException()
+        }
         new JdkTools(Mock(JavaInfo) {
             getToolsJar() >> new File("/nothing")
         }).systemJavaCompiler
 
         then:
         thrown IllegalStateException
+    }
+
+    /*
+     * See https://github.com/gradle/gradle-private/issues/1299
+     *
+     * Previously, before this test class is executed, DEFAULT_COMPILER_IMPL_NAME may already be injected into Extension Classloader,
+     * so here we check for prerequisite.
+     */
+    private static boolean defaultCompilerClassAlreadyInjectedIntoExtensionClassLoader() {
+        try {
+            ClassLoader.getSystemClassLoader().loadClass(JdkTools.DEFAULT_COMPILER_IMPL_NAME)
+            return true
+        } catch (ClassNotFoundException ignored) {
+            return false
+        }
     }
 }

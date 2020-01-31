@@ -18,29 +18,47 @@ package org.gradle.workers.internal
 
 import org.gradle.integtests.fixtures.AvailableJavaHomes
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
 import org.gradle.internal.jvm.Jvm
-
-import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
+import org.gradle.workers.fixtures.OptionsVerifier
+import org.gradle.workers.fixtures.WorkerExecutorFixture
 import org.junit.Assume
-import spock.lang.Timeout
 
 import static org.gradle.api.internal.file.TestFiles.systemSpecificAbsolutePath
 import static org.gradle.util.TextUtil.normaliseFileSeparators
-import static org.hamcrest.CoreMatchers.notNullValue
 
-@Timeout(60)
+@IntegrationTestTimeout(180)
 class WorkerDaemonIntegrationTest extends AbstractWorkerExecutorIntegrationTest {
-    def "sets the working directory to the project directory by default during worker execution"() {
-        withRunnableClassInBuildScript()
+    boolean isOracleJDK = TestPrecondition.JDK_ORACLE.fulfilled && (Jvm.current().jre != null)
+
+    WorkerExecutorFixture.WorkActionClass workActionThatPrintsWorkingDirectory
+
+    def setup() {
+        workActionThatPrintsWorkingDirectory = fixture.getWorkActionThatCreatesFiles("WorkingDirAction")
+        workActionThatPrintsWorkingDirectory.with {
+            constructorAction = """
+                Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        println "Shutdown working dir: " + System.getProperty("user.dir")
+                    }
+                }));
+            """
+            action += """
+                println "Execution working dir: " + System.getProperty("user.dir")
+            """
+        }
+    }
+
+    def "uses the worker home directory as working directory for work action"() {
+        def workerHomeDir = executer.gradleUserHomeDir.file("workers").getAbsolutePath()
+        fixture.withWorkActionClassInBuildScript()
+        workActionThatPrintsWorkingDirectory.writeToBuildFile()
         buildFile << """
-            import org.gradle.workers.IsolationMode
-
-            $runnableThatPrintsWorkingDirectory
-
             task runInWorker(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
-                runnableClass = WorkingDirRunnable.class
+                workActionClass = ${workActionThatPrintsWorkingDirectory.name}.class
             }
         """
 
@@ -52,73 +70,63 @@ class WorkerDaemonIntegrationTest extends AbstractWorkerExecutorIntegrationTest 
         gradle.waitForFinish()
 
         and:
-        gradle.standardOutput.readLines().find { normaliseFileSeparators(it).matches "Starting process 'Gradle Worker Daemon \\d+'. Working directory: " + normaliseFileSeparators(executer.gradleUserHomeDir.file("workers").getAbsolutePath()) + ".*" }
+        gradle.standardOutput.readLines().find {
+            normaliseFileSeparators(it).matches "Starting process 'Gradle Worker Daemon \\d+'. Working directory: " + normaliseFileSeparators(workerHomeDir) + ".*"
+        }
 
         and:
-        gradle.standardOutput.contains("Execution working dir: " + testDirectory.getAbsolutePath())
+        gradle.standardOutput.contains("Execution working dir: " + workerHomeDir)
 
         and:
-        GradleContextualExecuter.daemon || gradle.standardOutput.contains("Shutdown working dir: " + executer.gradleUserHomeDir.file("workers").getAbsolutePath())
+        GradleContextualExecuter.isLongLivingProcess() || gradle.standardOutput.contains("Shutdown working dir: " + workerHomeDir)
     }
 
-    def "sets the working directory to the specified directory during worker execution"() {
-        withRunnableClassInBuildScript()
+    def "setting the working directory of a worker is not supported"() {
+        fixture.withWorkActionClassInBuildScript()
+        workActionThatPrintsWorkingDirectory.writeToBuildFile()
         buildFile << """
-            import org.gradle.workers.IsolationMode
-
-            $runnableThatPrintsWorkingDirectory
-
             task runInWorker(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
-                runnableClass = WorkingDirRunnable.class
-                additionalForkOptions = { it.workingDir = project.file("workerDir") }
+                workActionClass = ${workActionThatPrintsWorkingDirectory.name}.class
+                additionalForkOptions = { it.workingDir = project.file("unsupported") }
             }
         """
-        testDirectory.file("workerDir").createDir()
 
         when:
-        args("--info")
-        def gradle = executer.withTasks("runInWorker").start()
+        fails("runInWorker")
 
         then:
-        gradle.waitForFinish()
-
-        and:
-        gradle.standardOutput.readLines().find { normaliseFileSeparators(it).matches "Starting process 'Gradle Worker Daemon \\d+'. Working directory: " + normaliseFileSeparators(executer.gradleUserHomeDir.file("workers").getAbsolutePath()) + ".*" }
-
-        and:
-        gradle.standardOutput.contains("Execution working dir: " + testDirectory.file("workerDir").getAbsolutePath())
-
-        and:
-        GradleContextualExecuter.daemon || gradle.standardOutput.contains("Shutdown working dir: " + executer.gradleUserHomeDir.file("workers").getAbsolutePath())
+        failureCauseContains('Setting the working directory of a worker is not supported')
     }
 
-    @Requires(TestPrecondition.JDK_ORACLE)
     def "interesting worker daemon fork options are honored"() {
-        Assume.assumeThat(Jvm.current().jre, notNullValue())
-        withRunnableClassInBuildSrc()
+        OptionsVerifier optionsVerifier = new OptionsVerifier(file('process.json'))
+        optionsVerifier.with {
+            minHeap("128m")
+            maxHeap("128m")
+            systemProperty("foo", "bar")
+            jvmArgs("-Dbar=baz")
+            defaultCharacterEncoding("UTF-8")
+            enableAssertions()
+            environmentVariable("foo", "bar")
+            if (isOracleJDK) {
+                bootstrapClasspath(normaliseFileSeparators(systemSpecificAbsolutePath('foo')))
+            }
+        }
+
+        fixture.withWorkActionClassInBuildSrc()
+        def workActionThatVerifiesOptions = getWorkActionThatVerifiesOptions(optionsVerifier).writeToBuildFile()
         outputFileDir.createDir()
 
         buildFile << """
             import org.gradle.internal.jvm.Jvm
 
-            $optionVerifyingRunnable
-
             task runInDaemon(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
-                runnableClass = OptionVerifyingRunnable.class
+                workActionClass = ${workActionThatVerifiesOptions.name}.class
                 additionalForkOptions = { options ->
                     options.with {
-                        minHeapSize = "128m"
-                        maxHeapSize = "128m"
-                        systemProperty("foo", "bar")
-                        jvmArgs("-Dbar=baz")
-                        bootstrapClasspath = fileTree(new File(Jvm.current().jre.homeDir, "lib")).include("*.jar")
-                        bootstrapClasspath(new File("${normaliseFileSeparators(systemSpecificAbsolutePath('foo'))}"))
-                        defaultCharacterEncoding = "UTF-8"
-                        enableAssertions = true
-                        workingDir = file('${outputFileDirPath}')
-                        environment "foo", "bar"
+                        ${optionsVerifier.toDsl()}
                     }
                 }
             }
@@ -128,23 +136,26 @@ class WorkerDaemonIntegrationTest extends AbstractWorkerExecutorIntegrationTest 
         succeeds("runInDaemon")
 
         then:
-        assertRunnableExecuted("runInDaemon")
+        optionsVerifier.verifyAllOptions()
+
+        and:
+        assertWorkerExecuted("runInDaemon")
     }
 
     def "worker daemons honor different executable specified in fork options"() {
         def differentJvm = AvailableJavaHomes.differentJdkWithValidJre
         Assume.assumeNotNull(differentJvm)
         def differentJavacExecutablePath = normaliseFileSeparators(differentJvm.getJavaExecutable().absolutePath)
+        def workAction = getWorkActionThatVerifiesExecutable(differentJvm)
 
-        withJava7CompatibleClasses()
-        withRunnableClassInBuildSrc()
+        fixture.withJava7CompatibleClasses()
+        fixture.withWorkActionClassInBuildSrc()
+        workAction.writeToBuildFile()
 
         buildFile << """
-            ${getExecutableVerifyingRunnable(differentJvm)}
-
             task runInDaemon(type: WorkerTask) {
                 isolationMode = IsolationMode.PROCESS
-                runnableClass = ExecutableVerifyingRunnable.class
+                workActionClass = ${workAction.name}.class
                 additionalForkOptions = { options ->
                     options.executable = new File('${differentJavacExecutablePath}')
                 }
@@ -155,92 +166,30 @@ class WorkerDaemonIntegrationTest extends AbstractWorkerExecutorIntegrationTest 
         succeeds("runInDaemon")
 
         then:
-        assertRunnableExecuted("runInDaemon")
+        assertWorkerExecuted("runInDaemon")
     }
 
-    def getRunnableThatPrintsWorkingDirectory() {
-        return """
-            class WorkingDirRunnable extends TestRunnable {
-                @Inject
-                public WorkingDirRunnable(List<String> files, File outputDir, Foo foo) {
-                    super(files, outputDir, foo);
-                    Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            printWorkingDirectory("Shutdown")
-                        }
-                    }));
-                }
-                
-                public void run() {
-                    super.run()
-                    printWorkingDirectory("Execution")
-                }
-                
-                void printWorkingDirectory(String phase) {
-                    println phase + " working dir: " + System.getProperty("user.dir")
-                }
-            }
+    WorkerExecutorFixture.WorkActionClass getWorkActionThatVerifiesExecutable(Jvm differentJvm) {
+        def workerClass = fixture.getWorkActionThatCreatesFiles("ExecutableVerifyingWorkAction")
+        workerClass.imports.add("java.net.URL")
+        workerClass.action += """
+            assert new File('${normaliseFileSeparators(differentJvm.jre.homeDir.absolutePath)}').canonicalPath.equals(new File(System.getProperty("java.home")).canonicalPath);
         """
+        return workerClass
     }
 
-    String getOptionVerifyingRunnable() {
-        return """
-            import java.io.File;
-            import java.util.regex.Pattern;
-            import java.util.List;
-            import org.gradle.other.Foo;
-            import java.lang.management.ManagementFactory;
-            import java.lang.management.RuntimeMXBean;
-            import javax.inject.Inject;
-
-            public class OptionVerifyingRunnable extends TestRunnable {
-                @Inject
-                public OptionVerifyingRunnable(List<String> files, File outputDir, Foo foo) {
-                    super(files, outputDir, foo);
-                }
-
-                public void run() {
-                    RuntimeMXBean runtimeMxBean = ManagementFactory.getRuntimeMXBean();
-                    List<String> arguments = runtimeMxBean.getInputArguments();
-                    assert arguments.contains("-Dfoo=bar");
-                    assert arguments.contains("-Dbar=baz");
-                    assert arguments.contains("-Xmx128m");
-                    assert arguments.contains("-Xms128m");
-                    assert arguments.contains("-Dfile.encoding=UTF-8");
-                    assert arguments.contains("-ea");
-
-                    assert runtimeMxBean.getBootClassPath().replaceAll(Pattern.quote(File.separator),'/').endsWith("/foo");
-
-                    assert new File(System.getProperty("user.dir")).equals(new File('${outputFileDirPath}'));
-
-                    assert System.getenv("foo").equals("bar")
-
-                    super.run();
-                }
-            }
-        """
-    }
-
-    String getExecutableVerifyingRunnable(Jvm differentJvm) {
-        return """
-            import java.io.File;
-            import java.util.List;
-            import org.gradle.other.Foo;
-            import java.net.URL;
-
-            public class ExecutableVerifyingRunnable extends TestRunnable {
-                @Inject
-                public ExecutableVerifyingRunnable(List<String> files, File outputDir, Foo foo) {
-                    super(files, outputDir, foo);
-                }
-
-                public void run() {
-                    assert new File('${normaliseFileSeparators(differentJvm.jre.homeDir.absolutePath)}').canonicalPath.equals(new File(System.getProperty("java.home")).canonicalPath);
-
-                    super.run();
-                }
-            }
-        """
+    WorkerExecutorFixture.WorkActionClass getWorkActionThatVerifiesOptions(OptionsVerifier optionsVerifier) {
+        def workActionThatVerifiesOptions = fixture.getWorkActionThatCreatesFiles("OptionVerifyingWorkAction")
+        workActionThatVerifiesOptions.with {
+            imports += [
+                    "java.util.regex.Pattern",
+                    "java.lang.management.ManagementFactory",
+                    "java.lang.management.RuntimeMXBean"
+            ]
+            action += """
+                ${optionsVerifier.dumpProcessEnvironment(isOracleJDK)}
+            """
+        }
+        return workActionThatVerifiesOptions
     }
 }

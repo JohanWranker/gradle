@@ -15,7 +15,6 @@
  */
 package org.gradle.testfixtures;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.Project;
 import org.gradle.testfixtures.internal.ProjectBuilderImpl;
 
@@ -52,6 +51,11 @@ public class ProjectBuilder {
     private ProjectBuilderImpl impl = new ProjectBuilderImpl();
 
     /**
+     * An instance should only be created via the {@link #builder()}.
+     */
+    private ProjectBuilder() { }
+
+    /**
      * Creates a project builder.
      *
      * @return The builder
@@ -74,9 +78,9 @@ public class ProjectBuilder {
     /**
      * Specifies the Gradle user home for the builder. If not set, an empty directory under the project directory
      * will be used.
+     *
      * @return The builder
      */
-    @Incubating
     public ProjectBuilder withGradleUserHomeDir(File dir) {
         gradleUserHomeDir = dir;
         return this;

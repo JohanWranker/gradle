@@ -16,13 +16,15 @@
 package org.gradle.api.internal.artifacts.ivyservice.modulecache;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.SetMultimap;
-import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.attributes.AttributeContainer;
+import org.gradle.api.capabilities.Capability;
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ModuleComponentSelectorSerializer;
 import org.gradle.api.internal.artifacts.ivyservice.NamespaceId;
@@ -37,30 +39,35 @@ import org.gradle.internal.component.external.descriptor.Artifact;
 import org.gradle.internal.component.external.descriptor.Configuration;
 import org.gradle.internal.component.external.descriptor.DefaultExclude;
 import org.gradle.internal.component.external.descriptor.MavenScope;
+import org.gradle.internal.component.external.model.CapabilityInternal;
 import org.gradle.internal.component.external.model.ComponentVariant;
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier;
-import org.gradle.internal.component.external.model.IvyDependencyDescriptor;
-import org.gradle.internal.component.external.model.IvyModuleResolveMetadata;
-import org.gradle.internal.component.external.model.MavenDependencyDescriptor;
-import org.gradle.internal.component.external.model.MavenModuleResolveMetadata;
+import org.gradle.internal.component.external.model.DefaultShadowedCapability;
+import org.gradle.internal.component.external.model.ExternalDependencyDescriptor;
+import org.gradle.internal.component.external.model.ImmutableCapability;
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata;
 import org.gradle.internal.component.external.model.MutableComponentVariant;
-import org.gradle.internal.component.external.model.MutableIvyModuleResolveMetadata;
-import org.gradle.internal.component.external.model.MutableMavenModuleResolveMetadata;
 import org.gradle.internal.component.external.model.MutableModuleComponentResolveMetadata;
+import org.gradle.internal.component.external.model.ShadowedCapability;
+import org.gradle.internal.component.external.model.ivy.IvyDependencyDescriptor;
+import org.gradle.internal.component.external.model.ivy.IvyModuleResolveMetadata;
+import org.gradle.internal.component.external.model.ivy.MutableIvyModuleResolveMetadata;
+import org.gradle.internal.component.external.model.maven.MavenDependencyDescriptor;
+import org.gradle.internal.component.external.model.maven.MavenDependencyType;
+import org.gradle.internal.component.external.model.maven.MavenModuleResolveMetadata;
+import org.gradle.internal.component.external.model.maven.MutableMavenModuleResolveMetadata;
 import org.gradle.internal.component.model.DefaultIvyArtifactName;
 import org.gradle.internal.component.model.Exclude;
 import org.gradle.internal.component.model.ExcludeMetadata;
 import org.gradle.internal.component.model.IvyArtifactName;
-import org.gradle.internal.hash.HashValue;
 import org.gradle.internal.serialize.Decoder;
 import org.gradle.internal.serialize.Encoder;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,49 +76,56 @@ public class ModuleMetadataSerializer {
     private static final byte TYPE_IVY = 1;
     private static final byte TYPE_MAVEN = 2;
 
-    private static final ModuleComponentSelectorSerializer COMPONENT_SELECTOR_SERIALIZER = new ModuleComponentSelectorSerializer();
+    private final ModuleComponentSelectorSerializer componentSelectorSerializer;
     private final MavenMutableModuleMetadataFactory mavenMetadataFactory;
     private final IvyMutableModuleMetadataFactory ivyMetadataFactory;
     private final AttributeContainerSerializer attributeContainerSerializer;
+    private final ModuleSourcesSerializer moduleSourcesSerializer;
 
-    public ModuleMetadataSerializer(AttributeContainerSerializer attributeContainerSerializer, MavenMutableModuleMetadataFactory mavenMetadataFactory, IvyMutableModuleMetadataFactory ivyMetadataFactory) {
+    public ModuleMetadataSerializer(AttributeContainerSerializer attributeContainerSerializer, MavenMutableModuleMetadataFactory mavenMetadataFactory, IvyMutableModuleMetadataFactory ivyMetadataFactory, ModuleSourcesSerializer moduleSourcesSerializer) {
         this.mavenMetadataFactory = mavenMetadataFactory;
         this.ivyMetadataFactory = ivyMetadataFactory;
         this.attributeContainerSerializer = attributeContainerSerializer;
+        this.componentSelectorSerializer = new ModuleComponentSelectorSerializer(attributeContainerSerializer);
+        this.moduleSourcesSerializer = moduleSourcesSerializer;
     }
 
-    public MutableModuleComponentResolveMetadata read(Decoder decoder, ImmutableModuleIdentifierFactory moduleIdentifierFactory) throws IOException {
-        return new Reader(decoder, moduleIdentifierFactory, attributeContainerSerializer, mavenMetadataFactory, ivyMetadataFactory).read();
+    public MutableModuleComponentResolveMetadata read(Decoder decoder, ImmutableModuleIdentifierFactory moduleIdentifierFactory, Map<Integer, MavenDependencyDescriptor> deduplicationDependencyCache) throws IOException {
+        return new Reader(decoder, moduleIdentifierFactory, attributeContainerSerializer, componentSelectorSerializer, mavenMetadataFactory, ivyMetadataFactory, moduleSourcesSerializer).read(deduplicationDependencyCache);
     }
 
-    public void write(Encoder encoder, ModuleComponentResolveMetadata metadata) throws IOException {
-        new Writer(encoder, attributeContainerSerializer).write(metadata);
+    public void write(Encoder encoder, ModuleComponentResolveMetadata metadata, Map<ExternalDependencyDescriptor, Integer> deduplicationDependencyCache) throws IOException {
+        new Writer(encoder, attributeContainerSerializer, componentSelectorSerializer, moduleSourcesSerializer).write(metadata, deduplicationDependencyCache);
     }
 
     private static class Writer {
         private final Encoder encoder;
         private final AttributeContainerSerializer attributeContainerSerializer;
+        private final ModuleComponentSelectorSerializer componentSelectorSerializer;
+        private final ModuleSourcesSerializer moduleSourcesSerializer;
 
-        private Writer(Encoder encoder, AttributeContainerSerializer attributeContainerSerializer) {
+        private Writer(Encoder encoder, AttributeContainerSerializer attributeContainerSerializer, ModuleComponentSelectorSerializer componentSelectorSerializer, ModuleSourcesSerializer moduleSourcesSerializer) {
             this.encoder = encoder;
             this.attributeContainerSerializer = attributeContainerSerializer;
+            this.componentSelectorSerializer = componentSelectorSerializer;
+            this.moduleSourcesSerializer = moduleSourcesSerializer;
         }
 
-        public void write(ModuleComponentResolveMetadata metadata) throws IOException {
+        public void write(ModuleComponentResolveMetadata metadata, Map<ExternalDependencyDescriptor, Integer> deduplicationDependencyCache) throws IOException {
             if (metadata instanceof IvyModuleResolveMetadata) {
                 write((IvyModuleResolveMetadata) metadata);
             } else if (metadata instanceof MavenModuleResolveMetadata) {
-                write((MavenModuleResolveMetadata) metadata);
+                write((MavenModuleResolveMetadata) metadata, deduplicationDependencyCache);
             } else {
                 throw new IllegalArgumentException("Unexpected metadata type: " + metadata.getClass());
             }
         }
 
-        private void write(MavenModuleResolveMetadata metadata) throws IOException {
+        private void write(MavenModuleResolveMetadata metadata, Map<ExternalDependencyDescriptor, Integer> deduplicationDependencyCache) throws IOException {
             encoder.writeByte(TYPE_MAVEN);
             writeInfoSection(metadata);
             writeNullableString(metadata.getSnapshotTimestamp());
-            writeMavenDependencies(metadata.getDependencies());
+            writeMavenDependencies(metadata.getDependencies(), deduplicationDependencyCache);
             writeSharedInfo(metadata);
             writeNullableString(metadata.getPackaging());
             writeBoolean(metadata.isRelocated());
@@ -126,13 +140,14 @@ public class ModuleMetadataSerializer {
                 writeVariantDependencies(variant.getDependencies());
                 writeVariantConstraints(variant.getDependencyConstraints());
                 writeVariantFiles(variant.getFiles());
+                writeVariantCapabilities(variant.getCapabilities().getCapabilities());
             }
         }
 
         private void writeVariantConstraints(ImmutableList<? extends ComponentVariant.DependencyConstraint> constraints) throws IOException {
             encoder.writeSmallInt(constraints.size());
             for (ComponentVariant.DependencyConstraint constraint : constraints) {
-                COMPONENT_SELECTOR_SERIALIZER.write(encoder, constraint.getGroup(), constraint.getModule(), constraint.getVersionConstraint());
+                componentSelectorSerializer.write(encoder, constraint.getGroup(), constraint.getModule(), constraint.getVersionConstraint(), constraint.getAttributes(), Collections.emptyList());
                 encoder.writeNullableString(constraint.getReason());
             }
         }
@@ -140,9 +155,11 @@ public class ModuleMetadataSerializer {
         private void writeVariantDependencies(List<? extends ComponentVariant.Dependency> dependencies) throws IOException {
             encoder.writeSmallInt(dependencies.size());
             for (ComponentVariant.Dependency dependency : dependencies) {
-                COMPONENT_SELECTOR_SERIALIZER.write(encoder, dependency.getGroup(), dependency.getModule(), dependency.getVersionConstraint());
+                componentSelectorSerializer.write(encoder, dependency.getGroup(), dependency.getModule(), dependency.getVersionConstraint(), dependency.getAttributes(), dependency.getRequestedCapabilities());
                 encoder.writeNullableString(dependency.getReason());
                 writeVariantDependencyExcludes(dependency.getExcludes());
+                encoder.writeBoolean(dependency.isEndorsingStrictVersions());
+                writeNullableArtifact(dependency.getDependencyArtifact());
             }
         }
 
@@ -166,6 +183,24 @@ public class ModuleMetadataSerializer {
             }
         }
 
+        private void writeVariantCapabilities(List<? extends Capability> capabilities) throws IOException {
+            encoder.writeSmallInt(capabilities.size());
+            for (Capability capability: capabilities) {
+                boolean shadowed = capability instanceof ShadowedCapability;
+                if (shadowed) {
+                    ShadowedCapability shadowedCapability = (ShadowedCapability) capability;
+                    encoder.writeNullableString(shadowedCapability.getAppendix());
+                    capability = shadowedCapability.getShadowedCapability();
+                } else {
+                    encoder.writeNullableString(null);
+                }
+                encoder.writeString(capability.getGroup());
+                encoder.writeString(capability.getName());
+                encoder.writeString(capability.getVersion());
+            }
+        }
+
+
         private void write(IvyModuleResolveMetadata metadata) throws IOException {
             encoder.writeByte(TYPE_IVY);
             writeInfoSection(metadata);
@@ -180,9 +215,11 @@ public class ModuleMetadataSerializer {
         }
 
         private void writeSharedInfo(ModuleComponentResolveMetadata metadata) throws IOException {
-            encoder.writeBinary(metadata.getContentHash().asByteArray());
             encoder.writeBoolean(metadata.isMissing());
+            encoder.writeBoolean(metadata.isChanging());
             encoder.writeString(metadata.getStatus());
+            writeStringList(metadata.getStatusScheme());
+            moduleSourcesSerializer.write(encoder, metadata.getSources());
         }
 
         private void writeId(ModuleComponentIdentifier componentIdentifier) throws IOException {
@@ -192,7 +229,7 @@ public class ModuleMetadataSerializer {
         }
 
         private void writeInfoSection(ModuleComponentResolveMetadata metadata) throws IOException {
-            writeId(metadata.getComponentId());
+            writeId(metadata.getId());
             writeAttributes(metadata.getAttributes());
         }
 
@@ -239,15 +276,15 @@ public class ModuleMetadataSerializer {
             }
         }
 
-        private void writeMavenDependencies(List<MavenDependencyDescriptor> dependencies) throws IOException {
+        private void writeMavenDependencies(List<MavenDependencyDescriptor> dependencies, Map<ExternalDependencyDescriptor, Integer> deduplicationDependencyCache) throws IOException {
             writeCount(dependencies.size());
             for (MavenDependencyDescriptor dd : dependencies) {
-                writeMavenDependency(dd);
+                writeMavenDependency(dd, deduplicationDependencyCache);
             }
         }
 
         private void writeIvyDependency(IvyDependencyDescriptor ivyDependency) throws IOException {
-            COMPONENT_SELECTOR_SERIALIZER.write(encoder, ivyDependency.getSelector());
+            componentSelectorSerializer.write(encoder, ivyDependency.getSelector());
             writeDependencyConfigurationMapping(ivyDependency);
             writeArtifacts(ivyDependency.getDependencyArtifacts());
             writeExcludeRules(ivyDependency.getAllExcludes());
@@ -278,12 +315,20 @@ public class ModuleMetadataSerializer {
             }
         }
 
-        private void writeMavenDependency(MavenDependencyDescriptor mavenDependency) throws IOException {
-            COMPONENT_SELECTOR_SERIALIZER.write(encoder, mavenDependency.getSelector());
-            writeNullableArtifact(mavenDependency.getDependencyArtifact());
-            writeMavenExcludeRules(mavenDependency.getAllExcludes());
-            encoder.writeSmallInt(mavenDependency.getScope().ordinal());
-            encoder.writeBoolean(mavenDependency.isOptional());
+        private void writeMavenDependency(MavenDependencyDescriptor mavenDependency, Map<ExternalDependencyDescriptor, Integer> deduplicationDependencyCache) throws IOException {
+            int nextMapping = deduplicationDependencyCache.size();
+            Integer mapping = deduplicationDependencyCache.putIfAbsent(mavenDependency, nextMapping);
+            if (mapping != null) {
+                // Save a reference to the dependency that was written before
+                encoder.writeSmallInt(mapping);
+            } else {
+                encoder.writeSmallInt(nextMapping);
+                componentSelectorSerializer.write(encoder, mavenDependency.getSelector());
+                writeNullableArtifact(mavenDependency.getDependencyArtifact());
+                writeMavenExcludeRules(mavenDependency.getAllExcludes());
+                encoder.writeSmallInt(mavenDependency.getScope().ordinal());
+                encoder.writeSmallInt(mavenDependency.getType().ordinal());
+            }
         }
 
         private void writeNullableArtifact(IvyArtifactName artifact) throws IOException {
@@ -349,51 +394,57 @@ public class ModuleMetadataSerializer {
         private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
         private final ExcludeRuleConverter excludeRuleConverter;
         private final AttributeContainerSerializer attributeContainerSerializer;
+        private final ModuleComponentSelectorSerializer componentSelectorSerializer;
         private final MavenMutableModuleMetadataFactory mavenMetadataFactory;
         private final IvyMutableModuleMetadataFactory ivyMetadataFactory;
+        private final ModuleSourcesSerializer moduleSourcesSerializer;
         private ModuleComponentIdentifier id;
-        private ModuleVersionIdentifier mvi;
         private ImmutableAttributes attributes;
 
         private Reader(Decoder decoder,
                        ImmutableModuleIdentifierFactory moduleIdentifierFactory,
                        AttributeContainerSerializer attributeContainerSerializer,
-                       MavenMutableModuleMetadataFactory mavenMutableModuleMetadataFactory,
-                       IvyMutableModuleMetadataFactory ivyMetadataFactory) {
+                       ModuleComponentSelectorSerializer componentSelectorSerializer, MavenMutableModuleMetadataFactory mavenMutableModuleMetadataFactory,
+                       IvyMutableModuleMetadataFactory ivyMetadataFactory,
+                       ModuleSourcesSerializer moduleSourcesSerializer) {
             this.decoder = decoder;
             this.moduleIdentifierFactory = moduleIdentifierFactory;
             this.excludeRuleConverter = new DefaultExcludeRuleConverter(moduleIdentifierFactory);
             this.attributeContainerSerializer = attributeContainerSerializer;
+            this.componentSelectorSerializer = componentSelectorSerializer;
             this.mavenMetadataFactory = mavenMutableModuleMetadataFactory;
             this.ivyMetadataFactory = ivyMetadataFactory;
+            this.moduleSourcesSerializer = moduleSourcesSerializer;
         }
 
-        public MutableModuleComponentResolveMetadata read() throws IOException {
+        public MutableModuleComponentResolveMetadata read(Map<Integer, MavenDependencyDescriptor> deduplicationDependencyCache) throws IOException {
             byte type = decoder.readByte();
             switch (type) {
                 case TYPE_IVY:
                     return readIvy();
                 case TYPE_MAVEN:
-                    return readMaven();
+                    return readMaven(deduplicationDependencyCache);
                 default:
                     throw new IllegalArgumentException("Unexpected metadata type found.");
             }
         }
 
         private void readSharedInfo(MutableModuleComponentResolveMetadata metadata) throws IOException {
-            metadata.setContentHash(new HashValue(decoder.readBinary()));
             metadata.setMissing(decoder.readBoolean());
+            metadata.setChanging(decoder.readBoolean());
             metadata.setStatus(decoder.readString());
+            metadata.setStatusScheme(readStringList());
+            metadata.setSources(moduleSourcesSerializer.read(decoder));
         }
 
-        private MutableModuleComponentResolveMetadata readMaven() throws IOException {
+        private MutableModuleComponentResolveMetadata readMaven(Map<Integer, MavenDependencyDescriptor> deduplicationDependencyCache) throws IOException {
             readInfoSection();
             String snapshotTimestamp = readNullableString();
             if (snapshotTimestamp != null) {
                 id = new MavenUniqueSnapshotComponentIdentifier(id, snapshotTimestamp);
             }
 
-            List<MavenDependencyDescriptor> dependencies = readMavenDependencies();
+            List<MavenDependencyDescriptor> dependencies = readMavenDependencies(deduplicationDependencyCache);
             MutableMavenModuleResolveMetadata metadata = mavenMetadataFactory.create(id, dependencies);
             readSharedInfo(metadata);
             metadata.setSnapshotTimestamp(snapshotTimestamp);
@@ -413,6 +464,7 @@ public class ModuleMetadataSerializer {
                 readVariantDependencies(variant);
                 readVariantConstraints(variant);
                 readVariantFiles(variant);
+                readVariantCapabilities(variant);
             }
         }
 
@@ -423,19 +475,21 @@ public class ModuleMetadataSerializer {
         private void readVariantDependencies(MutableComponentVariant variant) throws IOException {
             int count = decoder.readSmallInt();
             for (int i = 0; i < count; i++) {
-                ModuleComponentSelector selector = COMPONENT_SELECTOR_SERIALIZER.read(decoder);
+                ModuleComponentSelector selector = componentSelectorSerializer.read(decoder);
                 String reason = decoder.readNullableString();
                 ImmutableList<ExcludeMetadata> excludes = readVariantDependencyExcludes();
-                variant.addDependency(selector.getGroup(), selector.getModule(), selector.getVersionConstraint(), excludes, reason);
+                boolean endorsing = decoder.readBoolean();
+                IvyArtifactName dependencyArtifact = readNullableArtifact();
+                variant.addDependency(selector.getGroup(), selector.getModule(), selector.getVersionConstraint(), excludes, reason, (ImmutableAttributes) selector.getAttributes(), selector.getRequestedCapabilities(), endorsing, dependencyArtifact);
             }
         }
 
         private void readVariantConstraints(MutableComponentVariant variant) throws IOException {
             int count = decoder.readSmallInt();
             for (int i = 0; i < count; i++) {
-                ModuleComponentSelector selector = COMPONENT_SELECTOR_SERIALIZER.read(decoder);
+                ModuleComponentSelector selector = componentSelectorSerializer.read(decoder);
                 String reason = decoder.readNullableString();
-                variant.addDependencyConstraint(selector.getGroup(), selector.getModule(), selector.getVersionConstraint(), reason);
+                variant.addDependencyConstraint(selector.getGroup(), selector.getModule(), selector.getVersionConstraint(), reason, (ImmutableAttributes) selector.getAttributes());
             }
         }
 
@@ -454,6 +508,18 @@ public class ModuleMetadataSerializer {
             int count = decoder.readSmallInt();
             for (int i = 0; i < count; i++) {
                 variant.addFile(decoder.readString(), decoder.readString());
+            }
+        }
+
+        private void readVariantCapabilities(MutableComponentVariant variant) throws IOException {
+            int capabilitiesCount = decoder.readSmallInt();
+            for (int j = 0; j < capabilitiesCount; j++) {
+                String appendix = decoder.readNullableString();
+                CapabilityInternal capability = new ImmutableCapability(decoder.readString(), decoder.readString(), decoder.readString());
+                if (appendix != null) {
+                    capability = new DefaultShadowedCapability(capability, appendix);
+                }
+                variant.addCapability(capability);
             }
         }
 
@@ -476,12 +542,11 @@ public class ModuleMetadataSerializer {
 
         private void readInfoSection() throws IOException {
             id = readId();
-            mvi = moduleIdentifierFactory.moduleWithVersion(id.getGroup(), id.getModule(), id.getVersion());
             attributes = readAttributes();
         }
 
         private ModuleComponentIdentifier readId() throws IOException {
-            return DefaultModuleComponentIdentifier.newId(readString(), readString(), readString());
+            return DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId(readString(), readString()), readString());
         }
 
         private Map<NamespaceId, String> readExtraInfo() throws IOException {
@@ -533,7 +598,7 @@ public class ModuleMetadataSerializer {
         }
 
         private IvyDependencyDescriptor readIvyDependency() throws IOException {
-            ModuleComponentSelector requested = COMPONENT_SELECTOR_SERIALIZER.read(decoder);
+            ModuleComponentSelector requested = componentSelectorSerializer.read(decoder);
             SetMultimap<String, String> configMappings = readDependencyConfigurationMapping();
             List<Artifact> artifacts = readDependencyArtifactDescriptors();
             List<Exclude> excludes = readDependencyExcludes();
@@ -606,22 +671,31 @@ public class ModuleMetadataSerializer {
             return artifactName;
         }
 
-        private List<MavenDependencyDescriptor> readMavenDependencies() throws IOException {
+        private List<MavenDependencyDescriptor> readMavenDependencies(Map<Integer, MavenDependencyDescriptor> deduplicationDependencyCache) throws IOException {
             int len = readCount();
             List<MavenDependencyDescriptor> result = Lists.newArrayListWithCapacity(len);
             for (int i = 0; i < len; i++) {
-                result.add(readMavenDependency());
+                result.add(readMavenDependency(deduplicationDependencyCache));
             }
             return result;
         }
 
-        private MavenDependencyDescriptor readMavenDependency() throws IOException {
-            ModuleComponentSelector requested = COMPONENT_SELECTOR_SERIALIZER.read(decoder);
-            IvyArtifactName artifactName = readNullableArtifact();
-            List<ExcludeMetadata> mavenExcludes = readMavenDependencyExcludes();
-            MavenScope scope = MavenScope.values()[decoder.readSmallInt()];
-            boolean optional = decoder.readBoolean();
-            return new MavenDependencyDescriptor(scope, optional, requested, artifactName, mavenExcludes);
+        private MavenDependencyDescriptor readMavenDependency(Map<Integer, MavenDependencyDescriptor> deduplicationDependencyCache) throws IOException {
+            int mapping = decoder.readSmallInt();
+            if (mapping == deduplicationDependencyCache.size()) {
+                ModuleComponentSelector requested = componentSelectorSerializer.read(decoder);
+                IvyArtifactName artifactName = readNullableArtifact();
+                List<ExcludeMetadata> mavenExcludes = readMavenDependencyExcludes();
+                MavenScope scope = MavenScope.values()[decoder.readSmallInt()];
+                MavenDependencyType type = MavenDependencyType.values()[decoder.readSmallInt()];
+                MavenDependencyDescriptor mavenDependencyDescriptor = new MavenDependencyDescriptor(scope, type, requested, artifactName, mavenExcludes);
+                deduplicationDependencyCache.put(mapping, mavenDependencyDescriptor);
+                return mavenDependencyDescriptor;
+            } else {
+                MavenDependencyDescriptor mavenDependencyDescriptor = deduplicationDependencyCache.get(mapping);
+                assert mavenDependencyDescriptor != null;
+                return mavenDependencyDescriptor;
+            }
         }
 
         private List<ExcludeMetadata> readMavenDependencyExcludes() throws IOException {
@@ -663,20 +737,20 @@ public class ModuleMetadataSerializer {
 
         private List<String> readStringList() throws IOException {
             int size = readCount();
-            List<String> list = new ArrayList<String>(size);
+            ImmutableList.Builder<String> builder = ImmutableList.builderWithExpectedSize(size);
             for (int i = 0; i < size; i++) {
-                list.add(readString());
+                builder.add(readString());
             }
-            return list;
+            return builder.build();
         }
 
         private Set<String> readStringSet() throws IOException {
             int size = readCount();
-            Set<String> set = new LinkedHashSet<String>(size);
+            ImmutableSet.Builder<String> builder = ImmutableSet.builderWithExpectedSize(size);
             for (int i = 0; i < size; i++) {
-                set.add(readString());
+                builder.add(readString());
             }
-            return set;
+            return builder.build();
         }
     }
 

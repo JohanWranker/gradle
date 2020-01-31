@@ -16,6 +16,9 @@
 
 package org.gradle.api.internal.artifacts.configurations;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.gradle.api.Action;
 import org.gradle.api.InvalidUserCodeException;
 import org.gradle.api.NamedDomainObjectContainer;
@@ -26,40 +29,58 @@ import org.gradle.api.artifacts.ConfigurationVariant;
 import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.artifacts.PublishArtifactSet;
 import org.gradle.api.attributes.AttributeContainer;
-import org.gradle.api.internal.FactoryNamedDomainObjectContainer;
+import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.artifacts.ConfigurationVariantInternal;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
+import org.gradle.api.internal.collections.DomainObjectCollectionFactory;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.internal.DisplayName;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.typeconversion.NotationParser;
 
-import java.util.LinkedHashSet;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 public class DefaultConfigurationPublications implements ConfigurationPublications {
     private final DisplayName displayName;
     private final PublishArtifactSet artifacts;
-    private final PublishArtifactSet allArtifacts;
+    private final PublishArtifactSetProvider allArtifacts;
     private final AttributeContainerInternal parentAttributes;
     private final AttributeContainerInternal attributes;
     private final Instantiator instantiator;
     private final NotationParser<Object, ConfigurablePublishArtifact> artifactNotationParser;
+    private final NotationParser<Object, Capability> capabilityNotationParser;
     private final FileCollectionFactory fileCollectionFactory;
     private final ImmutableAttributesFactory attributesFactory;
-    private FactoryNamedDomainObjectContainer<ConfigurationVariant> variants;
+    private final DomainObjectCollectionFactory domainObjectCollectionFactory;
+    private NamedDomainObjectContainer<ConfigurationVariant> variants;
     private ConfigurationVariantFactory variantFactory;
+    private List<Capability> capabilities;
+    private boolean canCreate = true;
 
-    public DefaultConfigurationPublications(DisplayName displayName, PublishArtifactSet artifacts, PublishArtifactSet allArtifacts, AttributeContainerInternal parentAttributes, Instantiator instantiator, NotationParser<Object, ConfigurablePublishArtifact> artifactNotationParser, FileCollectionFactory fileCollectionFactory, ImmutableAttributesFactory attributesFactory) {
+    public DefaultConfigurationPublications(DisplayName displayName,
+                                            PublishArtifactSet artifacts,
+                                            PublishArtifactSetProvider allArtifacts,
+                                            AttributeContainerInternal parentAttributes,
+                                            Instantiator instantiator,
+                                            NotationParser<Object, ConfigurablePublishArtifact> artifactNotationParser,
+                                            NotationParser<Object, Capability> capabilityNotationParser,
+                                            FileCollectionFactory fileCollectionFactory,
+                                            ImmutableAttributesFactory attributesFactory,
+                                            DomainObjectCollectionFactory domainObjectCollectionFactory) {
         this.displayName = displayName;
         this.artifacts = artifacts;
         this.allArtifacts = allArtifacts;
         this.parentAttributes = parentAttributes;
         this.instantiator = instantiator;
         this.artifactNotationParser = artifactNotationParser;
+        this.capabilityNotationParser = capabilityNotationParser;
         this.fileCollectionFactory = fileCollectionFactory;
         this.attributesFactory = attributesFactory;
+        this.domainObjectCollectionFactory = domainObjectCollectionFactory;
         this.attributes = attributesFactory.mutable(parentAttributes);
     }
 
@@ -82,14 +103,18 @@ public class DefaultConfigurationPublications implements ConfigurationPublicatio
 
             @Override
             public Set<? extends OutgoingVariant> getChildren() {
-                Set<OutgoingVariant> result = new LinkedHashSet<OutgoingVariant>();
-                if (allArtifacts.size() > 0 || variants == null) {
-                    result.add(new LeafOutgoingVariant(displayName, attributes, allArtifacts));
+                PublishArtifactSet allArtifactSet = allArtifacts.getPublishArtifactSet();
+                LeafOutgoingVariant leafOutgoingVariant = new LeafOutgoingVariant(displayName, attributes, allArtifactSet);
+                if (variants == null || variants.isEmpty()) {
+                    return Collections.singleton(leafOutgoingVariant);
                 }
-                if (variants != null) {
-                    for (DefaultVariant variant : variants.withType(DefaultVariant.class)) {
-                        result.add(variant.convertToOutgoingVariant());
-                    }
+                boolean hasArtifacts = !allArtifactSet.isEmpty();
+                Set<OutgoingVariant> result = Sets.newLinkedHashSetWithExpectedSize(hasArtifacts ? 1 + variants.size() : variants.size());
+                if (hasArtifacts) {
+                    result.add(leafOutgoingVariant);
+                }
+                for (DefaultVariant variant : variants.withType(DefaultVariant.class)) {
+                    result.add(variant.convertToOutgoingVariant());
                 }
                 return result;
             }
@@ -129,7 +154,7 @@ public class DefaultConfigurationPublications implements ConfigurationPublicatio
         if (variants == null) {
             // Create variants container only as required
             variantFactory = new ConfigurationVariantFactory();
-            variants = new FactoryNamedDomainObjectContainer<ConfigurationVariant>(ConfigurationVariant.class, instantiator, variantFactory);
+            variants = domainObjectCollectionFactory.newNamedDomainObjectContainer(ConfigurationVariant.class, variantFactory);
         }
         return variants;
     }
@@ -139,23 +164,40 @@ public class DefaultConfigurationPublications implements ConfigurationPublicatio
         configureAction.execute(getVariants());
     }
 
+    @Override
+    public void capability(Object notation) {
+        if (canCreate) {
+            Capability descriptor = capabilityNotationParser.parseNotation(notation);
+            if (capabilities == null) {
+                capabilities = Lists.newArrayListWithExpectedSize(1); // it's rare that a component would declare more than 1 capability
+            }
+            capabilities.add(descriptor);
+        } else {
+            throw new InvalidUserCodeException("Cannot declare capability '" + notation + "' after dependency " + displayName + " has been resolved");
+        }
+    }
+
+    @Override
+    public Collection<? extends Capability> getCapabilities() {
+        return capabilities == null ? Collections.<Capability>emptyList() : ImmutableList.copyOf(capabilities);
+    }
+
     void preventFromFurtherMutation() {
+        canCreate = false;
         if (variants != null) {
             for (ConfigurationVariant variant : variants) {
                 ((ConfigurationVariantInternal)variant).preventFurtherMutation();
             }
-            variantFactory.canCreate = false;
         }
     }
 
     private class ConfigurationVariantFactory implements NamedDomainObjectFactory<ConfigurationVariant> {
-        private boolean canCreate = true;
         @Override
         public ConfigurationVariant create(String name) {
             if (canCreate) {
-                return instantiator.newInstance(DefaultVariant.class, displayName, name, parentAttributes, artifactNotationParser, fileCollectionFactory, attributesFactory);
+                return instantiator.newInstance(DefaultVariant.class, displayName, name, parentAttributes, artifactNotationParser, fileCollectionFactory, attributesFactory, domainObjectCollectionFactory);
             } else {
-                throw new InvalidUserCodeException("Cannot create variant '" + name + "' after " + displayName + " has been resolved");
+                throw new InvalidUserCodeException("Cannot create variant '" + name + "' after dependency " + displayName + " has been resolved");
             }
         }
     }

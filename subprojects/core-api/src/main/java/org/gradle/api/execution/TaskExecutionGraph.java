@@ -17,7 +17,6 @@ package org.gradle.api.execution;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.Task;
 
 import java.util.List;
@@ -31,7 +30,7 @@ import java.util.Set;
  * <p>You can access the {@code TaskExecutionGraph} by calling {@link org.gradle.api.invocation.Gradle#getTaskGraph()}.
  * In your build file you can use {@code gradle.taskGraph} to access it.</p>
  *
- * <p>The <code>TaskExecutionGraph</code> is populated only after all the projects in the build have been evaulated. It
+ * <p>The <code>TaskExecutionGraph</code> is populated only after all the projects in the build have been evaluated. It
  * is empty before then. You can receive a notification when the graph is populated, using {@link
  * #whenReady(groovy.lang.Closure)} or {@link #addTaskExecutionGraphListener(TaskExecutionGraphListener)}.</p>
  */
@@ -154,6 +153,5 @@ public interface TaskExecutionGraph {
      *
      * @since 4.6
      */
-    @Incubating
     Set<Task> getDependencies(Task task);
 }

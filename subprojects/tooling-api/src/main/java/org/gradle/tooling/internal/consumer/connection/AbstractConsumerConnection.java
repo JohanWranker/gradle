@@ -18,11 +18,14 @@ package org.gradle.tooling.internal.consumer.connection;
 
 import org.gradle.tooling.BuildAction;
 import org.gradle.tooling.internal.consumer.ConnectionParameters;
+import org.gradle.tooling.internal.consumer.PhasedBuildAction;
 import org.gradle.tooling.internal.consumer.TestExecutionRequest;
 import org.gradle.tooling.internal.consumer.parameters.ConsumerOperationParameters;
 import org.gradle.tooling.internal.consumer.versioning.VersionDetails;
 import org.gradle.tooling.internal.protocol.ConnectionVersion4;
 import org.gradle.tooling.model.internal.Exceptions;
+
+import java.util.List;
 
 public abstract class AbstractConsumerConnection extends HasCompatibilityMapping implements ConsumerConnection {
     private final ConnectionVersion4 delegate;
@@ -33,9 +36,11 @@ public abstract class AbstractConsumerConnection extends HasCompatibilityMapping
         this.providerMetaData = providerMetaData;
     }
 
+    @Override
     public void stop() {
     }
 
+    @Override
     public String getDisplayName() {
         return delegate.getMetaData().getDisplayName();
     }
@@ -54,16 +59,28 @@ public abstract class AbstractConsumerConnection extends HasCompatibilityMapping
 
     protected abstract ActionRunner getActionRunner();
 
+    @Override
     public <T> T run(Class<T> type, ConsumerOperationParameters operationParameters) {
         return getModelProducer().produceModel(type, operationParameters);
     }
 
+    @Override
     public <T> T run(BuildAction<T> action, ConsumerOperationParameters operationParameters) {
         return getActionRunner().run(action, operationParameters);
     }
 
-    public void runTests(final TestExecutionRequest testExecutionRequest, ConsumerOperationParameters operationParameters){
+    @Override
+    public void run(PhasedBuildAction phasedBuildAction, ConsumerOperationParameters operationParameters) {
+        throw Exceptions.unsupportedFeature(operationParameters.getEntryPointName(), getVersionDetails().getVersion(), "4.8");
+    }
+
+    @Override
+    public void runTests(final TestExecutionRequest testExecutionRequest, ConsumerOperationParameters operationParameters) {
         throw Exceptions.unsupportedFeature(operationParameters.getEntryPointName(), getVersionDetails().getVersion(), "2.6");
     }
 
+    @Override
+    public void notifyDaemonsAboutChangedPaths(List<String> changedPaths, ConsumerOperationParameters operationParameters) {
+        // Default is no-op
+    }
 }

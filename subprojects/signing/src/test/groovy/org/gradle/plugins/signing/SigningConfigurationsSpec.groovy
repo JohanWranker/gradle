@@ -37,17 +37,17 @@ class SigningConfigurationsSpec extends SigningProjectSpec {
         signing {
             sign configurations.archives, configurations.meta
         }
-        
+
         then:
         def signingTasks = [signArchives, signMeta]
 
-        // TODO - find way to test that the appopriate dependencies have been setup
+        // TODO - find way to test that the appropriate dependencies have been setup
         //        it would be easy if we could do…
-        // 
+        //
         // configurations.archives.buildArtifacts in signArchives.dependsOn
-        // 
+        //
         //        but we can't because of https://issues.gradle.org/browse/GRADLE-1608
-        
+
         and:
         configurations.signatures.artifacts.size() == 3
         signingTasks.every { it.signatures.every { it in configurations.signatures.artifacts } }
@@ -74,5 +74,15 @@ class SigningConfigurationsSpec extends SigningProjectSpec {
 
         then:
         signingTasks[0].getSignatureType() instanceof ArmoredSignatureType
+    }
+
+    def "sign task has description"() {
+        when:
+        signing {
+            sign configurations.produced
+        }
+
+        then:
+        signProduced.description == "Signs all artifacts in the 'produced' configuration."
     }
 }

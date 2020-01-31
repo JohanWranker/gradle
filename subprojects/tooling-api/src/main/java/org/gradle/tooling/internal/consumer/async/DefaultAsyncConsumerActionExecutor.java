@@ -17,8 +17,8 @@ package org.gradle.tooling.internal.consumer.async;
 
 import org.gradle.internal.concurrent.CompositeStoppable;
 import org.gradle.internal.concurrent.ExecutorFactory;
-import org.gradle.internal.concurrent.ServiceLifecycle;
 import org.gradle.internal.concurrent.ManagedExecutor;
+import org.gradle.internal.concurrent.ServiceLifecycle;
 import org.gradle.tooling.internal.consumer.connection.ConsumerAction;
 import org.gradle.tooling.internal.consumer.connection.ConsumerActionExecutor;
 import org.gradle.tooling.internal.protocol.ResultHandlerVersion1;
@@ -37,30 +37,27 @@ public class DefaultAsyncConsumerActionExecutor implements AsyncConsumerActionEx
         lifecycle = new ServiceLifecycle(actionExecutor.getDisplayName());
     }
 
+    @Override
     public String getDisplayName() {
         return actionExecutor.getDisplayName();
     }
 
+    @Override
     public void stop() {
         CompositeStoppable.stoppable(lifecycle, executor, actionExecutor).stop();
     }
 
+    @Override
     public <T> void run(final ConsumerAction<? extends T> action, final ResultHandlerVersion1<? super T> handler) {
-        lifecycle.use(new Runnable() {
-            public void run() {
-                executor.execute(new Runnable() {
-                    public void run() {
-                        T result;
-                        try {
-                            result = actionExecutor.run(action);
-                        } catch (Throwable t) {
-                            handler.onFailure(t);
-                            return;
-                        }
-                        handler.onComplete(result);
-                    }
-                });
+        lifecycle.use(() -> executor.execute(() -> {
+            T result;
+            try {
+                result = actionExecutor.run(action);
+            } catch (Throwable t) {
+                handler.onFailure(t);
+                return;
             }
-        });
+            handler.onComplete(result);
+        }));
     }
 }

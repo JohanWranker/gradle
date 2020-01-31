@@ -19,6 +19,7 @@ import org.gradle.internal.component.external.model.ModuleComponentResolveMetada
 import org.gradle.internal.resolve.ModuleVersionResolveException;
 
 public class DefaultBuildableModuleComponentMetaDataResolveResult extends DefaultResourceAwareResolveResult implements BuildableModuleComponentMetaDataResolveResult {
+
     private State state = State.Unknown;
     private ModuleVersionResolveException failure;
     private ModuleComponentResolveMetadata metaData;
@@ -93,6 +94,16 @@ public class DefaultBuildableModuleComponentMetaDataResolveResult extends Defaul
     public void setAuthoritative(boolean authoritative) {
         assertHasResult();
         this.authoritative = authoritative;
+    }
+
+    @Override
+    public void redirectToGradleMetadata() {
+        reset(State.Redirect);
+    }
+
+    @Override
+    public boolean shouldUseGradleMetatada() {
+        return state == State.Redirect;
     }
 
     private void assertHasResult() {

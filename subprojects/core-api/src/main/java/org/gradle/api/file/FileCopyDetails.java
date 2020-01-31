@@ -15,7 +15,6 @@
  */
 package org.gradle.api.file;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.NonExtensible;
 import org.gradle.internal.HasInternalProtocol;
 
@@ -69,7 +68,6 @@ public interface FileCopyDetails extends FileTreeElement, ContentFilterable {
     /**
      * The strategy to use if there is already a file at this file's destination.
      */
-    @Incubating
     void setDuplicatesStrategy(DuplicatesStrategy strategy);
 
     /**
@@ -80,7 +78,6 @@ public interface FileCopyDetails extends FileTreeElement, ContentFilterable {
      * @see DuplicatesStrategy
      * @return the strategy to use for this file.
      */
-    @Incubating
     DuplicatesStrategy getDuplicatesStrategy();
 
     /**
@@ -88,6 +85,7 @@ public interface FileCopyDetails extends FileTreeElement, ContentFilterable {
      *
      * @return The destination name. Never returns null.
      */
+    @Override
     String getName();
 
     /**
@@ -98,6 +96,7 @@ public interface FileCopyDetails extends FileTreeElement, ContentFilterable {
      *
      * @return The path, relative to the root of the copy destination. Never returns null.
      */
+    @Override
     String getPath();
 
     /**
@@ -105,6 +104,7 @@ public interface FileCopyDetails extends FileTreeElement, ContentFilterable {
      *
      * @return The path, relative to the root of the copy destination. Never returns null.
      */
+    @Override
     RelativePath getRelativePath();
 
     /**

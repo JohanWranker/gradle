@@ -16,21 +16,49 @@
 
 package org.gradle.performance.regression.android
 
+import org.gradle.integtests.fixtures.versions.AndroidGradlePluginVersions
+import org.gradle.internal.scan.config.fixtures.GradleEnterprisePluginSettingsFixture
+import org.gradle.performance.AbstractCrossVersionGradleProfilerPerformanceTest
+import org.gradle.performance.categories.SlowPerformanceRegressionTest
+import org.gradle.profiler.BuildMutator
+import org.gradle.profiler.ScenarioContext
+import org.gradle.profiler.mutations.AbstractCleanupMutator
+import org.gradle.profiler.mutations.ClearArtifactTransformCacheMutator
+import org.junit.experimental.categories.Category
 import spock.lang.Unroll
 
-class RealLifeAndroidBuildPerformanceTest extends AbstractAndroidPerformanceTest {
+import static org.gradle.performance.regression.android.AndroidTestProject.K9_ANDROID
+import static org.gradle.performance.regression.android.AndroidTestProject.LARGE_ANDROID_BUILD
+import static org.gradle.performance.regression.android.IncrementalAndroidTestProject.SANTA_TRACKER_KOTLIN
+
+class RealLifeAndroidBuildPerformanceTest extends AbstractCrossVersionGradleProfilerPerformanceTest {
+
+    private static final String SANTA_AGP_TARGET_VERSION = "3.6"
+
+    def setup() {
+        runner.args = [AndroidGradlePluginVersions.OVERRIDE_VERSION_CHECK]
+        runner.targetVersions = ["6.2-20200108160029+0000"]
+        // AGP 3.6 requires 5.6.1+
+        // The enterprise plugin requires Gradle 6.0
+        runner.minimumBaseVersion = "6.0"
+    }
 
     @Unroll
     def "#tasks on #testProject"() {
         given:
-        runner.testProject = testProject
+        testProject.configure(runner)
         runner.tasksToRun = tasks.split(' ')
-        runner.gradleOpts = ["-Xms$memory", "-Xmx$memory"]
-        runner.args = parallel ? ['-Dorg.gradle.parallel=true'] : []
+        if (parallel) {
+            runner.args.add('-Dorg.gradle.parallel=true')
+        }
         runner.warmUpRuns = warmUpRuns
         runner.runs = runs
-        runner.minimumVersion = "4.3.1"
-        runner.targetVersions = ["4.6-20180125002142+0000"]
+        applyEnterprisePlugin()
+
+        and:
+        if (testProject == SANTA_TRACKER_KOTLIN) {
+            (testProject as IncrementalAndroidTestProject).configureForLatestAgpVersionOfMinor(runner, SANTA_AGP_TARGET_VERSION)
+        }
 
         when:
         def result = runner.run()
@@ -39,12 +67,93 @@ class RealLifeAndroidBuildPerformanceTest extends AbstractAndroidPerformanceTest
         result.assertCurrentVersionHasNotRegressed()
 
         where:
-        testProject         | memory | parallel | warmUpRuns | runs | tasks
-        'k9AndroidBuild'    | '1g'   | false    | null       | null | 'help'
-        'k9AndroidBuild'    | '1g'   | false    | null       | null | 'assembleDebug'
-//        'k9AndroidBuild'    | '1g'   | false    | null       | null | 'clean k9mail:assembleDebug'
-        'largeAndroidBuild' | '4g'   | true     | null       | null | 'help'
-        'largeAndroidBuild' | '4g'   | true     | null       | null | 'assembleDebug'
-        'largeAndroidBuild' | '4g'   | true     | 2          | 8    | 'clean phthalic:assembleDebug'
+        testProject          | parallel | warmUpRuns | runs | tasks
+        K9_ANDROID           | false    | null       | null | 'help'
+        K9_ANDROID           | false    | null       | null | 'assembleDebug'
+//        K9_ANDROID    | false    | null       | null | 'clean k9mail:assembleDebug'
+        LARGE_ANDROID_BUILD  | true     | null       | null | 'help'
+        LARGE_ANDROID_BUILD  | true     | null       | null | 'assembleDebug'
+        LARGE_ANDROID_BUILD  | true     | 2          | 8    | 'clean phthalic:assembleDebug'
+        SANTA_TRACKER_KOTLIN | true     | null       | null | 'assembleDebug'
+    }
+
+    @Category(SlowPerformanceRegressionTest)
+    @Unroll
+    def "clean #tasks on #testProject with clean transforms cache"() {
+        given:
+        testProject.configure(runner)
+        runner.tasksToRun = tasks.split(' ')
+        runner.args.add('-Dorg.gradle.parallel=true')
+        runner.warmUpRuns = warmUpRuns
+        runner.cleanTasks = ["clean"]
+        runner.runs = runs
+        runner.addBuildMutator { invocationSettings ->
+            new ClearArtifactTransformCacheMutator(invocationSettings.getGradleUserHome(), AbstractCleanupMutator.CleanupSchedule.BUILD)
+        }
+        applyEnterprisePlugin()
+
+        and:
+        if (testProject == SANTA_TRACKER_KOTLIN) {
+            (testProject as IncrementalAndroidTestProject).configureForLatestAgpVersionOfMinor(runner, SANTA_AGP_TARGET_VERSION)
+        }
+
+        when:
+        def result = runner.run()
+
+        then:
+        result.assertCurrentVersionHasNotRegressed()
+
+        where:
+        testProject          | warmUpRuns | runs | tasks
+        LARGE_ANDROID_BUILD  | 2          | 8    | 'phthalic:assembleDebug'
+        LARGE_ANDROID_BUILD  | 2          | 8    | 'assembleDebug'
+        SANTA_TRACKER_KOTLIN | null       | null | 'assembleDebug'
+    }
+
+    @Unroll
+    def "abi change on #testProject"() {
+        given:
+        testProject.configureForAbiChange(runner)
+        testProject.configureForLatestAgpVersionOfMinor(runner, SANTA_AGP_TARGET_VERSION)
+        runner.args.add('-Dorg.gradle.parallel=true')
+        applyEnterprisePlugin()
+
+        when:
+        def result = runner.run()
+
+        then:
+        result.assertCurrentVersionHasNotRegressed()
+
+        where:
+        testProject << [SANTA_TRACKER_KOTLIN]
+    }
+
+    @Unroll
+    def "non-abi change on #testProject"() {
+        given:
+        testProject.configureForNonAbiChange(runner)
+        testProject.configureForLatestAgpVersionOfMinor(runner, SANTA_AGP_TARGET_VERSION)
+        runner.args.add('-Dorg.gradle.parallel=true')
+        applyEnterprisePlugin()
+
+        when:
+        def result = runner.run()
+
+        then:
+        result.assertCurrentVersionHasNotRegressed()
+
+        where:
+        testProject << [SANTA_TRACKER_KOTLIN]
+    }
+
+    void applyEnterprisePlugin() {
+        runner.addBuildMutator { invocationSettings ->
+            new BuildMutator() {
+                @Override
+                void beforeScenario(ScenarioContext context) {
+                    GradleEnterprisePluginSettingsFixture.applyEnterprisePlugin(new File(invocationSettings.projectDir, "settings.gradle"))
+                }
+            }
+        }
     }
 }

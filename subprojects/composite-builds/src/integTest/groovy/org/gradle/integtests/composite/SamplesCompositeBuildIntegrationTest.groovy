@@ -18,110 +18,179 @@
 package org.gradle.integtests.composite
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.integtests.fixtures.UsesSample
+import org.gradle.util.Requires
 import org.junit.Rule
+import spock.lang.Unroll
 
+import static org.gradle.util.TestPrecondition.KOTLIN_SCRIPT
+
+@Requires(KOTLIN_SCRIPT)
 class SamplesCompositeBuildIntegrationTest extends AbstractIntegrationSpec {
 
-    @Rule public final Sample sample = new Sample(temporaryFolder)
+    @Rule
+    public final Sample sample = new Sample(temporaryFolder)
 
+    def setup() {
+        requireGradleDistribution()
+    }
+
+    @Unroll
     @UsesSample('compositeBuilds/basic')
-    def "can run app with command-line composite"() {
+    @ToBeFixedForInstantExecution
+    def "can run app with command-line composite with #dsl dsl"() {
+        given:
+        executer.withRepositoryMirrors()
+
         when:
-        executer.inDirectory(sample.dir.file("my-app")).withArguments("--include-build", "../my-utils")
+        executer.inDirectory(sample.dir.file("$dsl/my-app")).withArguments("--include-build", "../my-utils")
         succeeds(':run')
 
         then:
         executed ":my-utils:number-utils:jar", ":my-utils:string-utils:jar", ":run"
         outputContains("The answer is 42")
+
+        where:
+        dsl << ['groovy', 'kotlin']
     }
 
+    @Unroll
     @UsesSample('compositeBuilds/basic')
-    def "can run app when modified to be a composite"() {
+    @ToBeFixedForInstantExecution
+    def "can run app when modified to be a composite with #dsl dsl"() {
+        given:
+        executer.withRepositoryMirrors()
+
         when:
-        executer.inDirectory(sample.dir.file("my-app")).withArguments("--settings-file", "settings-composite.gradle")
+        executer.inDirectory(sample.dir.file("$dsl/my-app"))
+            .withArguments("--settings-file", "settings-composite.$extension")
         succeeds(':run')
 
         then:
         executed ":my-utils:number-utils:jar", ":my-utils:string-utils:jar", ":run"
         outputContains("The answer is 42")
+
+        where:
+        dsl      | extension
+        'groovy' | 'gradle'
+        'kotlin' | 'gradle.kts'
     }
 
+    @Unroll
     @UsesSample('compositeBuilds/basic')
-    def "can run app when included in a composite"() {
+    @ToBeFixedForInstantExecution
+    def "can run app when included in a composite with #dsl dsl"() {
+        given:
+        executer.withRepositoryMirrors()
+
         when:
-        executer.inDirectory(sample.dir.file("composite"))
+        executer.inDirectory(sample.dir.file("$dsl/composite"))
         succeeds(':run')
 
         then:
         executed ":my-utils:number-utils:jar", ":my-utils:string-utils:jar", ":my-app:run", ":run"
         outputContains("The answer is 42")
+
+        where:
+        dsl << ['groovy', 'kotlin']
     }
 
+    @Unroll
     @UsesSample('compositeBuilds/hierarchical-multirepo')
-    def "can run app in hierarchical composite"() {
+    @ToBeFixedForInstantExecution
+    def "can run app in hierarchical composite with #dsl dsl"() {
+        given:
+        executer.withRepositoryMirrors()
+
         when:
-        executer.inDirectory(sample.dir.file("multirepo-app"))
+        executer.inDirectory(sample.dir.file("$dsl"))
         succeeds(':run')
 
         then:
         executed ":number-utils:jar", ":string-utils:jar", ":run"
         outputContains("The answer is 42")
+
+        where:
+        dsl << ['groovy', 'kotlin']
     }
 
+    @Unroll
     @UsesSample('compositeBuilds/hierarchical-multirepo')
-    def "can publish locally and remove submodule from hierarchical composite"() {
+    @ToBeFixedForInstantExecution
+    def "can publish locally and remove submodule from hierarchical composite with #dsl dsl"() {
+        given:
+        def multiRepoAppDir = sample.dir.file("$dsl")
+        executer.withRepositoryMirrors()
+
         when:
-        executer.inDirectory(sample.dir.file("multirepo-app"))
+        executer.inDirectory(multiRepoAppDir)
         succeeds(':publishDeps')
 
         then:
-        executed ":number-utils:uploadArchives", ":string-utils:uploadArchives"
-        sample.dir.file('local-repo/org.sample/number-utils/1.0').assertContainsDescendants("ivy-1.0.xml", "number-utils-1.0.jar")
-        sample.dir.file('local-repo/org.sample/string-utils/1.0').assertContainsDescendants("ivy-1.0.xml", "string-utils-1.0.jar")
-
-        when:
-        sample.dir.file("multirepo-app/modules/string-utils").deleteDir()
+        executed ":number-utils:publishIvyPublicationToIvyRepository", ":string-utils:publishIvyPublicationToIvyRepository"
 
         and:
-        executer.inDirectory(sample.dir.file("multirepo-app"))
+        multiRepoAppDir.file('../local-repo/org.sample/number-utils/1.0')
+            .assertContainsDescendants("ivy-1.0.xml", "number-utils-1.0.jar")
+        multiRepoAppDir.file('../local-repo/org.sample/string-utils/1.0')
+            .assertContainsDescendants("ivy-1.0.xml", "string-utils-1.0.jar")
+
+        when:
+        multiRepoAppDir.file("modules/string-utils").deleteDir()
+
+        and:
+        executer.inDirectory(multiRepoAppDir)
         succeeds(":run")
 
         then:
         executed ":number-utils:jar", ":run"
         notExecuted ":string-utils:jar"
         outputContains("The answer is 42")
+
+        where:
+        dsl << ['groovy', 'kotlin']
     }
 
+    @Unroll
     @UsesSample('compositeBuilds/plugin-dev')
-    def "can develop plugin with composite"() {
+    @ToBeFixedForInstantExecution
+    def "can develop plugin with composite with dsl #dsl"() {
         when:
-        executer.inDirectory(sample.dir.file("consumer")).withArguments("--include-build", "../greeting-plugin")
-        succeeds(':greetBob')
+        executer.inDirectory(sample.dir.file("$dsl/consumer")).withArguments("--include-build", "../greeting-plugin")
+        succeeds('greeting')
 
         then:
-        executed ":greeting-plugin:jar", ":greetBob"
+        executed ":greeting-plugin:jar", ":greeting"
         outputContains("Hi Bob!!!")
 
         when:
-        def greetingTaskSource = sample.dir.file("greeting-plugin/src/main/java/org/sample/GreetingTask.java")
-        greetingTaskSource.text = greetingTaskSource.text.replace("Hi", "G'day")
+        def greetingTaskSource = sample.dir.file("$dsl/greeting-plugin/src/main/java/org/sample/GreetingTask.java")
+        greetingTaskSource.replace("Hi", "G'day")
 
         and:
-        executer.inDirectory(sample.dir.file("consumer")).withArguments("--include-build", "../greeting-plugin")
-        succeeds(':greetBob')
+        executer.inDirectory(sample.dir.file("$dsl/consumer")).withArguments("--include-build", "../greeting-plugin")
+        succeeds('greeting')
 
         then:
-        executed ":greeting-plugin:jar", ":greetBob"
+        executed ":greeting-plugin:jar", ":greeting"
         outputContains("G'day Bob!!!")
+
+        where:
+        dsl << ['groovy', 'kotlin']
     }
 
+    @Unroll
     @UsesSample('compositeBuilds/declared-substitution')
-    def "can include build with declared substitution"() {
+    @ToBeFixedForInstantExecution
+    def "can include build with declared substitution with #dsl dsl"() {
+        given:
+        def myAppDir = sample.dir.file("$dsl/my-app")
+
         when:
-        executer.inDirectory(sample.dir.file("my-app"))
-            .withArguments("--settings-file", "settings-without-declared-substitution.gradle")
+        executer.inDirectory(myAppDir)
+            .withArguments("--settings-file", "settings-without-declared-substitution.$extension")
         fails(':run')
 
         then:
@@ -130,11 +199,16 @@ class SamplesCompositeBuildIntegrationTest extends AbstractIntegrationSpec {
         failure.assertHasCause("Cannot resolve external dependency org.sample:number-utils:1.0 because no repositories are defined.")
 
         when:
-        executer.inDirectory(sample.dir.file("my-app"))
+        executer.inDirectory(myAppDir)
         succeeds(':run')
 
         then:
         executed ":anonymous-library:jar", ":run"
         outputContains("The answer is 42")
+
+        where:
+        dsl      | extension
+        'groovy' | 'gradle'
+        'kotlin' | 'gradle.kts'
     }
 }

@@ -15,13 +15,17 @@
  */
 
 package org.gradle.play.integtest
+
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import spock.lang.Issue
 
 class MixedPlayAndLegacyJavaProjectIntegrationTest extends AbstractIntegrationSpec {
 
     @Issue("GRADLE-3356")
+    @ToBeFixedForInstantExecution
     def "can apply both java and play plugins"() {
+        executer.noDeprecationChecks()
         settingsFile.text = "rootProject.name = 'mixedJavaAndPlay'"
         buildFile << """
             plugins {

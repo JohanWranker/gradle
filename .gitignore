@@ -3,21 +3,31 @@
 .gradle
 /build
 /buildSrc/build
+/buildSrc/subprojects/*/build
 /subprojects/*/build
-/subprojects/docs/src/samples/*/*/build
+/subprojects/docs/src/samples/**/build
+/subprojects/docs/src/snippets/**/build
 /subprojects/internal-android-performance-testing/build-android-libs
 
 # IDEA
 # ----
-.idea
+!/.idea
+/.idea/*
+!/.idea/codeStyles
+!/.idea/inspectionProfiles
+*/**/.idea
 .shelf
 /*.iml
 /*.ipr
 /*.iws
+/buildSrc/.idea
+/buildSrc/.shelf
 /buildSrc/*.iml
 /buildSrc/*.ipr
 /buildSrc/*.iws
 /buildSrc/out
+/buildSrc/subprojects/*/*.iml
+/buildSrc/subprojects/*/out
 /out
 /subprojects/*/*.iml
 /subprojects/*/out
@@ -41,7 +51,7 @@ atlassian-ide-plugin.xml
 
 # Vim
 # ---
-*.sw[op]
+*.sw[nop]
 
 # Emacs
 # -----

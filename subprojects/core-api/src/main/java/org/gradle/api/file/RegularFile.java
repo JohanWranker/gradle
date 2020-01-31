@@ -16,8 +16,6 @@
 
 package org.gradle.api.file;
 
-import org.gradle.api.Incubating;
-
 import java.io.File;
 
 /**
@@ -28,10 +26,10 @@ import java.io.File;
  *
  * @since 4.1
  */
-@Incubating
 public interface RegularFile extends FileSystemLocation {
     /**
      * Returns the location of this file, as an absolute {@link File}.
      */
+    @Override
     File getAsFile();
 }

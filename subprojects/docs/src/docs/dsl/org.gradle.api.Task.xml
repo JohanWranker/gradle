@@ -35,6 +35,9 @@
                 <td>outputs</td>
             </tr>
             <tr>
+                <td>localState</td>
+            </tr>
+            <tr>
                 <td>destroyables</td>
             </tr>
             <tr>
@@ -70,6 +73,9 @@
             <tr>
                 <td>logging</td>
             </tr>
+            <tr>
+                <td>timeout</td>
+            </tr>
         </table>
     </section>
     <section>
@@ -97,12 +103,6 @@
             </tr>
             <tr>
                 <td>doLast</td>
-            </tr>
-            <tr>
-                <td>leftShift</td>
-            </tr>
-            <tr>
-                <td>deleteAllActions</td>
             </tr>
             <tr>
                 <td>property</td>

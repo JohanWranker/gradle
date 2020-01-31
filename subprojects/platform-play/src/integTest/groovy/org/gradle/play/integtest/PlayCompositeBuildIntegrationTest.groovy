@@ -20,7 +20,7 @@ import org.gradle.play.integtest.fixtures.PlayApp
 import org.gradle.play.integtest.fixtures.app.PlayCompositeBuild
 
 class PlayCompositeBuildIntegrationTest extends PlayBinaryApplicationIntegrationTest {
-    PlayApp playApp = new PlayCompositeBuild()
+    PlayApp playApp = new PlayCompositeBuild(versionNumber)
 
     @Override
     PlayApp getPlayApp() {
@@ -30,9 +30,9 @@ class PlayCompositeBuildIntegrationTest extends PlayBinaryApplicationIntegration
     @Override
     String[] getBuildTasks() {
         return super.buildTasks + [
-            ":java-lib:compileJava",
-            ":java-lib:classes",
-            ":java-lib:jar",
+            ":javalibrary:compileJava",
+            ":javalibrary:classes",
+            ":javalibrary:jar",
         ]
     }
 

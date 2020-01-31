@@ -27,9 +27,11 @@ class IvyDescriptor {
     String module
     String revision
     String status
-    String description
+    Node description
     String branch
     String resolver
+    NodeList licenses
+    NodeList authors
     Map<QName, String> extraInfo
 
     IvyDescriptor(File ivyFile) {
@@ -40,7 +42,9 @@ class IvyDescriptor {
         status = ivy.info[0].@status
         branch = ivy.info[0].@branch
         resolver = ivy.info[0].@resolver
-        description = ivy.info[0].description[0]?.text()
+        description = ivy.info[0].description[0]
+        licenses = ivy.info[0].license
+        authors = ivy.info[0].ivyauthor
 
         extraInfo = [:]
         ivy.info[0].children().findAll { it.name() instanceof QName }.each {
@@ -71,7 +75,8 @@ class IvyDescriptor {
                     org: dep.@org,
                     module: dep.@name,
                     revision: dep.@rev,
-                    conf: dep.@conf,
+                    revisionConstraint: dep.@revConstraint,
+                    confs: [dep.@conf],
                     transitive: dep.@transitive
             )
 
@@ -80,7 +85,11 @@ class IvyDescriptor {
             }
 
             def key = "${ivyDependency.org}:${ivyDependency.module}:${ivyDependency.revision}"
-            dependencies[key] = ivyDependency
+            if (dependencies[key]) {
+                dependencies[key].confs += ivyDependency.confs
+            } else {
+                dependencies[key] = ivyDependency
+            }
         }
 
         ivy.dependencies.exclude.each { exclude ->
@@ -118,7 +127,7 @@ class IvyDescriptor {
     }
 
     def assertConfigurationDependsOn(String configuration, String[] expected) {
-        def actualDependencies = dependencies.values().findAll { it.conf.contains(configuration) }
+        def actualDependencies = dependencies.values().findAll { it.confs.any { it.contains(configuration) }}
         assert actualDependencies.size() == expected.length
         expected.each {
             String conf = "$configuration->default"

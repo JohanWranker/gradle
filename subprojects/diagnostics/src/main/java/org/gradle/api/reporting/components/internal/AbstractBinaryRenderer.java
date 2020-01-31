@@ -19,7 +19,7 @@ package org.gradle.api.reporting.components.internal;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang.StringUtils;
 import org.gradle.api.tasks.diagnostics.internal.text.TextReportBuilder;
-import org.gradle.internal.text.TreeFormatter;
+import org.gradle.internal.logging.text.TreeFormatter;
 import org.gradle.language.base.LanguageSourceSet;
 import org.gradle.model.ModelMap;
 import org.gradle.model.internal.manage.schema.ModelProperty;
@@ -51,7 +51,9 @@ public abstract class AbstractBinaryRenderer<T extends BinarySpec> extends Repor
         }
         builder.heading(heading);
 
-        builder.item("build using task", binary.getBuildTask().getPath());
+        if (binary.getBuildTask() != null) {
+            builder.item("build using task", binary.getBuildTask().getPath());
+        }
 
         T specialized = getTargetType().cast(binary);
 

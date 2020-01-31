@@ -16,31 +16,30 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution;
 
+import com.google.common.collect.Lists;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.result.ComponentSelectionDescriptor;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionDescriptorInternal;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.DefaultComponentSelectionDescriptor;
 import org.gradle.api.internal.artifacts.DependencySubstitutionInternal;
 import org.gradle.api.internal.artifacts.dsl.ComponentSelectorParsers;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.VersionSelectionReasons;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionDescriptorInternal;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionReasons;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.DefaultComponentSelectionDescriptor;
+import org.gradle.internal.Describables;
 
-import static org.gradle.api.artifacts.result.ComponentSelectionCause.REQUESTED;
+import java.util.Collections;
+import java.util.List;
+
 import static org.gradle.api.artifacts.result.ComponentSelectionCause.SELECTED_BY_RULE;
 
 public class DefaultDependencySubstitution implements DependencySubstitutionInternal {
     private final ComponentSelector requested;
-    private ComponentSelectionDescriptorInternal selectionDescription;
+    private List<ComponentSelectionDescriptorInternal> ruleDescriptors;
     private ComponentSelector target;
 
-    public DefaultDependencySubstitution(ComponentSelector requested, String reason) {
+    public DefaultDependencySubstitution(ComponentSelector requested) {
         this.requested = requested;
         this.target = requested;
-        if (reason != null) {
-            this.selectionDescription = VersionSelectionReasons.REQUESTED.withReason(reason);
-        } else {
-            this.selectionDescription = VersionSelectionReasons.REQUESTED;
-        }
     }
 
     @Override
@@ -50,24 +49,27 @@ public class DefaultDependencySubstitution implements DependencySubstitutionInte
 
     @Override
     public void useTarget(Object notation) {
-        useTarget(notation, VersionSelectionReasons.SELECTED_BY_RULE);
+        useTarget(notation, ComponentSelectionReasons.SELECTED_BY_RULE);
     }
 
     @Override
     public void useTarget(Object notation, String reason) {
-        useTarget(notation, new DefaultComponentSelectionDescriptor(SELECTED_BY_RULE, reason));
+        useTarget(notation, new DefaultComponentSelectionDescriptor(SELECTED_BY_RULE, Describables.of(reason)));
     }
 
     @Override
-    public void useTarget(Object notation, ComponentSelectionDescriptor selectionDescription) {
+    public void useTarget(Object notation, ComponentSelectionDescriptor ruleDescriptor) {
         this.target = ComponentSelectorParsers.parser().parseNotation(notation);
-        this.selectionDescription = (ComponentSelectionDescriptorInternal) selectionDescription;
+        if (this.ruleDescriptors == null) {
+            this.ruleDescriptors = Lists.newArrayList();
+        }
+        this.ruleDescriptors.add((ComponentSelectionDescriptorInternal) ruleDescriptor);
         validateTarget(target);
     }
 
     @Override
-    public ComponentSelectionDescriptorInternal getSelectionDescription() {
-        return selectionDescription;
+    public List<ComponentSelectionDescriptorInternal> getRuleDescriptors() {
+        return ruleDescriptors == null ? Collections.emptyList() : ruleDescriptors;
     }
 
     @Override
@@ -77,7 +79,7 @@ public class DefaultDependencySubstitution implements DependencySubstitutionInte
 
     @Override
     public boolean isUpdated() {
-        return selectionDescription.getCause() != REQUESTED;
+        return ruleDescriptors != null;
     }
 
     public static void validateTarget(ComponentSelector componentSelector) {

@@ -27,8 +27,11 @@ import org.gradle.api.internal.artifacts.configurations.MutationValidator;
 import org.gradle.api.internal.artifacts.dependencies.AbstractModuleDependency;
 import org.gradle.api.tasks.TaskDependency;
 import org.gradle.internal.Actions;
+import org.gradle.internal.deprecation.DeprecatableConfiguration;
+import org.gradle.internal.deprecation.DeprecationLogger;
 
 import java.util.Collection;
+import java.util.List;
 
 public class DefaultDependencySet extends DelegatingDomainObjectSet<Dependency> implements DependencySet {
     private final Describable displayName;
@@ -51,16 +54,27 @@ public class DefaultDependencySet extends DelegatingDomainObjectSet<Dependency> 
         return displayName.getDisplayName();
     }
 
+    @Override
     public TaskDependency getBuildDependencies() {
         return clientConfiguration.getBuildDependencies();
     }
 
     @Override
     public boolean add(final Dependency o) {
+        warnIfConfigurationIsDeprecated();
         if (o instanceof AbstractModuleDependency) {
             ((AbstractModuleDependency) o).addMutationValidator(mutationValidator);
         }
         return super.add(o);
+    }
+
+    private void warnIfConfigurationIsDeprecated() {
+        List<String> alternatives = ((DeprecatableConfiguration) clientConfiguration).getDeclarationAlternatives();
+        if (alternatives != null) {
+            DeprecationLogger.deprecateConfiguration(clientConfiguration.getName()).forDependencyDeclaration().replaceWith(alternatives)
+                .withUpgradeGuideSection(5, "dependencies_should_no_longer_be_declared_using_the_compile_and_runtime_configurations")
+                .nagUser();
+        }
     }
 
     @Override

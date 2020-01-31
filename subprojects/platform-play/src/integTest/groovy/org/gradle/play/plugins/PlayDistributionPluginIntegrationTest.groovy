@@ -15,7 +15,9 @@
  */
 
 package org.gradle.play.plugins
+
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.test.fixtures.archive.ArchiveTestFixture
@@ -31,6 +33,7 @@ class PlayDistributionPluginIntegrationTest extends AbstractIntegrationSpec {
     public final TestResources resources = new TestResources(temporaryFolder)
 
     def setup() {
+        executer.noDeprecationChecks()
         settingsFile << """ rootProject.name = 'dist-play-app' """
         buildFile << """
             plugins {
@@ -42,6 +45,7 @@ class PlayDistributionPluginIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("GRADLE-3386")
+    @ToBeFixedForInstantExecution
     def "uses unique names for jars in distribution"() {
         given:
         file("extralib.jar").text = "This is not a jar"
@@ -88,6 +92,7 @@ class PlayDistributionPluginIntegrationTest extends AbstractIntegrationSpec {
         )
     }
 
+    @ToBeFixedForInstantExecution
     def "builds a tgz when requested"() {
         given:
         buildFile << """
@@ -108,6 +113,7 @@ class PlayDistributionPluginIntegrationTest extends AbstractIntegrationSpec {
         )
 
     }
+    @ToBeFixedForInstantExecution
     def "builds empty distribution when no sources present" () {
         buildFile << """
             model {
@@ -146,6 +152,7 @@ class PlayDistributionPluginIntegrationTest extends AbstractIntegrationSpec {
         }
 
         when:
+        executer.noDeprecationChecks()
         succeeds "dist"
 
         then:

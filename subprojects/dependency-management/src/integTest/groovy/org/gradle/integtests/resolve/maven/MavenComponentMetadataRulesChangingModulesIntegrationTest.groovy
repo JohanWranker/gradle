@@ -16,7 +16,7 @@
 
 package org.gradle.integtests.resolve.maven
 
-import org.gradle.integtests.resolve.ComponentMetadataRulesChangingModulesIntegrationTest
+import org.gradle.integtests.resolve.rules.ComponentMetadataRulesChangingModulesIntegrationTest
 import org.gradle.test.fixtures.server.http.MavenHttpRepository
 
 class MavenComponentMetadataRulesChangingModulesIntegrationTest extends ComponentMetadataRulesChangingModulesIntegrationTest {
@@ -48,12 +48,17 @@ $repoDeclaration
 configurations {
     modules
 }
+
+class SavingRule implements ComponentMetadataRule {
+    public void execute(ComponentMetadataContext context) {
+        new File(context.details.id.name).text = context.details.changing
+    }
+}
+
 dependencies {
     modules "org.test:moduleB:1.0-SNAPSHOT"
     components {
-        all { details ->
-            file(details.id.name).text = details.changing
-        }
+        all(SavingRule)
     }
 }
 task resolve {

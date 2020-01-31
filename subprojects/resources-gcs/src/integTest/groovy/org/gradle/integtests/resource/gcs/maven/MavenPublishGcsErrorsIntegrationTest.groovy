@@ -16,7 +16,8 @@
 
 package org.gradle.integtests.resource.gcs.maven
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
+import org.gradle.integtests.fixtures.publish.maven.AbstractMavenPublishIntegTest
 import org.gradle.integtests.resource.gcs.fixtures.GcsServer
 import org.gradle.integtests.resource.gcs.fixtures.MavenGcsRepository
 import org.junit.Rule
@@ -25,7 +26,7 @@ import static org.gradle.internal.resource.transport.gcp.gcs.GcsConnectionProper
 import static org.gradle.internal.resource.transport.gcp.gcs.GcsConnectionProperties.GCS_ENDPOINT_PROPERTY
 import static org.gradle.internal.resource.transport.gcp.gcs.GcsConnectionProperties.GCS_SERVICE_PATH_PROPERTY
 
-class MavenPublishGcsErrorsIntegrationTest extends AbstractIntegrationSpec {
+class MavenPublishGcsErrorsIntegrationTest extends AbstractMavenPublishIntegTest {
 
     String mavenVersion = "1.45"
     String projectName = "publishGcsTest"
@@ -42,6 +43,7 @@ class MavenPublishGcsErrorsIntegrationTest extends AbstractIntegrationSpec {
         executer.withArgument("-D${GCS_DISABLE_AUTH_PROPERTY}=true")
     }
 
+    @ToBeFixedForInstantExecution(skip = ToBeFixedForInstantExecution.Skip.FAILS_TO_CLEANUP)
     def "should fail with an authentication error"() {
         setup:
         settingsFile << "rootProject.name = '${projectName}'"
@@ -70,7 +72,6 @@ class MavenPublishGcsErrorsIntegrationTest extends AbstractIntegrationSpec {
         when:
         def module = mavenGcsRepo.module("org.gradle", "publishGcsTest", "1.45")
         module.artifact.expectPutAuthenticationError()
-        module.pom.expectPutAuthenticationError()
 
         then:
         fails 'publish'

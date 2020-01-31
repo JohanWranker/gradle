@@ -16,63 +16,59 @@
 
 package org.gradle.initialization;
 
-import org.gradle.StartParameter;
-import org.gradle.api.internal.GradleInternal;
-import org.gradle.api.internal.SettingsInternal;
-import org.gradle.composite.internal.IncludedBuildRegistry;
-import org.gradle.initialization.buildsrc.BuildSourceBuilder;
+import org.gradle.api.internal.project.ProjectStateRegistry;
+import org.gradle.initialization.layout.BuildLayoutFactory;
+import org.gradle.internal.build.BuildStateRegistry;
+import org.gradle.internal.build.PublicBuildPath;
+import org.gradle.internal.composite.ChildBuildRegisteringSettingsLoader;
+import org.gradle.internal.composite.CommandLineIncludedBuildSettingsLoader;
 import org.gradle.internal.composite.CompositeBuildSettingsLoader;
+import org.gradle.internal.reflect.Instantiator;
 
 public class DefaultSettingsLoaderFactory implements SettingsLoaderFactory {
-    private final ISettingsFinder settingsFinder;
     private final SettingsProcessor settingsProcessor;
-    private final BuildSourceBuilder buildSourceBuilder;
-    private final NestedBuildFactory nestedBuildFactory;
-    private final IncludedBuildRegistry includedBuildRegistry;
-    private final StartParameter startParameter;
+    private final BuildStateRegistry buildRegistry;
+    private final ProjectStateRegistry projectRegistry;
+    private final PublicBuildPath publicBuildPath;
+    private final Instantiator instantiator;
+    private final BuildLayoutFactory buildLayoutFactory;
 
-    public DefaultSettingsLoaderFactory(ISettingsFinder settingsFinder, SettingsProcessor settingsProcessor, BuildSourceBuilder buildSourceBuilder,
-                                        NestedBuildFactory nestedBuildFactory, IncludedBuildRegistry includedBuildRegistry, StartParameter startParameter) {
-        this.settingsFinder = settingsFinder;
+    public DefaultSettingsLoaderFactory(SettingsProcessor settingsProcessor, BuildStateRegistry buildRegistry, ProjectStateRegistry projectRegistry, PublicBuildPath publicBuildPath, Instantiator instantiator, BuildLayoutFactory buildLayoutFactory) {
         this.settingsProcessor = settingsProcessor;
-        this.buildSourceBuilder = buildSourceBuilder;
-        this.nestedBuildFactory = nestedBuildFactory;
-        this.includedBuildRegistry = includedBuildRegistry;
-        this.startParameter = startParameter;
+        this.buildRegistry = buildRegistry;
+        this.projectRegistry = projectRegistry;
+        this.publicBuildPath = publicBuildPath;
+        this.instantiator = instantiator;
+        this.buildLayoutFactory = buildLayoutFactory;
     }
 
     @Override
     public SettingsLoader forTopLevelBuild() {
-        return compositeBuildSettingsLoader();
+        return new CompositeBuildSettingsLoader(
+            new ChildBuildRegisteringSettingsLoader(
+                new CommandLineIncludedBuildSettingsLoader(
+                    defaultSettingsLoader()
+                ),
+                buildRegistry,
+                publicBuildPath,
+                instantiator
+            ),
+            buildRegistry);
     }
 
     @Override
     public SettingsLoader forNestedBuild() {
-        return defaultSettingsLoader();
-    }
-
-    private SettingsLoader compositeBuildSettingsLoader() {
-        return new CompositeBuildSettingsLoader(
+        return new ChildBuildRegisteringSettingsLoader(
             defaultSettingsLoader(),
-            nestedBuildFactory,
-            includedBuildRegistry,
-            startParameter);
+            buildRegistry,
+            publicBuildPath,
+            instantiator
+        );
     }
 
     private SettingsLoader defaultSettingsLoader() {
-        final DefaultSettingsLoader delegate = new DefaultSettingsLoader(
-            settingsFinder,
-            settingsProcessor,
-            buildSourceBuilder
-        );
-        return new SettingsLoader() {
-            @Override
-            public SettingsInternal findAndLoadSettings(GradleInternal gradle) {
-                SettingsInternal settings = delegate.findAndLoadSettings(gradle);
-                gradle.setSettings(settings);
-                return settings;
-            }
-        };
+        return new SettingsAttachingSettingsLoader(
+            new DefaultSettingsLoader(settingsProcessor, buildLayoutFactory),
+            projectRegistry);
     }
-
 }

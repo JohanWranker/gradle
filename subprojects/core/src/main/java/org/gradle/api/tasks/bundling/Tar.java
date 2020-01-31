@@ -24,8 +24,6 @@ import org.gradle.api.internal.file.archive.compression.SimpleCompressor;
 import org.gradle.api.internal.file.copy.CopyAction;
 import org.gradle.api.tasks.Input;
 
-import java.util.concurrent.Callable;
-
 /**
  * Assembles a TAR archive.
  */
@@ -33,16 +31,12 @@ public class Tar extends AbstractArchiveTask {
     private Compression compression = Compression.NONE;
 
     public Tar() {
-        getConventionMapping().map("extension", new Callable<Object>(){
-            public Object call() throws Exception {
-                return getCompression().getDefaultExtension();
-            }
-        });
+        getArchiveExtension().set(getProject().provider(() -> getCompression().getDefaultExtension()));
     }
 
     @Override
     protected CopyAction createCopyAction() {
-        return new TarCopyAction(getArchivePath(), getCompressor(), isPreserveFileTimestamps());
+        return new TarCopyAction(getArchiveFile().get().getAsFile(), getCompressor(), isPreserveFileTimestamps());
     }
 
     private ArchiveOutputStreamFactory getCompressor() {

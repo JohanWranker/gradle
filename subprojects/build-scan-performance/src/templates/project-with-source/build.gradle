@@ -2,6 +2,18 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'idea'
 
+
+<% if (binding.hasVariable("manyPlugins")) { (1..25).findAll { it % 3 == 0 }.each { %>
+    apply plugin: "org.gradle.build.gen${it}"
+    <% } %>
+    <% } %>
+
+
+<% if (binding.hasVariable("manyScripts")) { (1..30).findAll { it % 5 == 0 }.each { %>
+    apply from: "\${rootProject.projectDir.absolutePath}/gradle/script-plugin${it}.gradle"
+    <% } %>
+    <% } %>
+
 repositories {
 <% if (repository) { %>
     maven {
@@ -13,9 +25,10 @@ repositories {
 
 <% if (binding.hasVariable("projectDependencies")) { %>
     configurations {
-        compile.extendsFrom projectsConfiguration
+        implementation.extendsFrom projectsConfiguration
     }
 <% } %>
+
 
 <% if (binding.hasVariable("springDmPluginVersion")) {%>
 apply plugin: "io.spring.dependency-management"
@@ -27,20 +40,30 @@ dependencyManagement {
 }
 <% } %>
 
+if(Boolean.getBoolean("slowTasks")) {
+    allprojects {
+        tasks.withType(JavaCompile) {
+            doLast {
+                Thread.sleep(100)
+            }
+        }
+    }
+}
+
 dependencies {
-    compile 'commons-lang:commons-lang:2.5'
-    compile "commons-httpclient:commons-httpclient:3.0"
-    compile "commons-codec:commons-codec:1.2"
-    compile "org.slf4j:jcl-over-slf4j:1.7.10"
-    compile "org.codehaus.groovy:groovy:2.4.10"
-    testCompile 'junit:junit:4.12'
-    runtime 'com.googlecode:reflectasm:1.01'
+    implementation 'commons-lang:commons-lang:2.5'
+    implementation "commons-httpclient:commons-httpclient:3.0"
+    implementation "commons-codec:commons-codec:1.2"
+    implementation "org.slf4j:jcl-over-slf4j:1.7.10"
+    implementation "org.codehaus.groovy:groovy:2.4.10"
+    testImplementation 'junit:junit:4.12'
+    runtimeOnly 'com.googlecode:reflectasm:1.01'
 
     <% if (dependencies) { dependencies.each { %>
-    compile "${it.shortNotation()}" <% } %>
+        implementation "${it.shortNotation()}" <% } %>
     <% } %>
     <% if (binding.hasVariable("projectDependencies") && subprojectNumber > 1) { (1..<subprojectNumber).each { %>
-    projectsConfiguration project(":project${it}") <% } %>
+        projectsConfiguration project(":project${it}") <% } %>
     <% } %>
 }
 
@@ -48,44 +71,12 @@ test {
     jvmArgs '-Xmx1g', '-XX:+HeapDumpOnOutOfMemoryError'
     <% if (binding.hasVariable("fullTestLogging")) { %>
         testLogging {
-            events "started", "skipped", "failed", "passed", "standard_out", "standard_error"
+            if (Boolean.getBoolean("reducedOutput")) {
+                events "failed"
+            } else {
+                events "started", "skipped", "failed", "passed", "standard_out", "standard_error"
+            }
         }
     <% } %>
     maxParallelForks 2
-}
-
-<% if (groovyProject) { %>
-apply plugin: 'groovy'
-dependencies {
-    compile 'org.codehaus:groovy:groovy-all:2.4.10'
-}
-<% } %>
-
-<% if (scalaProject) { %>
-apply plugin: 'scala'
-dependencies {
-    compile 'org.scala-lang:scala-library:2.9.2'
-}
-tasks.withType(ScalaCompile) {
-    scalaCompileOptions.with {
-        useAnt = false
-        fork = true
-        forkOptions.jvmArgs = ["-XX:MaxPermSize=512m"]
-    }
-}
-<% } %>
-
-<% if (binding.hasVariable("resolveDependenciesTask")) { %>
-task resolveDependencies {
-    dependsOn configurations.testRuntime
-    // Need this to ensure that configuration is actually resolved
-    doLast {
-        configurations.testRuntime.files.size()
-    }
-}
-<% } %>
-
-task dependencyReport(type: DependencyReportTask) {
-    outputs.upToDateWhen { false }
-    outputFile = new File(buildDir, "dependencies.txt")
 }

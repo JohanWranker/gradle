@@ -19,9 +19,11 @@ package org.gradle.api.internal.attributes;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
+import org.gradle.api.Named;
 import org.gradle.api.attributes.Attribute;
 import org.gradle.api.attributes.AttributeContainer;
-import org.gradle.api.internal.changedetection.state.isolation.Isolatable;
+import org.gradle.internal.Cast;
+import org.gradle.internal.isolation.Isolatable;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;
@@ -35,6 +37,10 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
             return o1.getName().compareTo(o2.getName());
         }
     };
+    // Coercion is an expensive process, so we cache the result of coercing to other attribute types.
+    // We can afford using a hashmap here because attributes are interned, and their lifetime doesn't
+    // exceed a build
+    private final Map<Attribute<?>, Object> coercionCache = Maps.newConcurrentMap();
 
     final Attribute<?> attribute;
     final Isolatable<?> value;
@@ -42,6 +48,9 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
     private final ImmutableMap<String, DefaultImmutableAttributes> hierarchyByName;
     private final int hashCode;
 
+    // Optimize for the single entry case, makes findEntry faster
+    private final String singleEntryName;
+    private final DefaultImmutableAttributes singleEntryValue;
 
     DefaultImmutableAttributes() {
         this.attribute = null;
@@ -49,6 +58,8 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
         this.hashCode = 0;
         this.hierarchy = ImmutableMap.of();
         this.hierarchyByName = ImmutableMap.of();
+        this.singleEntryName = null;
+        this.singleEntryValue = null;
     }
 
     DefaultImmutableAttributes(DefaultImmutableAttributes parent, Attribute<?> key, Isolatable<?> value) {
@@ -66,6 +77,14 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
         hashCode = 31 * hashCode + attribute.hashCode();
         hashCode = 31 * hashCode + value.hashCode();
         this.hashCode = hashCode;
+        if (hierarchyByName.size() == 1) {
+            Map.Entry<String, DefaultImmutableAttributes> entry = hierarchyByName.entrySet().iterator().next();
+            singleEntryName = entry.getKey();
+            singleEntryValue = entry.getValue();
+        } else {
+            singleEntryName = null;
+            singleEntryValue = null;
+        }
     }
 
     @Override
@@ -120,6 +139,7 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
     /**
      * Locates the entry for the given attribute. Returns a 'missing' value when not present.
      */
+    @Override
     public <T> AttributeValue<T> findEntry(Attribute<T> key) {
         DefaultImmutableAttributes attributes = hierarchy.get(key);
         return (AttributeValue<T>) (attributes == null ? MISSING : attributes);
@@ -128,7 +148,12 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
     /**
      * Locates the entry for the attribute with the given name. Returns a 'missing' value when not present.
      */
+    @Override
     public AttributeValue<?> findEntry(String key) {
+        if (singleEntryName == key) {
+            // The identity check is intentional here, do not replace with .equals()
+            return singleEntryValue;
+        }
         DefaultImmutableAttributes attributes = hierarchyByName.get(key);
         return attributes == null ? MISSING : attributes;
     }
@@ -138,33 +163,64 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
         return value.isolate();
     }
 
+    private String desugar() {
+        // We support desugaring for all non-primitive types supported in GradleModuleMetadataWriter.writeAttributes(), which are:
+        // - Named
+        // - Enum
+        if (Named.class.isAssignableFrom(attribute.getType())) {
+            return ((Named) get()).getName();
+        }
+        if (Enum.class.isAssignableFrom(attribute.getType())) {
+            return ((Enum<?>) get()).name();
+        }
+        return null;
+    }
+
     @Nullable
     private <S> S coerce(Class<S> type) {
         if (value != null) {
-            Isolatable<S> converted = value.coerce(type);
-            if (converted != null) {
-                return converted.isolate();
-            }
+            return value.coerce(type);
         }
         return null;
     }
 
     @Override
     public <S> S coerce(Attribute<S> otherAttribute) {
-        Class<S> attributeType = otherAttribute.getType();
-        if (attributeType.isAssignableFrom(attribute.getType())) {
+        S s = Cast.uncheckedCast(coercionCache.get(otherAttribute));
+        if (s == null) {
+            s = uncachedCoerce(otherAttribute);
+            coercionCache.put(otherAttribute, s);
+        }
+        return s;
+    }
+
+    private <S> S uncachedCoerce(Attribute<S> otherAttribute) {
+        Class<S> otherAttributeType = otherAttribute.getType();
+        // If attribute types are already compatible, go with it. There are two cases covered here:
+        // 1) Both attributes are strongly typed and match, usually the case if both are sourced from the local build
+        // 2) Both attributes are desugared, usually the case if both are sourced from published metadata
+        if (otherAttributeType.isAssignableFrom(attribute.getType())) {
             return (S) get();
         }
 
-        S converted = coerce(attributeType);
+        // Attempt to coerce myself into the other attribute's type
+        // - I am desugared and the other attribute is strongly typed, usually the case if I am sourced from published metadata and the other from the local build
+        S converted = coerce(otherAttributeType);
         if (converted != null) {
             return converted;
+        } else if (otherAttributeType.isAssignableFrom(String.class)) {
+            // Attempt to desugar myself
+            // - I am strongly typed and the other is desugared, usually the case if I am sourced from the local build and the other is sourced from published metadata
+            converted = (S) desugar();
+            if (converted != null) {
+                return converted;
+            }
         }
         String foundType = get().getClass().getName();
-        if (foundType.equals(attributeType.getName())) {
+        if (foundType.equals(otherAttributeType.getName())) {
             foundType += " with a different ClassLoader";
         }
-        throw new IllegalArgumentException(String.format("Unexpected type for attribute '%s' provided. Expected a value of type %s but found a value of type %s.", attribute.getName(), attributeType.getName(), foundType));
+        throw new IllegalArgumentException(String.format("Unexpected type for attribute '%s' provided. Expected a value of type %s but found a value of type %s.", attribute.getName(), otherAttributeType.getName(), foundType));
     }
 
     @Override

@@ -22,8 +22,10 @@ import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.tasks.TaskExecuter
 import org.gradle.api.internal.tasks.TaskStateInternal
 import org.gradle.api.internal.tasks.execution.DefaultTaskExecutionContext
+import org.gradle.execution.ProjectExecutionServices
 import org.gradle.test.fixtures.file.CleanupTestDirectory
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.util.SetSystemProperties
 import org.gradle.util.TestUtil
 import org.gradle.util.UsesNativeServices
 import org.junit.Rule
@@ -44,14 +46,20 @@ abstract class AbstractProjectBuilderSpec extends Specification {
     // @CleanupTestDirectory annotation.
     @Rule
     final TestNameTestDirectoryProvider temporaryFolder = TestNameTestDirectoryProvider.newInstance()
+
+    @Rule SetSystemProperties systemProperties
+
     ProjectInternal project
+    ProjectExecutionServices executionServices
 
     def setup() {
         project = TestUtil.createRootProject(temporaryFolder.testDirectory)
+        executionServices = new ProjectExecutionServices(project)
+        System.setProperty("user.dir", temporaryFolder.testDirectory.absolutePath)
     }
 
     void execute(Task task) {
-        project.services.get(TaskExecuter).execute((TaskInternal) task, (TaskStateInternal) task.state, new DefaultTaskExecutionContext())
+        executionServices.get(TaskExecuter).execute((TaskInternal) task, (TaskStateInternal) task.state, new DefaultTaskExecutionContext(null))
         task.state.rethrowFailure()
     }
 }

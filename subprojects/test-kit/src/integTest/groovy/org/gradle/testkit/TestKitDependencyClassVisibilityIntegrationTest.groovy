@@ -35,14 +35,14 @@ class TestKitDependencyClassVisibilityIntegrationTest extends AbstractIntegratio
 
         then:
         fails 'build'
-        result.error.contains "package ${GradleRunner.package.name} does not exist"
+        failure.assertHasErrorOutput "package ${GradleRunner.package.name} does not exist"
     }
 
     def "gradle implementation dependencies are not visible to gradleTestKit() users"() {
         when:
         buildScript """
             plugins { id "org.gradle.java" }
-            dependencies { testCompile gradleTestKit() }
+            dependencies { testImplementation gradleTestKit() }
         """
 
         file("src/test/java/Test.java") << """
@@ -52,7 +52,7 @@ class TestKitDependencyClassVisibilityIntegrationTest extends AbstractIntegratio
 
         then:
         fails 'testClasses'
-        result.error.contains "package ${IntMath.package.name} does not exist"
+        failure.assertHasErrorOutput "package ${IntMath.package.name} does not exist"
     }
 
     def "gradle implementation dependencies do not conflict with user classes"() {
@@ -61,8 +61,8 @@ class TestKitDependencyClassVisibilityIntegrationTest extends AbstractIntegratio
             plugins { id "org.gradle.java" }
             ${jcenterRepository()}
             dependencies {
-                testCompile gradleTestKit()
-                testCompile 'com.google.guava:guava-jdk5:13.0'
+                testImplementation gradleTestKit()
+                testImplementation 'com.google.guava:guava-jdk5:13.0'
             }
         """
 

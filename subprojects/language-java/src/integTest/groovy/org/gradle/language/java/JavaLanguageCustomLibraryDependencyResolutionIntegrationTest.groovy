@@ -17,19 +17,22 @@
 package org.gradle.language.java
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.util.TextUtil
 import spock.lang.Unroll
 
 import static org.gradle.language.java.JavaIntegrationTesting.applyJavaPlugin
+import static org.gradle.language.java.JavaIntegrationTesting.expectJavaLangPluginDeprecationWarnings
 
 class JavaLanguageCustomLibraryDependencyResolutionIntegrationTest extends AbstractIntegrationSpec {
 
     def theModel(String model) {
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         addCustomLibraryType(buildFile)
         buildFile << model
     }
 
+    @ToBeFixedForInstantExecution
     def "can depend on a custom component producing a JVM library"() {
         given:
         theModel '''
@@ -73,9 +76,10 @@ model {
     }
 
     @Unroll
+    @ToBeFixedForInstantExecution
     def "can depend on a custom component producing a JVM library in another project with dependency {#dependency}"() {
         given:
-        applyJavaPlugin(buildFile)
+        applyJavaPlugin(buildFile, executer)
         file('settings.gradle') << 'include "sub"'
 
         def subBuildFile = file('sub/build.gradle')
@@ -136,21 +140,22 @@ model {
         dependency << ["project ':sub' library 'zdep'", "project ':sub'"]
     }
 
+    @ToBeFixedForInstantExecution
     def "can depend on a custom component producing a JVM library with corresponding platform"() {
         given:
         theModel '''
 model {
     components {
         zdep(CustomLibrary) {
-            javaVersions 6,7
+            javaVersions 7,8
             sources {
                java(JavaSourceSet) {
                }
             }
         }
         main(JvmLibrarySpec) {
-            targetPlatform 'java6'
             targetPlatform 'java7'
+            targetPlatform 'java8'
             sources {
                 java {
                     dependencies {
@@ -162,16 +167,16 @@ model {
     }
 
     tasks {
-        mainJava6Jar {
-            doLast {
-                assert compileMainJava6JarMainJava.taskDependencies.getDependencies(compileMainJava6JarMainJava).contains(zdep6ApiJar)
-                assert compileMainJava6JarMainJava.classpath.files == [file("${buildDir}/jars/zdep/6Jar/api/zdep.jar")] as Set
-            }
-        }
         mainJava7Jar {
             doLast {
                 assert compileMainJava7JarMainJava.taskDependencies.getDependencies(compileMainJava7JarMainJava).contains(zdep7ApiJar)
                 assert compileMainJava7JarMainJava.classpath.files == [file("${buildDir}/jars/zdep/7Jar/api/zdep.jar")] as Set
+            }
+        }
+        mainJava8Jar {
+            doLast {
+                assert compileMainJava8JarMainJava.taskDependencies.getDependencies(compileMainJava8JarMainJava).contains(zdep8ApiJar)
+                assert compileMainJava8JarMainJava.classpath.files == [file("${buildDir}/jars/zdep/8Jar/api/zdep.jar")] as Set
             }
         }
     }
@@ -181,18 +186,20 @@ model {
         file('src/main/java/TestApp.java') << 'public class TestApp {}'
 
         when:
-        succeeds ':mainJava6Jar'
-
-        then:
-        executedAndNotSkipped ':zdep6ApiJar', ':mainJava6Jar'
-
-        when:
         succeeds ':mainJava7Jar'
 
         then:
         executedAndNotSkipped ':zdep7ApiJar', ':mainJava7Jar'
+
+        when:
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds ':mainJava8Jar'
+
+        then:
+        executedAndNotSkipped ':zdep8ApiJar', ':mainJava8Jar'
     }
 
+    @ToBeFixedForInstantExecution
     def "should fail resolving dependencies only for the missing dependency variant"() {
         given:
         theModel '''
@@ -238,13 +245,15 @@ model {
         executedAndNotSkipped ':mainJava7Jar'
 
         and: 'the Java 6 variant fails'
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJava6Jar'
 
         and: 'error message indicates the available platforms for the target dependency'
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:java6Jar'' source set 'Java source 'main:java''")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:java6Jar'' source set 'Java source 'main:java''")
         failure.assertHasCause(TextUtil.normaliseLineSeparators("Cannot find a compatible variant for library 'zdep'.\n    Required platform 'java6', available: 'java7'"))
     }
 
+    @ToBeFixedForInstantExecution
     def "should choose the highest compatible platform variant of the target binary when dependency is a JVM component"() {
         given:
         theModel '''
@@ -287,6 +296,7 @@ model {
         executedAndNotSkipped ':zdepJava7ApiJar', ':mainJar'
     }
 
+    @ToBeFixedForInstantExecution
     def "should choose the highest compatible platform variant of the target binary when dependency is a custom component"() {
         given:
         theModel '''
@@ -331,6 +341,7 @@ model {
         executedAndNotSkipped ':zdep7ApiJar', ':mainJar'
     }
 
+    @ToBeFixedForInstantExecution
     def "custom component can consume a JVM library"() {
         given:
         theModel '''
@@ -368,6 +379,7 @@ model {
         executedAndNotSkipped ':tasks', ':mainApiJar', ':zdepJar'
     }
 
+    @ToBeFixedForInstantExecution
     def "Java consumes custom component consuming Java component"() {
         given:
         theModel '''
@@ -418,6 +430,7 @@ model {
         executedAndNotSkipped ':secondApiJar', ':thirdApiJar', ':mainJar'
     }
 
+    @ToBeFixedForInstantExecution
     def "Custom consumes Java component consuming custom component"() {
         given:
         theModel '''
@@ -472,6 +485,7 @@ model {
         executedAndNotSkipped ':secondApiJar', ':thirdApiJar', ':mainJar'
     }
 
+    @ToBeFixedForInstantExecution
     def "Cannot build all variants of main component because of missing dependency variant"() {
         given:
         theModel '''
@@ -524,15 +538,19 @@ model {
         executedAndNotSkipped ':secondApiJar', ':thirdApiJar', ':mainJava7Jar'
 
         and: "Can resolve dependencies and compile any of the dependencies"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':secondJar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':thirdJar'
 
         and: "Trying to compile the Java 6 variant fails"
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJava6Jar'
-        failure.assertHasDescription("Could not resolve all dependencies for 'Jar 'main:java6Jar'' source set 'Java source 'main:java''")
+        failure.assertHasCause("Could not resolve all dependencies for 'Jar 'main:java6Jar'' source set 'Java source 'main:java''")
         failure.assertHasCause(TextUtil.normaliseLineSeparators("Cannot find a compatible variant for library 'second'.\n    Required platform 'java6', available: 'java7'"))
     }
 
+    @ToBeFixedForInstantExecution
     def "Not all components target the same Java platforms"() {
         given:
         theModel '''
@@ -595,29 +613,37 @@ model {
         executedAndNotSkipped ':tasks'
 
         and: "Can resolve dependencies of the Java 6 and Java 7 variant of the main Jar"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':checkMainDependencies'
 
         and: "Resolving the dependencies and compiling the Java 7 variant of the second jar should work"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':checkSecondJava7VariantDependencies'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':second7Jar'
 
         and: "Resolving the dependencies of the Java 6 version of the second jar should return an empty set"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':checkSecondJava6VariantDependencies'
 
         and: "Can build the Java 7 variant of all components"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':mainJava7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':second7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':thirdJar'
     }
 
-    def "All components should depend on the corresponding variants"() {
+    @ToBeFixedForInstantExecution
+    def "all components should depend on the corresponding variants"() {
         given:
         theModel '''
 model {
     components {
         main(JvmLibrarySpec) {
-            targetPlatform 'java6'
             targetPlatform 'java7'
+            targetPlatform 'java8'
             sources {
                 java {
                     dependencies {
@@ -627,7 +653,7 @@ model {
             }
         }
         second(CustomLibrary) {
-            javaVersions 6,7
+            javaVersions 7,8
             sources {
                 java(JavaSourceSet) {
                     dependencies {
@@ -637,34 +663,34 @@ model {
             }
         }
         third(JvmLibrarySpec) {
-            targetPlatform 'java6'
             targetPlatform 'java7'
+            targetPlatform 'java8'
         }
     }
 
     tasks {
-        mainJava6Jar {
-            doLast {
-                assert compileMainJava6JarMainJava.taskDependencies.getDependencies(compileMainJava6JarMainJava).contains(second6ApiJar)
-                assert compileMainJava6JarMainJava.classpath.files == [file("${buildDir}/jars/second/6Jar/api/second.jar")] as Set
-            }
-        }
         mainJava7Jar {
             doLast {
                 assert compileMainJava7JarMainJava.taskDependencies.getDependencies(compileMainJava7JarMainJava).contains(second7ApiJar)
                 assert compileMainJava7JarMainJava.classpath.files == [file("${buildDir}/jars/second/7Jar/api/second.jar")] as Set
             }
         }
-        second6Jar {
+        mainJava8Jar {
             doLast {
-                assert compileSecond6JarSecondJava.taskDependencies.getDependencies(compileSecond6JarSecondJava).contains(thirdJava6ApiJar)
-                assert compileSecond6JarSecondJava.classpath.files == [file("${buildDir}/jars/third/java6Jar/api/third.jar")] as Set
+                assert compileMainJava8JarMainJava.taskDependencies.getDependencies(compileMainJava8JarMainJava).contains(second8ApiJar)
+                assert compileMainJava8JarMainJava.classpath.files == [file("${buildDir}/jars/second/8Jar/api/second.jar")] as Set
             }
         }
         second7Jar {
             doLast {
                 assert compileSecond7JarSecondJava.taskDependencies.getDependencies(compileSecond7JarSecondJava).contains(thirdJava7ApiJar)
                 assert compileSecond7JarSecondJava.classpath.files == [file("${buildDir}/jars/third/java7Jar/api/third.jar")] as Set
+            }
+        }
+        second8Jar {
+            doLast {
+                assert compileSecond8JarSecondJava.taskDependencies.getDependencies(compileSecond8JarSecondJava).contains(thirdJava8ApiJar)
+                assert compileSecond8JarSecondJava.classpath.files == [file("${buildDir}/jars/third/java8Jar/api/third.jar")] as Set
             }
         }
     }
@@ -680,15 +706,21 @@ model {
         then:
         executedAndNotSkipped ':tasks'
 
-        and: "Can build the Java 7 variant of all components"
-        succeeds ':mainJava7Jar'
-        succeeds ':second7Jar'
-        succeeds ':thirdJava7Jar'
+        and: "Can build the Java 8 variant of all components"
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds ':mainJava8Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds ':second8Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds ':thirdJava8Jar'
 
-        and: "Can build the Java 6 variant of all components"
-        succeeds ':mainJava6Jar'
-        succeeds ':second6Jar'
-        succeeds ':thirdJava6Jar'
+        and: "Can build the Java 7 variant of all components"
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds ':mainJava7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds ':second7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
+        succeeds ':thirdJava7Jar'
     }
 
     def "can define a cyclic dependency"() {
@@ -744,10 +776,12 @@ model {
         succeeds ':checkDependencies'
 
         and: 'building fails'
+        expectJavaLangPluginDeprecationWarnings(executer)
         fails ':mainJar'
         failure.assertHasDescription 'Circular dependency between the following tasks:'
     }
 
+    @ToBeFixedForInstantExecution
     def "Fails if one of the dependencies provides more than one binary for the selected variant"() {
         given:
         theModel '''
@@ -807,17 +841,23 @@ model {
         executedAndNotSkipped ':tasks'
 
         and: "Can resolve dependencies of the Java 7 variant of the main and second components"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':checkJava7Dependencies'
 
         and: "Resolving the dependencies of the Java 6 variant of the main component should lead to an empty set"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':checkMainJava6Dependencies'
 
         and: "Can build the Java 7 variant of all components"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':mainJava7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':second7Jar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':thirdJava7Jar'
     }
 
+    @ToBeFixedForInstantExecution
     def "complex graph of dependencies without variants"() {
         given:
         /*
@@ -912,13 +952,19 @@ model {
         executedAndNotSkipped ':tasks'
 
         and: "can resolve dependencies"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':checkDependencies'
 
         and: "can build any of the components"
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':mainJar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':secondJar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':thirdJar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':fourthJar'
+        expectJavaLangPluginDeprecationWarnings(executer)
         succeeds ':fifthJar'
     }
 

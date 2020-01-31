@@ -166,7 +166,7 @@ class DefaultProjectDependencyTest extends AbstractProjectBuilderSpec {
         d1.contentEquals(d2)
     }
 
-    void "knows when content is not euqal"() {
+    void "knows when content is not equal"() {
         def d1 = createProjectDependency()
         def d2 = createProjectDependency()
         d2.setTransitive(false)
@@ -185,7 +185,7 @@ class DefaultProjectDependencyTest extends AbstractProjectBuilderSpec {
     }
 
     private createProjectDependency() {
-        def out = new DefaultProjectDependency(project, "conf", listener, true)
+        def out = new DefaultProjectDependency(project, listener, true)
         out.addArtifact(new DefaultDependencyArtifact("name", "type", "ext", "classifier", "url"))
         out
     }

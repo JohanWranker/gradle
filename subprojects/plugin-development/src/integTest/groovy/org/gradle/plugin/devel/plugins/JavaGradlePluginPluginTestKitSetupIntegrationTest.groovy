@@ -17,6 +17,7 @@
 package org.gradle.plugin.devel.plugins
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.test.fixtures.maven.MavenModule
 import org.gradle.util.GUtil
 
@@ -36,10 +37,27 @@ class JavaGradlePluginPluginTestKitSetupIntegrationTest extends AbstractIntegrat
         """
     }
 
+    @ToBeFixedForInstantExecution
+    def "has default conventions"() {
+        buildFile << """
+            task assertHasTestKit() {
+                doLast {
+                    assert project.sourceSets.test.runtimeClasspath.files.containsAll(dependencies.gradleTestKit().files.files)
+                }
+            }
+        """
+        expect:
+        succeeds("assertHasTestKit")
+        succeeds("test")
+        result.assertTaskExecuted(":pluginUnderTestMetadata")
+        result.assertTaskExecuted(":pluginDescriptors")
+    }
+
+    @ToBeFixedForInstantExecution
     def "wires creation of plugin under test metadata into build lifecycle"() {
         given:
         def module = mavenRepo.module('org.gradle.test', 'a', '1.3').publish()
-        buildFile << compileDependency('compile', module)
+        buildFile << compileDependency('implementation', module)
 
         when:
         succeeds 'build'
@@ -51,15 +69,15 @@ class JavaGradlePluginPluginTestKitSetupIntegrationTest extends AbstractIntegrat
         assertHasImplementationClasspath(pluginMetadata, expectedClasspath)
     }
 
+    @ToBeFixedForInstantExecution
     def "can configure plugin and test source set by extension"() {
         given:
         buildFile << """
-            sourceSets.remove(sourceSets.main)
-
             sourceSets {
                 custom {
                     java {
                         srcDir 'src'
+                        compileClasspath = configurations.compileClasspath
                     }
                     resources {
                         srcDir 'resources'
@@ -89,7 +107,7 @@ class JavaGradlePluginPluginTestKitSetupIntegrationTest extends AbstractIntegrat
             }
         """
         def module = mavenRepo.module('org.gradle.test', 'a', '1.3').publish()
-        buildFile << compileDependency('customCompile', module)
+        buildFile << compileDependency('customImplementation', module)
 
         when:
         succeeds 'build'

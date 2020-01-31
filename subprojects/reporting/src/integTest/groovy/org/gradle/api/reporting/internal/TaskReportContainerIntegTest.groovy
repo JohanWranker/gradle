@@ -17,6 +17,7 @@
 package org.gradle.api.reporting.internal
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import spock.lang.IgnoreIf
 
@@ -25,21 +26,28 @@ class TaskReportContainerIntegTest extends AbstractIntegrationSpec {
     def task = ":createReports"
 
     def setup() {
-        buildFile << """
+        // Do not define the task in the build script, so that changes to the build script do not invalidate the task implementation
+        file("buildSrc/src/main/groovy/TestTaskReportContainer.groovy") << """
+            import org.gradle.api.*
             import org.gradle.api.reporting.*
             import org.gradle.api.reporting.internal.*
-            
-            ext.value = "bar"
+            import org.gradle.api.internal.CollectionCallbackActionDecorator
 
             class TestTaskReportContainer extends TaskReportContainer<Report> {
                 TestTaskReportContainer(Task task) {
-                    super(Report, task)
-                    add(TaskGeneratedReport, "file1", Report.OutputType.FILE, task)
-                    add(TaskGeneratedReport, "file2", Report.OutputType.FILE, task)
-                    add(TaskGeneratedReport, "dir1", Report.OutputType.DIRECTORY, task)
-                    add(TaskGeneratedReport, "dir2", Report.OutputType.DIRECTORY, task)
+                    super(Report, task, CollectionCallbackActionDecorator.NOOP)
+                    add(TaskGeneratedSingleFileReport, "file1", task)
+                    add(TaskGeneratedSingleFileReport, "file2", task)
+                    add(TaskGeneratedSingleDirectoryReport, "dir1", task, null)
+                    add(TaskGeneratedSingleDirectoryReport, "dir2", task, null)
                 }
             }
+        """
+        file("buildSrc/src/main/groovy/TestTask.groovy") << """
+            import org.gradle.api.*
+            import org.gradle.api.tasks.*
+            import org.gradle.api.reporting.*
+            import org.gradle.api.reporting.internal.*
 
             class TestTask extends DefaultTask {
                 @Nested
@@ -60,6 +68,10 @@ class TaskReportContainerIntegTest extends AbstractIntegrationSpec {
                 }
             }
 
+        """
+        buildFile << """
+            ext.value = "bar"
+
             task createReports(type: TestTask) { task ->
                 inputs.property "foo", { project.value }
                 reports.all {
@@ -73,16 +85,20 @@ class TaskReportContainerIntegTest extends AbstractIntegrationSpec {
     @IgnoreIf({GradleContextualExecuter.parallel})
     def "task up to date when no reporting configuration change"() {
         expect:
-        succeeds(task) && task in nonSkippedTasks
+        succeeds(task)
+        executedAndNotSkipped(task)
 
         and:
-        succeeds(task) && task in skippedTasks
+        succeeds(task)
+        skipped(task)
     }
 
     @IgnoreIf({GradleContextualExecuter.parallel})
+    @ToBeFixedForInstantExecution
     def "task not up to date when enabled set changes"() {
         expect:
-        succeeds(task) && task in nonSkippedTasks
+        succeeds(task)
+        executedAndNotSkipped(task)
 
         when:
         buildFile << """
@@ -90,10 +106,12 @@ class TaskReportContainerIntegTest extends AbstractIntegrationSpec {
         """
 
         then:
-        succeeds(task) && task in nonSkippedTasks
+        succeeds(task)
+        executedAndNotSkipped(task)
     }
 
     @IgnoreIf({GradleContextualExecuter.parallel})
+    @ToBeFixedForInstantExecution
     def "task not up to date when enabled set changes but output files stays the same"() {
         given:
         buildFile << """
@@ -103,10 +121,12 @@ class TaskReportContainerIntegTest extends AbstractIntegrationSpec {
         """
 
         expect:
-        succeeds(task) && task in nonSkippedTasks
+        succeeds(task)
+        executedAndNotSkipped(task)
 
         and:
-        succeeds(task) && task in skippedTasks
+        succeeds(task)
+        skipped(task)
 
         when:
         buildFile << """
@@ -118,6 +138,7 @@ class TaskReportContainerIntegTest extends AbstractIntegrationSpec {
         """
 
         then:
-        succeeds(task) && task in nonSkippedTasks
+        succeeds(task)
+        executedAndNotSkipped(task)
     }
 }

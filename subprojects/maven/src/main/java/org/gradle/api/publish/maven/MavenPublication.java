@@ -17,9 +17,9 @@
 package org.gradle.api.publish.maven;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.component.SoftwareComponent;
 import org.gradle.api.publish.Publication;
+import org.gradle.api.publish.VersionMappingStrategy;
 import org.gradle.internal.HasInternalProtocol;
 
 /**
@@ -51,17 +51,18 @@ import org.gradle.internal.HasInternalProtocol;
  * You can also completely replace the set of published artifacts using {@link #setArtifacts(Iterable)}.
  * Together, these methods give you full control over what artifacts will be published.
  * </p><p>
- * For any other tweaks to the publication, it is possible to modify the generated POM prior to publication. This is done using the {@link MavenPom#withXml(org.gradle.api.Action)} method
- * of the POM returned via the {@link #getPom()} method, or directly by an action (or closure) passed into {@link #pom(org.gradle.api.Action)}.
+ * To customize the metadata published in the generated POM, set properties, e.g. {@link MavenPom#getDescription()}, on the POM returned via the {@link #getPom()}
+ * method or directly by an action (or closure) passed into {@link #pom(org.gradle.api.Action)}.
+ * As a last resort, it is possible to modify the generated POM using the {@link MavenPom#withXml(org.gradle.api.Action)} method.
  * </p>
- * <h4>Example of publishing a java module with a source artifact and custom POM description</h4>
+ * <h4>Example of publishing a Java module with a source artifact and a customized POM</h4>
  * <pre class='autoTested'>
  * apply plugin: "java"
  * apply plugin: "maven-publish"
  *
  * task sourceJar(type: Jar) {
  *   from sourceSets.main.allJava
- *   classifier "sources"
+ *   archiveClassifier = "sources"
  * }
  *
  * publishing {
@@ -69,8 +70,28 @@ import org.gradle.internal.HasInternalProtocol;
  *     myPublication(MavenPublication) {
  *       from components.java
  *       artifact sourceJar
- *       pom.withXml {
- *         asNode().appendNode('description', 'A demonstration of Maven POM customization')
+ *       pom {
+ *         name = "Demo"
+ *         description = "A demonstration of Maven POM customization"
+ *         url = "http://www.example.com/project"
+ *         licenses {
+ *           license {
+ *             name = "The Apache License, Version 2.0"
+ *             url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+ *           }
+ *         }
+ *         developers {
+ *           developer {
+ *             id = "johnd"
+ *             name = "John Doe"
+ *             email = "john.doe@example.com"
+ *           }
+ *         }
+ *         scm {
+ *           connection = "scm:svn:http://subversion.example.com/svn/project/trunk/"
+ *           developerConnection = "scm:svn:https://subversion.example.com/svn/project/trunk/"
+ *           url = "http://subversion.example.com/svn/project/trunk/"
+ *         }
  *       }
  *     }
  *   }
@@ -79,7 +100,6 @@ import org.gradle.internal.HasInternalProtocol;
  *
  * @since 1.4
  */
-@Incubating
 @HasInternalProtocol
 public interface MavenPublication extends Publication {
 
@@ -107,7 +127,9 @@ public interface MavenPublication extends Publication {
      *     <li>The dependencies declared by the component will be included in the published meta-data.</li>
      * </ul>
      *
-     * Currently 2 types of component are supported: 'components.java' (added by the JavaPlugin) and 'components.web' (added by the WarPlugin).
+     * Currently 3 types of component are supported: 'components.java' (added by the JavaPlugin), 'components.web' (added by the WarPlugin)
+     * and `components.javaPlatform` (added by the JavaPlatformPlugin).
+     *
      * For any individual MavenPublication, only a single component can be provided in this way.
      *
      * The following example demonstrates how to publish the 'java' component to a Maven repository.
@@ -146,7 +168,7 @@ public interface MavenPublication extends Publication {
      * apply plugin: "maven-publish"
      *
      * task sourceJar(type: Jar) {
-     *   classifier "sources"
+     *   archiveClassifier = "sources"
      * }
      *
      * publishing {
@@ -175,7 +197,7 @@ public interface MavenPublication extends Publication {
      * apply plugin: "maven-publish"
      *
      * task sourceJar(type: Jar) {
-     *   classifier "sources"
+     *   archiveClassifier = "sources"
      * }
      *
      * publishing {
@@ -210,7 +232,7 @@ public interface MavenPublication extends Publication {
      * apply plugin: "maven-publish"
      *
      * task sourceJar(type: Jar) {
-     *   classifier "sources"
+     *   archiveClassifier = "sources"
      * }
 
      * publishing {
@@ -263,4 +285,52 @@ public interface MavenPublication extends Publication {
      */
     void setVersion(String version);
 
+    /**
+     * Configures the version mapping strategy.
+     *
+     * For example, to use resolved versions for runtime dependencies:
+     * <pre class='autoTested'>
+     * apply plugin: "java"
+     * apply plugin: "maven-publish"
+     *
+     * publishing {
+     *   publications {
+     *     maven(MavenPublication) {
+     *       from components.java
+     *       versionMapping {
+     *         usage('java-runtime'){
+     *           fromResolutionResult()
+     *         }
+     *       }
+     *     }
+     *   }
+     * }
+     * </pre>
+     *
+     * @param configureAction the configuration
+     *
+     * @since 5.2
+     */
+    void versionMapping(Action<? super VersionMappingStrategy> configureAction);
+
+    /**
+     * Silences the compatibility warnings for the Maven publication for the specified variant.
+     *
+     * Warnings are emitted when Gradle features are used that cannot be mapped completely to Maven POM.
+     *
+     * @param variantName the variant to silence warning for
+     *
+     * @since 6.0
+     */
+    void suppressPomMetadataWarningsFor(String variantName);
+
+
+    /**
+     * Silences all the compatibility warnings for the Maven publication.
+     *
+     * Warnings are emitted when Gradle features are used that cannot be mapped completely to Maven POM.
+     *
+     * @since 6.0
+     */
+    void suppressAllPomMetadataWarnings();
 }

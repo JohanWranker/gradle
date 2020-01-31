@@ -19,14 +19,14 @@ package org.gradle.platform.base.binary;
 import org.gradle.api.Action;
 import org.gradle.api.DomainObjectSet;
 import org.gradle.api.Incubating;
+import org.gradle.api.Task;
 import org.gradle.api.artifacts.component.LibraryBinaryIdentifier;
 import org.gradle.api.internal.AbstractBuildableComponentSpec;
-import org.gradle.api.internal.DefaultDomainObjectSet;
-import org.gradle.api.internal.project.taskfactory.ITaskFactory;
-import org.gradle.internal.component.local.model.DefaultLibraryBinaryIdentifier;
-import org.gradle.internal.reflect.DirectInstantiator;
-import org.gradle.internal.reflect.Instantiator;
+import org.gradle.api.internal.CollectionCallbackActionDecorator;
+import org.gradle.api.internal.collections.DomainObjectCollectionFactory;
 import org.gradle.api.reflect.ObjectInstantiationException;
+import org.gradle.internal.component.local.model.DefaultLibraryBinaryIdentifier;
+import org.gradle.internal.reflect.Instantiator;
 import org.gradle.language.base.LanguageSourceSet;
 import org.gradle.model.ModelMap;
 import org.gradle.model.internal.core.ModelActionRole;
@@ -34,6 +34,7 @@ import org.gradle.model.internal.core.ModelMaps;
 import org.gradle.model.internal.core.ModelRegistration;
 import org.gradle.model.internal.core.ModelRegistrations;
 import org.gradle.model.internal.core.MutableModelNode;
+import org.gradle.model.internal.core.NamedEntityInstantiator;
 import org.gradle.model.internal.core.UnmanagedModelProjection;
 import org.gradle.model.internal.type.ModelType;
 import org.gradle.platform.base.BinarySpec;
@@ -62,7 +63,7 @@ public class BaseBinarySpec extends AbstractBuildableComponentSpec implements Bi
     private static final ModelType<LanguageSourceSet> LANGUAGE_SOURCE_SET_MODELTYPE = ModelType.of(LanguageSourceSet.class);
 
     private static final ThreadLocal<BinaryInfo> NEXT_BINARY_INFO = new ThreadLocal<BinaryInfo>();
-    private final DomainObjectSet<LanguageSourceSet> inputSourceSets = new DefaultDomainObjectSet<LanguageSourceSet>(LanguageSourceSet.class);
+    private final DomainObjectSet<LanguageSourceSet> inputSourceSets;
     private final BinaryTasksCollection tasks;
     private final MutableModelNode componentNode;
     private final MutableModelNode sources;
@@ -70,13 +71,19 @@ public class BaseBinarySpec extends AbstractBuildableComponentSpec implements Bi
     private BinaryNamingScheme namingScheme;
     private boolean disabled;
 
+    /**
+     * Creates a {@link BaseBinarySpec}.
+     *
+     * @since 5.6
+     */
     public static <T extends BaseBinarySpec> T create(Class<? extends BinarySpec> publicType, Class<T> implementationType,
                                                       ComponentSpecIdentifier componentId, MutableModelNode modelNode, @Nullable MutableModelNode componentNode,
-                                                      Instantiator instantiator, ITaskFactory taskFactory) {
-        NEXT_BINARY_INFO.set(new BinaryInfo(componentId, publicType, modelNode, componentNode, taskFactory, instantiator));
+                                                      Instantiator instantiator, NamedEntityInstantiator<Task> taskInstantiator,
+                                                      CollectionCallbackActionDecorator collectionCallbackActionDecorator, DomainObjectCollectionFactory domainObjectCollectionFactory) {
+        NEXT_BINARY_INFO.set(new BinaryInfo(componentId, publicType, modelNode, componentNode, taskInstantiator, instantiator, collectionCallbackActionDecorator, domainObjectCollectionFactory));
         try {
             try {
-                return DirectInstantiator.INSTANCE.newInstance(implementationType);
+                return instantiator.newInstance(implementationType);
             } catch (ObjectInstantiationException e) {
                 throw new ModelInstantiationException(String.format("Could not create binary of type %s", publicType.getSimpleName()), e.getCause());
             }
@@ -93,7 +100,8 @@ public class BaseBinarySpec extends AbstractBuildableComponentSpec implements Bi
         super(validate(info).componentId, info.publicType);
         this.publicType = info.publicType;
         this.componentNode = info.componentNode;
-        this.tasks = info.instantiator.newInstance(DefaultBinaryTasksCollection.class, this, info.taskFactory);
+        this.tasks = info.instantiator.newInstance(DefaultBinaryTasksCollection.class, this, info.taskInstantiator, info.collectionCallbackActionDecorator);
+        this.inputSourceSets = info.domainObjectCollectionFactory.newDomainObjectSet(LanguageSourceSet.class);
 
         MutableModelNode modelNode = info.modelNode;
         sources = ModelMaps.addModelMapNode(modelNode, LANGUAGE_SOURCE_SET_MODELTYPE, "sources");
@@ -211,17 +219,21 @@ public class BaseBinarySpec extends AbstractBuildableComponentSpec implements Bi
         private final Class<? extends BinarySpec> publicType;
         private final MutableModelNode modelNode;
         private final MutableModelNode componentNode;
-        private final ITaskFactory taskFactory;
+        private final NamedEntityInstantiator<Task> taskInstantiator;
         private final Instantiator instantiator;
         private final ComponentSpecIdentifier componentId;
+        private final CollectionCallbackActionDecorator collectionCallbackActionDecorator;
+        private final DomainObjectCollectionFactory domainObjectCollectionFactory;
 
-        private BinaryInfo(ComponentSpecIdentifier componentId, Class<? extends BinarySpec> publicType, MutableModelNode modelNode, MutableModelNode componentNode, ITaskFactory taskFactory, Instantiator instantiator) {
+        private BinaryInfo(ComponentSpecIdentifier componentId, Class<? extends BinarySpec> publicType, MutableModelNode modelNode, MutableModelNode componentNode, NamedEntityInstantiator<Task> taskInstantiator, Instantiator instantiator, CollectionCallbackActionDecorator collectionCallbackActionDecorator, DomainObjectCollectionFactory domainObjectCollectionFactory) {
             this.componentId = componentId;
             this.publicType = publicType;
             this.modelNode = modelNode;
             this.componentNode = componentNode;
-            this.taskFactory = taskFactory;
+            this.taskInstantiator = taskInstantiator;
             this.instantiator = instantiator;
+            this.collectionCallbackActionDecorator = collectionCallbackActionDecorator;
+            this.domainObjectCollectionFactory = domainObjectCollectionFactory;
         }
     }
 

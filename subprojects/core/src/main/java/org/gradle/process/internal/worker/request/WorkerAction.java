@@ -17,26 +17,33 @@
 package org.gradle.process.internal.worker.request;
 
 import org.gradle.api.Action;
-import org.gradle.api.internal.AsmBackedClassGenerator;
-import org.gradle.api.internal.DefaultInstantiatorFactory;
-import org.gradle.api.internal.InstantiatorFactory;
-import org.gradle.cache.internal.CrossBuildInMemoryCacheFactory;
+import org.gradle.cache.internal.DefaultCrossBuildInMemoryCacheFactory;
 import org.gradle.internal.UncheckedException;
+import org.gradle.internal.concurrent.Stoppable;
+import org.gradle.internal.dispatch.StreamCompletion;
 import org.gradle.internal.event.DefaultListenerManager;
-import org.gradle.internal.operations.BuildOperationIdentifierRegistry;
+import org.gradle.internal.instantiation.generator.DefaultInstantiatorFactory;
+import org.gradle.internal.instantiation.InstantiatorFactory;
+import org.gradle.internal.operations.CurrentBuildOperationRef;
 import org.gradle.internal.remote.ObjectConnection;
 import org.gradle.internal.remote.internal.hub.StreamFailureHandler;
+import org.gradle.internal.service.DefaultServiceRegistry;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.process.internal.worker.WorkerProcessContext;
+import org.gradle.process.internal.worker.child.WorkerLogEventListener;
 
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 
-public class WorkerAction implements Action<WorkerProcessContext>, Serializable, RequestProtocol, StreamFailureHandler {
+public class WorkerAction implements Action<WorkerProcessContext>, Serializable, RequestProtocol, StreamFailureHandler, Stoppable, StreamCompletion {
     private final String workerImplementationName;
     private transient CountDownLatch completed;
     private transient ResponseProtocol responder;
+    private transient WorkerLogEventListener workerLogEventListener;
     private transient Throwable failure;
     private transient Class<?> workerImplementation;
     private transient Object implementation;
@@ -50,11 +57,18 @@ public class WorkerAction implements Action<WorkerProcessContext>, Serializable,
     public void execute(WorkerProcessContext workerProcessContext) {
         completed = new CountDownLatch(1);
         try {
+            ServiceRegistry parentServices = workerProcessContext.getServiceRegistry();
             if (instantiatorFactory == null) {
-                instantiatorFactory = new DefaultInstantiatorFactory(new AsmBackedClassGenerator(), new CrossBuildInMemoryCacheFactory(new DefaultListenerManager()));
+                instantiatorFactory = new DefaultInstantiatorFactory(new DefaultCrossBuildInMemoryCacheFactory(new DefaultListenerManager()), Collections.emptyList());
             }
+            DefaultServiceRegistry serviceRegistry = new DefaultServiceRegistry("worker-action-services", parentServices);
+            // Make the argument serializers available so work implementations can register their own serializers
+            RequestArgumentSerializers argumentSerializers = new RequestArgumentSerializers();
+            serviceRegistry.add(RequestArgumentSerializers.class, argumentSerializers);
+            serviceRegistry.add(InstantiatorFactory.class, instantiatorFactory);
+            workerProcessContext.getServerConnection().useParameterSerializers(RequestSerializerRegistry.create(this.getClass().getClassLoader(), argumentSerializers));
             workerImplementation = Class.forName(workerImplementationName);
-            implementation = instantiatorFactory.inject(workerProcessContext.getServiceRegistry()).newInstance(workerImplementation);
+            implementation = instantiatorFactory.inject(serviceRegistry).newInstance(workerImplementation);
         } catch (Throwable e) {
             failure = e;
         }
@@ -62,6 +76,7 @@ public class WorkerAction implements Action<WorkerProcessContext>, Serializable,
         ObjectConnection connection = workerProcessContext.getServerConnection();
         connection.addIncoming(RequestProtocol.class, this);
         responder = connection.addOutgoing(ResponseProtocol.class);
+        workerLogEventListener = workerProcessContext.getServiceRegistry().get(WorkerLogEventListener.class);
         connection.connect();
 
         try {
@@ -74,30 +89,46 @@ public class WorkerAction implements Action<WorkerProcessContext>, Serializable,
     @Override
     public void stop() {
         completed.countDown();
-        BuildOperationIdentifierRegistry.clearCurrentOperationIdentifier();
+        CurrentBuildOperationRef.instance().clear();
     }
 
     @Override
-    public void runThenStop(String methodName, Class<?>[] paramTypes, Object[] args, Object operationIdentifier) {
+    public void endStream() {
+        // This happens when the connection between the worker and the build daemon is closed for some reason,
+        // possibly because the build daemon died unexpectedly.
+        stop();
+    }
+
+    @Override
+    public void runThenStop(Request request) {
         try {
-            run(methodName, paramTypes, args, operationIdentifier);
+            run(request);
         } finally {
             stop();
         }
     }
 
     @Override
-    public void run(String methodName, Class<?>[] paramTypes, Object[] args, Object operationIdentifier) {
+    public void run(Request request) {
         if (failure != null) {
             responder.infrastructureFailed(failure);
             return;
         }
         try {
-            Method method = workerImplementation.getDeclaredMethod(methodName, paramTypes);
-            BuildOperationIdentifierRegistry.setCurrentOperationIdentifier(operationIdentifier);
+            Method method = workerImplementation.getDeclaredMethod(request.getMethodName(), request.getParamTypes());
+            CurrentBuildOperationRef.instance().set(request.getBuildOperation());
             Object result;
             try {
-                result = method.invoke(implementation, args);
+                // We want to use the responder as the logging protocol object here because log messages from the
+                // action will have the build operation associated.  By using the responder, we ensure that all
+                // messages arrive on the same incoming queue in the build process and the completed message will only
+                // arrive after all log messages have been processed.
+                result = workerLogEventListener.withWorkerLoggingProtocol(responder, new Callable<Object>() {
+                    @Override
+                    public Object call() throws Exception {
+                        return method.invoke(implementation, request.getArgs());
+                    }
+                });
             } catch (InvocationTargetException e) {
                 Throwable failure = e.getCause();
                 if (failure instanceof NoClassDefFoundError) {
@@ -112,7 +143,7 @@ public class WorkerAction implements Action<WorkerProcessContext>, Serializable,
         } catch (Throwable t) {
             responder.infrastructureFailed(t);
         } finally {
-            BuildOperationIdentifierRegistry.clearCurrentOperationIdentifier();
+            CurrentBuildOperationRef.instance().clear();
         }
     }
 

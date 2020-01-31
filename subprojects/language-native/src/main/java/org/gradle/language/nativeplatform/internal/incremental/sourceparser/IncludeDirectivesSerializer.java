@@ -17,6 +17,7 @@
 package org.gradle.language.nativeplatform.internal.incremental.sourceparser;
 
 import com.google.common.collect.ImmutableList;
+import org.gradle.internal.serialize.AbstractCollectionSerializer;
 import org.gradle.internal.serialize.BaseSerializerFactory;
 import org.gradle.internal.serialize.Decoder;
 import org.gradle.internal.serialize.Encoder;
@@ -30,25 +31,31 @@ import org.gradle.language.nativeplatform.internal.Macro;
 import org.gradle.language.nativeplatform.internal.MacroFunction;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public class IncludeDirectivesSerializer implements Serializer<IncludeDirectives> {
+    public static final IncludeDirectivesSerializer INSTANCE = new IncludeDirectivesSerializer();
+
     private final Serializer<IncludeType> enumSerializer = new BaseSerializerFactory().getSerializerFor(IncludeType.class);
     private final Serializer<Expression> expressionSerializer = new ExpressionSerializer(enumSerializer);
     private final ListSerializer<Include> includeListSerializer = new ListSerializer<Include>(new IncludeSerializer(enumSerializer, expressionSerializer));
-    private final ListSerializer<Macro> macroListSerializer = new ListSerializer<Macro>(new MacroSerializer(enumSerializer, expressionSerializer));
-    private final ListSerializer<MacroFunction> macroFunctionListSerializer = new ListSerializer<MacroFunction>(new MacroFunctionSerializer(enumSerializer, expressionSerializer));
+    private final CollectionSerializer<Macro> macroListSerializer = new CollectionSerializer<Macro>(new MacroSerializer(enumSerializer, expressionSerializer));
+    private final CollectionSerializer<MacroFunction> macroFunctionListSerializer = new CollectionSerializer<MacroFunction>(new MacroFunctionSerializer(enumSerializer, expressionSerializer));
+
+    private IncludeDirectivesSerializer() {
+    }
 
     @Override
     public IncludeDirectives read(Decoder decoder) throws Exception {
-        return new DefaultIncludeDirectives(ImmutableList.copyOf(includeListSerializer.read(decoder)), ImmutableList.copyOf(macroListSerializer.read(decoder)), ImmutableList.copyOf(macroFunctionListSerializer.read(decoder)));
+        return DefaultIncludeDirectives.of(ImmutableList.copyOf(includeListSerializer.read(decoder)), ImmutableList.copyOf(macroListSerializer.read(decoder)), ImmutableList.copyOf(macroFunctionListSerializer.read(decoder)));
     }
 
     @Override
     public void write(Encoder encoder, IncludeDirectives value) throws Exception {
         includeListSerializer.write(encoder, value.getAll());
-        macroListSerializer.write(encoder, value.getMacros());
-        macroFunctionListSerializer.write(encoder, value.getMacrosFunctions());
+        macroListSerializer.write(encoder, value.getAllMacros());
+        macroFunctionListSerializer.write(encoder, value.getAllMacroFunctions());
     }
 
     private static class ExpressionSerializer implements Serializer<Expression> {
@@ -207,7 +214,7 @@ public class IncludeDirectivesSerializer implements Serializer<IncludeDirectives
                 return new MacroWithComplexExpression(name, type, value, args);
             } else if (tag == UNRESOLVED) {
                 String name = decoder.readString();
-                return new UnresolveableMacro(name);
+                return new UnresolvableMacro(name);
             } else {
                 throw new IllegalArgumentException();
             }
@@ -226,7 +233,7 @@ public class IncludeDirectivesSerializer implements Serializer<IncludeDirectives
                 enumSerializer.write(encoder, value.getType());
                 encoder.writeNullableString(value.getValue());
                 expressionSerializer.write(encoder, value.getArguments());
-            } else if (value instanceof UnresolveableMacro) {
+            } else if (value instanceof UnresolvableMacro) {
                 encoder.writeByte(UNRESOLVED);
                 encoder.writeString(value.getName());
             } else {
@@ -278,7 +285,7 @@ public class IncludeDirectivesSerializer implements Serializer<IncludeDirectives
             } else if (tag == UNRESOLVED) {
                 String name = decoder.readString();
                 int parameters = decoder.readSmallInt();
-                return new UnresolveableMacroFunction(name, parameters);
+                return new UnresolvableMacroFunction(name, parameters);
             } else {
                 throw new IllegalArgumentException();
             }
@@ -313,13 +320,24 @@ public class IncludeDirectivesSerializer implements Serializer<IncludeDirectives
                 for (int anArgsMap : argsMap) {
                     encoder.writeSmallInt(anArgsMap);
                 }
-            } else if (value instanceof UnresolveableMacroFunction) {
+            } else if (value instanceof UnresolvableMacroFunction) {
                 encoder.writeByte(UNRESOLVED);
                 encoder.writeString(value.getName());
                 encoder.writeSmallInt(value.getParameterCount());
             } else {
                 throw new IllegalArgumentException();
             }
+        }
+    }
+
+    private static class CollectionSerializer<T> extends AbstractCollectionSerializer<T, Collection<T>> {
+        CollectionSerializer(Serializer<T> entrySerializer) {
+            super(entrySerializer);
+        }
+
+        @Override
+        protected Collection<T> createCollection(int size) {
+            return new ArrayList<T>(size);
         }
     }
 }

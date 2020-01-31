@@ -16,6 +16,7 @@
 package org.gradle.api.plugins.quality.checkstyle
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForInstantExecution
 
 class CheckstylePluginDependenciesIntegrationTest extends AbstractIntegrationSpec {
     def setup() {
@@ -24,6 +25,7 @@ class CheckstylePluginDependenciesIntegrationTest extends AbstractIntegrationSpe
         badCode()
     }
 
+    @ToBeFixedForInstantExecution
     def "allows configuring tool dependencies explicitly"() {
         expect:
         succeeds("dependencies", "--configuration", "checkstyle")
@@ -41,7 +43,7 @@ class CheckstylePluginDependenciesIntegrationTest extends AbstractIntegrationSpe
 
         then:
         fails("check")
-        failure.error.contains("Name 'class1' must match pattern")
+        failure.assertHasErrorOutput("Name 'class1' must match pattern")
 
         and:
         succeeds("dependencies", "--configuration", "checkstyle")
@@ -56,7 +58,7 @@ apply plugin: "checkstyle"
 ${mavenCentralRepository()}
 
 dependencies {
-    compile localGroovy()
+    implementation localGroovy()
 }
         """
     }

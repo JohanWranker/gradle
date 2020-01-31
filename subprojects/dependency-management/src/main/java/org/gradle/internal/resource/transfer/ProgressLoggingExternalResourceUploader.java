@@ -42,7 +42,7 @@ public class ProgressLoggingExternalResourceUploader extends AbstractProgressLog
         }
     }
 
-    private class ProgressLoggingReadableContent implements ReadableContent {
+    private static class ProgressLoggingReadableContent implements ReadableContent {
         private final ReadableContent delegate;
         private final ResourceOperation uploadOperation;
 
@@ -51,10 +51,12 @@ public class ProgressLoggingExternalResourceUploader extends AbstractProgressLog
             this.uploadOperation = uploadOperation;
         }
 
+        @Override
         public InputStream open() {
             return new ProgressLoggingInputStream(delegate.open(), uploadOperation);
         }
 
+        @Override
         public long getContentLength() {
             return delegate.getContentLength();
         }

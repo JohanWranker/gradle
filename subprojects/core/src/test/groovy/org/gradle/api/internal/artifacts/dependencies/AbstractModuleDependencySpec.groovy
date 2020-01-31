@@ -15,11 +15,16 @@
  */
 package org.gradle.api.internal.artifacts.dependencies
 
+import org.gradle.api.InvalidUserCodeException
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.artifacts.DependencyArtifact
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ModuleDependency
+import org.gradle.api.attributes.Attribute
 import org.gradle.api.internal.artifacts.DefaultExcludeRule
+import org.gradle.api.internal.artifacts.dsl.CapabilityNotationParserFactory
+import org.gradle.api.internal.attributes.ImmutableAttributes
+import org.gradle.util.AttributeTestUtil
 import org.gradle.util.WrapUtil
 import spock.lang.Specification
 
@@ -32,7 +37,12 @@ abstract class AbstractModuleDependencySpec extends Specification {
     }
 
     protected ExternalModuleDependency createDependency(String group, String name, String version) {
-        createDependency(group, name, version, null)
+        def dependency = createDependency(group, name, version, null)
+        if (dependency instanceof AbstractModuleDependency) {
+            dependency.attributesFactory = AttributeTestUtil.attributesFactory()
+            dependency.capabilityNotationParser = new CapabilityNotationParserFactory(true).create()
+        }
+        dependency
     }
 
     protected abstract ExternalModuleDependency createDependency(String group, String name, String version, String configuration);
@@ -42,12 +52,15 @@ abstract class AbstractModuleDependencySpec extends Specification {
         dependency.group == "org.gradle"
         dependency.name == "gradle-core"
         dependency.version == "4.4-beta2"
-        dependency.versionConstraint.preferredVersion == "4.4-beta2"
+        dependency.versionConstraint.preferredVersion == ""
+        dependency.versionConstraint.requiredVersion == "4.4-beta2"
+        dependency.versionConstraint.strictVersion == ""
         dependency.versionConstraint.rejectedVersions == []
         dependency.transitive
         dependency.artifacts.isEmpty()
         dependency.excludeRules.isEmpty()
         dependency.targetConfiguration == null
+        dependency.attributes == ImmutableAttributes.EMPTY
     }
 
     def "cannot create with null name"() {
@@ -99,8 +112,36 @@ abstract class AbstractModuleDependencySpec extends Specification {
         dependency.artifacts.contains(artifact2)
     }
 
+    void "can set attributes"() {
+        def attr1 = Attribute.of("attr1", String)
+        def attr2 = Attribute.of("attr2", Integer)
+
+        when:
+        dependency.attributes {
+            it.attribute(attr1, 'foo')
+            it.attribute(attr2, 123)
+        }
+
+        then:
+        dependency.attributes.keySet() == [attr1, attr2] as Set
+        dependency.attributes.getAttribute(attr1) == 'foo'
+        dependency.attributes.getAttribute(attr2) == 123
+    }
+
     void "knows if is equal to"() {
-        expect:
+        when:
+        def dep1 = createDependency("group1", "name1", "version1")
+        def dep2 = createDependency("group1", "name1", "version1")
+        def attr1 = Attribute.of("attr1", String)
+        def attr2 = Attribute.of("attr2", Integer)
+        dep1.attributes {
+            it.attribute(attr1, 'foo')
+        }
+        dep2.attributes {
+            it.attribute(attr2, 123)
+        }
+
+        then:
         createDependency("group1", "name1", "version1") == createDependency("group1", "name1", "version1")
         createDependency("group1", "name1", "version1").hashCode() == createDependency("group1", "name1", "version1").hashCode()
         createDependency("group1", "name1", "version1") != createDependency("group1", "name1", "version2")
@@ -108,6 +149,209 @@ abstract class AbstractModuleDependencySpec extends Specification {
         createDependency("group1", "name1", "version1") != createDependency("group2", "name1", "version1")
         createDependency("group1", "name1", "version1") != createDependency("group2", "name1", "version1")
         createDependency("group1", "name1", "version1", "depConf1") != createDependency("group1", "name1", "version1", "depConf2")
+
+        dep1 != dep2
+
+    }
+
+    void "refuses artifact when attributes present"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.attributes {
+            it.attribute(Attribute.of("attribute", String), 'foo')
+        }
+
+        when:
+        dep.artifact {
+            println("Not reached")
+        }
+
+        then:
+        thrown(InvalidUserCodeException)
+
+        when:
+        dep.addArtifact(Mock(DependencyArtifact))
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses target configuration when attributes present"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.attributes {
+            it.attribute(Attribute.of("attribute", String), 'foo')
+        }
+
+        when:
+        dep.setTargetConfiguration('foo')
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses artifact when capability present"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.capabilities {
+            it.requireCapability((Object)'org:foo:1.0')
+        }
+
+        when:
+        dep.artifact {
+            println("Not reached")
+        }
+
+        then:
+        thrown(InvalidUserCodeException)
+
+        when:
+        dep.addArtifact(Mock(DependencyArtifact))
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses target configuration when capability present"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.capabilities {
+            it.requireCapability((Object)'org:foo:1.0')
+        }
+
+        when:
+        dep.setTargetConfiguration('foo')
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses attribute when targetConfiguration specified"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.setTargetConfiguration('foo')
+
+        when:
+        dep.attributes {
+            it.attribute(Attribute.of("attribute", String), 'foo')
+        }
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses capability when targetConfiguration specified"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.setTargetConfiguration('foo')
+
+        when:
+        dep.capabilities {
+            it.requireCapability('org:foo:1.0')
+        }
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses attribute when artifact added"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.addArtifact(Mock(DependencyArtifact))
+
+        when:
+        dep.attributes {
+            it.attribute(Attribute.of("attribute", String), 'foo')
+        }
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses capability when artifact added"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.addArtifact(Mock(DependencyArtifact))
+
+        when:
+        dep.capabilities {
+            it.requireCapability('org:foo:1.0')
+        }
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses configuration when artifact added"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.addArtifact(Mock(DependencyArtifact))
+
+        when:
+        dep.setTargetConfiguration('foo')
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "refuses artifact when configuration specified"() {
+        given:
+        def dep = createDependency("group", "name", "1.0")
+        dep.setTargetConfiguration('foo')
+
+        when:
+        dep.addArtifact(Mock(DependencyArtifact))
+
+        then:
+        thrown(InvalidUserCodeException)
+
+        when:
+        dep.artifact {
+            throw new AssertionError()
+        }
+
+        then:
+        thrown(InvalidUserCodeException)
+    }
+
+    void "copy does not mutate original attributes"() {
+        def attr1 = Attribute.of("attr1", String)
+        dependency.attributes {
+            it.attribute(attr1, 'foo')
+        }
+
+        when:
+        def copy = dependency.copy()
+        copy.attributes {
+            it.attribute(attr1, 'bar')
+        }
+
+        then:
+        dependency.attributes.keySet() == [attr1] as Set
+        dependency.attributes.getAttribute(attr1) == 'foo'
+
+        copy.attributes.keySet() == [attr1] as Set
+        copy.attributes.getAttribute(attr1) == 'bar'
+    }
+
+    void "copy does not mutate original capabilities"() {
+        dependency.capabilities {
+            it.requireCapability('org:original:1')
+        }
+        def parsedCapability = dependency.requestedCapabilities[0]
+
+        when:
+        def copy = dependency.copy()
+        copy.capabilities {
+            it.requireCapability('org:copy:1')
+        }
+
+        then:
+        dependency.requestedCapabilities == [parsedCapability]
+        copy.requestedCapabilities.size() == 2
+        copy.requestedCapabilities[0] == parsedCapability
+        copy.requestedCapabilities[1].name == 'copy'
+
     }
 
     def "creates deep copy"() {
@@ -125,7 +369,7 @@ abstract class AbstractModuleDependencySpec extends Specification {
         assertDeepCopy(dependency, copy)
     }
 
-    public static void assertDeepCopy(ModuleDependency dependency, ModuleDependency copiedDependency) {
+    static void assertDeepCopy(ModuleDependency dependency, ModuleDependency copiedDependency) {
         assert copiedDependency.group == dependency.group
         assert copiedDependency.name == dependency.name
         assert copiedDependency.version == dependency.version
@@ -133,7 +377,10 @@ abstract class AbstractModuleDependencySpec extends Specification {
         assert copiedDependency.transitive == dependency.transitive
         assert copiedDependency.artifacts == dependency.artifacts
         assert copiedDependency.excludeRules == dependency.excludeRules
+        assert copiedDependency.attributes == dependency.attributes
+        assert copiedDependency.requestedCapabilities == dependency.requestedCapabilities
 
+        assert copiedDependency.attributes.is(ImmutableAttributes.EMPTY) || !copiedDependency.attributes.is(dependency.attributes)
         assert !copiedDependency.artifacts.is(dependency.artifacts)
         assert !copiedDependency.excludeRules.is(dependency.excludeRules)
     }

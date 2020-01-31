@@ -16,7 +16,7 @@
 
 package org.gradle.internal.logging.progress;
 
-import org.gradle.api.Nullable;
+import javax.annotation.Nullable;
 
 /**
  * Used to log the progress of a potentially long running operation.
@@ -55,52 +55,12 @@ public interface ProgressLogger {
     ProgressLogger setDescription(String description);
 
     /**
-     * Returns the short description of the operation. This is used in place of the full description when display space is limited.
-     *
-     * @return The short description, must not be empty.
-     */
-    String getShortDescription();
-
-    /**
-     * <p>Sets the short description of the operation. This is used in place of the full description when display space is limited.
-     *
-     * <p>This must be called before {@link #started()}
-     *
-     * @param description The short description.
-     */
-    ProgressLogger setShortDescription(String description);
-
-    /**
-     * <p>Returns the logging header for the operation. This is logged before any other log messages for this operation are logged. It is usually
-     * also logged at the end of the operation, along with the final status message. Defaults to null.
-     *
-     * <p>If not specified, no logging header is logged.
-     *
-     * @return The logging header, possibly empty.
-     */
-    String getLoggingHeader();
-
-    /**
-     * <p>Sets the logging header for the operation. This is logged before any other log messages for this operation are logged. It is usually
-     * also logged at the end of the operation, along with the final status message. Defaults to null.
-     *
-     * @param header The header. May be empty or null.
-     */
-    ProgressLogger setLoggingHeader(String header);
-
-    /**
      * Convenience method that sets descriptions and logs started() event.
      *
+     * @param status The initial status message. Can be null or empty.
      * @return this logger instance
      */
-    ProgressLogger start(String description, String shortDescription);
-
-    /**
-     * Convenience method that sets descriptions, total progress and logs started() event.
-     *
-     * @return this logger instance
-     */
-    ProgressLogger start(String description, String shortDescription, int totalProgress);
+    ProgressLogger start(String description, String status);
 
     /**
      * Logs the start of the operation, with no initial status.
@@ -115,14 +75,6 @@ public interface ProgressLogger {
     void started(String status);
 
     /**
-     * Logs the start of the operation, with the given status.
-     *
-     * @param status The initial status message. Can be null or empty.
-     * @param totalProgress total number of {@link #progress(String)}s calls that will be made (if known), 0 if unknown
-     */
-    void started(String status, int totalProgress);
-
-    /**
      * Logs some progress, indicated by a new status.
      *
      * @param status The new status message. Can be null or empty.
@@ -134,7 +86,7 @@ public interface ProgressLogger {
      *
      * @param status The new status message. Can be null or empty.
      */
-    void progress(@Nullable  String status, boolean failing);
+    void progress(@Nullable String status, boolean failing);
 
     /**
      * Logs the completion of the operation, with no final status

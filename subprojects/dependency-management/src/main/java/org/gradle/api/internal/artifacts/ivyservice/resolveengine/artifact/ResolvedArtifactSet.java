@@ -16,15 +16,17 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact;
 
+import org.gradle.api.internal.file.FileCollectionInternal;
+import org.gradle.api.internal.file.FileCollectionStructureVisitor;
+import org.gradle.api.internal.tasks.TaskDependencyContainer;
+import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
 import org.gradle.internal.operations.BuildOperationQueue;
 import org.gradle.internal.operations.RunnableBuildOperation;
-
-import java.io.File;
 
 /**
  * A container for a set of files or artifacts. May or may not be immutable, and may require building and further resolution.
  */
-public interface ResolvedArtifactSet {
+public interface ResolvedArtifactSet extends TaskDependencyContainer {
     /**
      * Starts preparing the result of this set for later visiting. To visit the final result, call {@link Completion#visit(ArtifactVisitor)} after all work added to the supplied queue has completed.
      *
@@ -33,14 +35,11 @@ public interface ResolvedArtifactSet {
     Completion startVisit(BuildOperationQueue<RunnableBuildOperation> actions, AsyncArtifactListener listener);
 
     /**
-     * Collects the build dependencies required to build the artifacts in this set.
+     * Visits the local artifacts of this set, if known without further resolution. Ignores artifacts that are not build locally and local artifacts that cannot be determined without further resolution.
      */
-    void collectBuildDependencies(BuildDependenciesVisitor visitor);
+    void visitLocalArtifacts(LocalArtifactVisitor listener);
 
-    Completion EMPTY_RESULT = new Completion() {
-        @Override
-        public void visit(ArtifactVisitor visitor) {
-        }
+    Completion EMPTY_RESULT = visitor -> {
     };
 
     ResolvedArtifactSet EMPTY = new ResolvedArtifactSet() {
@@ -50,7 +49,11 @@ public interface ResolvedArtifactSet {
         }
 
         @Override
-        public void collectBuildDependencies(BuildDependenciesVisitor visitor) {
+        public void visitLocalArtifacts(LocalArtifactVisitor listener) {
+        }
+
+        @Override
+        public void visitDependencies(TaskDependencyResolveContext context) {
         }
     };
 
@@ -67,27 +70,24 @@ public interface ResolvedArtifactSet {
      */
     interface AsyncArtifactListener {
         /**
-         * Visits an artifact once it is available. Only called when {@link #requireArtifactFiles()} returns true. Called from any thread and in any order.
+         * Called prior to scheduling resolution of a set of the given type.
+         */
+        FileCollectionStructureVisitor.VisitType prepareForVisit(FileCollectionInternal.Source source);
+
+        /**
+         * Visits an artifact once its file is available. Only called when {@link #requireArtifactFiles()} returns true. Called from any thread and in any order.
          */
         void artifactAvailable(ResolvableArtifact artifact);
 
         /**
          * Should the file for each artifacts be made available when visiting the result?
          *
-         * Returns true here allows the collection to pre-emptively resolve the files in parallel.
+         * Returns true here allows the collection to preemptively resolve the files in parallel.
          */
         boolean requireArtifactFiles();
+    }
 
-        /**
-         * Should file dependency artifacts be included in the result?
-         */
-        boolean includeFileDependencies();
-
-        /**
-         * Visits a file. Only called when {@link #includeFileDependencies()} returns true. Should be considered an artifact but is separate as a migration step.
-         * Called from any thread and in any order.
-         */
-        void fileAvailable(File file);
-
+    interface LocalArtifactVisitor {
+        void visitArtifact(ResolvableArtifact artifact);
     }
 }
